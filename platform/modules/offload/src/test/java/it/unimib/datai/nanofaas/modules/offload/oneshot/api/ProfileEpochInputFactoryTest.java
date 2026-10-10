@@ -29,4 +29,47 @@ class ProfileEpochInputFactoryTest {
         profiles.replace("profile",1,ServiceProfileStore.hash(bytes),bytes);
         assertThatThrownBy(()->factory.freeze(2,from,until)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("replica range");
     }
+    @Test void eachNodeFreezesItsOwnDemandProfileAndFingerprint() throws Exception {
+        var slow = localInput("slow", 'd', 0.30);
+        var fast = localInput("fast", 'e', 0.10);
+        assertThat(slow.problem().functions().getFirst().demandSeconds()).isEqualTo(0.30);
+        assertThat(fast.problem().functions().getFirst().demandSeconds()).isEqualTo(0.10);
+        assertThat(slow.profileHash()).isNotEqualTo(fast.profileHash());
+        assertThat(slow.identities()).isEqualTo(fast.identities());
+    }
+
+    private it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochInput localInput(
+            String profileId, char fingerprint, double demand) throws Exception {
+        var original = OneShotConfigurationTest.config();
+        var environment = "sha256:" + String.valueOf(fingerprint).repeat(64);
+        var settings = new OneShotSettings(1, profileId, environment, original.purpose(),
+                false, original.cloudUri(), 8, 1, original.period(), original.leadTime(),
+                false, original.anchor(), original.preparationBudget(), .1, 1, original.functions());
+        var configs = new OneShotConfigurationStore(() -> true, () -> true);
+        configs.replace(0, settings);
+        var bytes = new String(ServiceProfileStoreTest.fixture(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\"profileId\": \"profile\"", "\"profileId\": \"" + profileId + "\"")
+                .replace(original.environmentFingerprint(), environment)
+                .replace("\"serviceSeconds\": 1", "\"serviceSeconds\": " + demand)
+                .replace("\"meanSeconds\": 1", "\"meanSeconds\": " + demand)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var profiles = new ServiceProfileStore();
+        profiles.replace(profileId, 0, ServiceProfileStore.hash(bytes), bytes);
+        var control = mock(ManagedReplicaControl.class);
+        var peers = mock(PeerTransport.class);
+        when(peers.localEndpoint()).thenReturn(Optional.of(new PeerEndpoint("node", "run", java.net.URI.create("http://node:8080"))));
+        var concurrency = new ConcurrencyControlConfig(ConcurrencyControlMode.STATIC_PER_POD, 1, 1, 1, 0L, 0L, .5, .15, null, null);
+        var spec = new FunctionSpec("f", "image@sha256:" + "b".repeat(64), List.of(),
+                Map.of("NANOFAAS_ONE_SHOT_PROFILE", "true", "NANOFAAS_MAX_CONCURRENT_HANDLERS", "1"),
+                new ResourceSpec(null, new ResourceQuantity(java.math.BigDecimal.ONE, 1)),
+                30000, 8, 100, 0, null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null,
+                new ScalingConfig(ScalingStrategy.NONE, 0, 8, List.of(), concurrency));
+        var function = new RegisteredFunction(spec, new DeploymentMetadata(ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT, "local", null).withDesiredReplicas(0));
+        when(control.generationOf(function)).thenReturn(new FunctionGeneration("f", 3));
+        when(control.supportsPhysicalReplicaControl(any())).thenReturn(true);
+        ForecastSource forecasts = query -> new ForecastSnapshot(query, ForecastSnapshot.Status.AVAILABLE, 3.0, 1, "oracle", Instant.EPOCH);
+        var factory = new ProfileEpochInputFactory(configs, profiles, () -> List.of(function), control, peers, forecasts);
+        return factory.freeze(1, Instant.EPOCH, Instant.EPOCH.plusSeconds(300));
+    }
+
 }

@@ -127,4 +127,22 @@ class DefaultPeerTransportTest {
         transport.stop(); assertThat(transport.localEndpoint()).isEmpty();
     }
 
+    @Test void excludedAnnouncedEndpointCannotSendOrReceiveOperationalRequests() {
+        table.upsert("a", "a:7000");
+        transport.refresh();
+        transport.acceptAnnouncement("a", table.activationGeneration("a"),
+                DefaultPeerTransport.encodeAnnouncement("a", "a-run", URI.create("http://a:8080")));
+        AtomicInteger calls = new AtomicInteger();
+        transport.subscribe("one-shot", (sender, payload) -> { calls.incrementAndGet(); return Mono.just(payload); });
+        var handler = wire.handlers.get("one-shot");
+        int sent = wire.sent.size();
+        table.setApiMode("a", PeerMode.EXCLUDED);
+        assertThat(transport.activeNeighbors()).isEmpty();
+        assertThatThrownBy(() -> transport.request("a", "one-shot", new byte[0], Duration.ofSeconds(1)).block())
+                .isInstanceOf(PeerMessaging.PeerNotActiveException.class);
+        assertThatThrownBy(() -> handler.onMessage("a:7000", new byte[0]).block()).isInstanceOf(PeerCluster.Dropped.class);
+        assertThat(wire.sent).hasSize(sent);
+        assertThat(calls.get()).isZero();
+    }
+
 }
