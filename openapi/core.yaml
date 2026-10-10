@@ -906,15 +906,18 @@ components:
         error:
           $ref: '#/components/schemas/ErrorInfo'
         statusCode:
-          type: [integer, 'null']
+          type: integer
+          nullable: true
           description: Handler-selected status for success, or upstream platform failure status for error.
         headers:
-          type: [object, 'null']
+          type: object
+          nullable: true
           additionalProperties:
             type: string
           description: Allowed response metadata, including Retry-After for retryable platform errors.
         encoding:
-          type: [string, 'null']
+          type: string
+          nullable: true
     ExecutionStatus:
       type: object
       required: [executionId, status]

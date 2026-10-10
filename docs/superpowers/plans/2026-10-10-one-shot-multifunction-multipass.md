@@ -119,3 +119,5 @@ Congelare politica1s, asset SHA e package fingerprint prima delle VM. Nessuna mo
 ### Task6 prerequisite: HTTP failure propagation (approved2026-10-10)
 
 Before renewed observer gates, propagate SDK429/503 with typed errors and validated Retry-After, upstream timeout504 and transport502. Preserve metadata in terminal completion/archive/idempotent replay and one-hop forwarding; preserve intentional function status markers and waiter408 behavior. Add dispatcher/controller/lifecycle/replay/offload regression tests and update OpenAPI. Existing interrupted observer-v2 artifacts remain immutable and unqualified. Export a new clean runtime distribution and freeze software-v3 before VM qualification.
+
+Task6 physical-gate follow-up: measure and validate clock skew on all six VMs, while publishing clock health only to the edge negotiation APIs. The terminal cloud intentionally disables those APIs; its clock must still fail qualification when unhealthy. Preserve failed observer-v3 evidence and rebuild the immutable source/operator freeze after this NanoLab fix.
