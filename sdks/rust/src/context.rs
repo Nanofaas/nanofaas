@@ -77,9 +77,14 @@ impl Context {
         R: Send + 'static,
     {
         let reservation = Arc::clone(&self.inner.reservation);
+        let span = tracing::Span::current();
+        let dispatcher = tracing::dispatcher::get_default(Clone::clone);
         tokio::task::spawn_blocking(move || {
             let _reservation = reservation;
-            work()
+            tracing::dispatcher::with_default(&dispatcher, || {
+                let _entered = span.enter();
+                work()
+            })
         })
     }
 }
@@ -130,5 +135,23 @@ mod tests {
         release.send(()).unwrap();
         assert!(work.await.unwrap(), "the closure saw the cancellation");
         assert_eq!(limits.snapshot().active_handlers, 0);
+    }
+    #[tokio::test]
+    async fn spawn_blocking_preserves_the_callers_logging_span() {
+        let limits = Limits::new(1);
+        limits.set_accepting(true);
+        let ctx = context(&limits, Arc::new(AtomicBool::new(false)));
+        let subscriber = tracing_subscriber::fmt().with_test_writer().finish();
+        let work = tracing::subscriber::with_default(subscriber, || {
+            let span = tracing::info_span!("blocking-identity", execution_id = "exec-1");
+            span.in_scope(|| {
+                ctx.spawn_blocking(|| {
+                    tracing::Span::current()
+                        .metadata()
+                        .map(|metadata| metadata.name())
+                })
+            })
+        });
+        assert_eq!(work.await.unwrap(), Some("blocking-identity"));
     }
 }

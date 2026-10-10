@@ -5,6 +5,7 @@ so that each concurrent request carries its own isolated copy, even when
 multiple coroutines are in flight on the same event-loop thread.
 """
 import contextvars
+from contextlib import contextmanager
 import logging
 
 _execution_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -87,3 +88,17 @@ def get_logger(name: str) -> logging.Logger:
     :rtype: logging.Logger
     """
     return logging.getLogger(name)
+
+
+@contextmanager
+def invocation_context(execution_id: str | None, trace_id: str | None):
+    """Scope invocation identity/headers and restore all parent values on exit."""
+    execution_token = _execution_id.set(execution_id)
+    trace_token = _trace_id.set(trace_id)
+    headers_token = _headers.set(None)
+    try:
+        yield
+    finally:
+        _headers.reset(headers_token)
+        _trace_id.reset(trace_token)
+        _execution_id.reset(execution_token)

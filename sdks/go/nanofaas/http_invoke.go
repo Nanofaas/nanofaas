@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 )
@@ -199,7 +198,7 @@ func (r *Runtime) handleInvokeResult(w http.ResponseWriter, output any, handlerE
 	runtimeContext InvocationContext, dispatchAttempt string, callbackReservation *CallbackReservation) bool {
 	if handlerErr != nil {
 		r.markInvocation("error")
-		log.Printf("ERROR handler failed for execution %s: %v", runtimeContext.ExecutionID, handlerErr)
+		Logger(WithInvocationContext(context.Background(), runtimeContext.ExecutionID, runtimeContext.TraceID), r.logger).Error("handler failed", "exception", handlerErr.Error())
 		r.submitReservedCallback(callbackReservation, runtimeContext,
 			Failure("HANDLER_ERROR", "Handler failed"), dispatchAttempt)
 		writeRuntimeError(w, http.StatusInternalServerError, "HANDLER_ERROR", "Handler failed")
@@ -209,7 +208,7 @@ func (r *Runtime) handleInvokeResult(w http.ResponseWriter, output any, handlerE
 	envelope, isEnvelope := output.(HandlerResponse)
 	if isEnvelope && !IsStatusCodeValid(envelope.StatusCode) {
 		message := fmt.Sprintf("Handler returned invalid statusCode: %d", envelope.StatusCode)
-		log.Printf("WARN Handler returned invalid statusCode %d for execution %s, treating as platform error", envelope.StatusCode, runtimeContext.ExecutionID)
+		Logger(WithInvocationContext(context.Background(), runtimeContext.ExecutionID, runtimeContext.TraceID), r.logger).Warn("Handler returned invalid statusCode, treating as platform error", "statusCode", envelope.StatusCode)
 		r.submitReservedCallback(callbackReservation, runtimeContext,
 			Failure("OUTPUT_SERIALIZATION_ERROR", message), dispatchAttempt)
 		writeRuntimeError(w, http.StatusInternalServerError, "OUTPUT_SERIALIZATION_ERROR", message)

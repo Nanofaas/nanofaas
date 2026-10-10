@@ -24,6 +24,7 @@ type callbackJob struct {
 }
 
 type CallbackDispatcher struct {
+	logger                  *slog.Logger
 	client                  *CallbackClient
 	jobs                    chan callbackJob
 	wg                      sync.WaitGroup
@@ -94,7 +95,7 @@ func (d *CallbackDispatcher) deliver(job callbackJob) {
 	if d.client.SendSerializedWithDispatchAttempt(d.ctx, job.executionID, job.body, job.traceID, job.dispatchAttempt) {
 		return
 	}
-	slog.Warn("callback delivery exhausted", "execution_id", job.executionID)
+	Logger(WithInvocationContext(d.ctx, job.executionID, job.traceID), d.logger).Warn("callback delivery exhausted")
 	if d.onFailure != nil {
 		d.onFailure()
 	}

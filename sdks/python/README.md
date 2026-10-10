@@ -118,3 +118,7 @@ Run tests with `uv`:
 ```bash
 uv run --extra test pytest tests/
 ```
+
+## Common logging contract
+
+`NANOFAAS_LOG_FORMAT=json` selects canonical JSON at standalone startup when the process has no host logging handlers. Embedded applications retain their logger configuration; explicitly call `configure_logging(format="json")` or attach `JsonFormatter` to a handler you own. `NANOFAAS_LOG_SERVICE` defaults to `function-runtime`. JSON fields `execution_id` and `trace_id` are now `executionId` and `traceId`; missing IDs are omitted. Additional application fields use `extra={"attributes": {...}}`. Default configured format is text. Runtime identity and headers are restored after invocation and remain isolated in async/thread handler work.

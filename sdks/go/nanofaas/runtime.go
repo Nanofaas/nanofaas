@@ -3,6 +3,7 @@ package nanofaas
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -29,6 +30,9 @@ func NewRuntime(opts ...Option) *Runtime {
 		logger:   slog.Default(),
 		handlers: map[string]Handler{},
 	}
+	if os.Getenv("NANOFAAS_LOG_FORMAT") != "" {
+		rt.logger = NewLogger(os.Stderr, "function-runtime")
+	}
 	for _, opt := range opts {
 		opt(rt)
 	}
@@ -51,6 +55,7 @@ func (r *Runtime) newOwnedCallbackDispatcher() *CallbackDispatcher {
 	dispatcher := newCallbackDispatcher(r.callbackClient, 2, r.settings.MaxPendingCallbacks,
 		r.settings.MaxPendingCallbacks, r.settings.MaxPendingCallbackBytes, r.settings.MaxCallbackPayloadBytes)
 	dispatcher.onFailure = r.markCallbackDrop
+	dispatcher.logger = r.logger
 	return dispatcher
 }
 

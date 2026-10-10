@@ -78,3 +78,7 @@ npm install
 npm test
 npm run build
 ```
+
+## Common logging contract
+
+`NANOFAAS_LOG_FORMAT=json` enables the shared contract; default text is available and `NANOFAAS_LOG_SERVICE` selects the service name. JSON levels are uppercase, missing execution/trace IDs are omitted, and logger fields are now nested under `attributes`, preventing application values from overwriting runtime identity. Handler and callback contexts are isolated across async work. No process console methods or host logging configuration are replaced.

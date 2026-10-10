@@ -1,73 +1,59 @@
-"""Structured JSON logging for the nanofaas Python SDK.
-
-This module provides a :class:`JsonFormatter` that serialises log records as
-single-line JSON objects, including the current execution and trace IDs from
-:mod:`nanofaas.sdk.context`. A convenience function
-:func:`configure_logging` wires this formatter to the root logger so that
-every ``logging.getLogger()`` call in the process produces structured output
-suitable for log-aggregation pipelines.
-"""
+"""Explicit console logging configuration; importing the SDK preserves host loggers."""
 import json
 import logging
+import os
+from datetime import datetime, timezone
 from . import context
 
 
 class JsonFormatter(logging.Formatter):
-    """Log formatter that serialises records as JSON lines.
-
-    Each formatted record is a JSON object containing at minimum:
-
-    - ``timestamp`` — human-readable ISO-style timestamp
-    - ``level`` — log level name (e.g. ``"INFO"``)
-    - ``logger`` — the logger's name
-    - ``message`` — the rendered log message
-    - ``execution_id`` — current invocation ID from :mod:`context`, or ``null``
-    - ``trace_id`` — current trace ID from :mod:`context`, or ``null``
-
-    If the record carries exception information, an additional ``exception``
-    key is appended with the formatted traceback.
-    """
+    """Emit the shared NanoFaaS logging contract as one UTF-8 JSON line."""
+    def __init__(self, service: str | None = None):
+        super().__init__()
+        self.service = service or os.environ.get("NANOFAAS_LOG_SERVICE") or "function-runtime"
 
     def format(self, record: logging.LogRecord) -> str:
-        """Serialise *record* to a JSON string.
-
-        :param record: The log record produced by the logging framework.
-        :type record: logging.LogRecord
-        :returns: A single-line JSON string representing the log entry.
-        :rtype: str
-        """
-        log_record = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
+        """Serialize a record with the currently scoped invocation identifiers."""
+        event = {
+            "schemaVersion": 1,
+            "timestamp": datetime.fromtimestamp(record.created, timezone.utc).isoformat().replace("+00:00", "Z"),
+            "level": {"WARNING": "WARN", "CRITICAL": "FATAL"}.get(record.levelname, record.levelname),
+            "service": self.service,
             "logger": record.name,
             "message": record.getMessage(),
-            "execution_id": context.get_execution_id(),
-            "trace_id": context.get_trace_id(),
         }
+        for key, value in (("executionId", context.get_execution_id()), ("traceId", context.get_trace_id())):
+            if value:
+                event[key] = value
+        attributes = getattr(record, "attributes", None)
+        if attributes:
+            event["attributes"] = attributes
         if record.exc_info:
-            log_record["exception"] = self.formatException(record.exc_info)
-        return json.dumps(log_record)
+            event["exception"] = self.formatException(record.exc_info)
+        try:
+            return json.dumps(event, ensure_ascii=False)
+        except (TypeError, ValueError):
+            # Non-serializable application attributes must not suppress runtime logs.
+            event.pop("attributes", None)
+            return json.dumps(event, ensure_ascii=False)
 
 
-def configure_logging(level: int = logging.INFO) -> None:
-    """Configure the root logger to emit structured JSON output.
+def configure_logging(level: int = logging.INFO, *, format: str | None = None,
+                      service: str | None = None, force: bool = True) -> None:
+    """Configure the process explicitly; force=False preserves an existing host logger.
 
-    Removes any pre-existing handlers to avoid duplicate log lines, then
-    attaches a single :class:`~logging.StreamHandler` with
-    :class:`JsonFormatter`. Subsequent calls to ``logging.getLogger()``
-    anywhere in the process will inherit this configuration.
-
-    :param level: Minimum log level for the root logger. Defaults to
-        :data:`logging.INFO`.
-    :type level: int
+    Format defaults to NANOFAAS_LOG_FORMAT (text). JsonFormatter remains available
+    directly for applications that own their handlers.
     """
-    handler = logging.StreamHandler()
-    handler.setFormatter(JsonFormatter())
     root = logging.getLogger()
-
-    # Remove existing handlers to avoid duplicates
-    for h in root.handlers[:]:
-        root.removeHandler(h)
-
+    if root.handlers and not force:
+        return
+    selected = format or os.environ.get("NANOFAAS_LOG_FORMAT", "text")
+    if selected not in ("json", "text"):
+        raise ValueError("NANOFAAS_LOG_FORMAT must be json or text")
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonFormatter(service) if selected == "json" else logging.Formatter("%(levelname)s %(name)s %(message)s"))
+    for previous in root.handlers[:]:
+        root.removeHandler(previous)
     root.setLevel(level)
     root.addHandler(handler)
