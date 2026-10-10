@@ -107,3 +107,11 @@
 ## Self-review
 
 Topologia: Tasks4/6. Cinque Rust e memoria strict:1/2/3. Carico nodo/funzione/tempo e offload:3/4/6.9x360s e54min complessivi:4/5/6. Registry/indipendenza/guard:5/7. Test espliciti coprono combinazioni ammissibili, alias, memoria/swap, mix cloud, quantum e contabilità. Artefatti precedenti distinti;60s richiede nuova decisione e qualificazione.
+
+## Estensione approvata: telemetria continua VM e container
+
+Prima di misure scientifiche, avviare su ciascuna delle sei VM un campionatore Python stdlib locale, posseduto tramite Sonata/NodeResource. Stream JSONL persistito continuamente sull'host, indipendente dal generatore e dai log Fluent Bit/Loki già presenti. Frequenza1Hz per warmup720s e tutte9 epoche360s; timestamp UTC, tempo monotonic e delta effettivo. CPU busy normalizzata alle vCPU, iowait/steal distinti, guest escluso dal doppio conteggio; MemTotal/MemAvailable/used e swap total/free/used in byte. Cgroupv2 per container: CPU usage e quota, memoria corrente/limite/picco/swap, nr_periods/nr_throttled/throttled_usec e delta; identità/incarnazione, ruolo control-plane/collector/function, funzione e replica.
+
+Ogni campione porta run/modo/fase/epoca. La CPU VM è una misura del nodo, non attribuibile artificialmente a una funzione; il vettore di carico identifica tutte5 funzioni dell'epoca, i campioni delle repliche ne identificano una. Errori/dati non disponibili non diventano zeri. Segnalare e archiviare secondi mancanti/duplicati per ciascun nodo, errori e copertura di container, invalidando copertura scientifica incompleta. Preservare raw anche nel fallimento e sincronizzare prima del teardown, mantenendo l'errore primario. Report temporali per nodo CPU/RAM/swap e per container CPU/RAM/throttling, leggibili anche quando evidence.json manca.
+
+Congelare politica1s, asset SHA e package fingerprint prima delle VM. Nessuna modifica post-freeze. Gate reale prima delle misure: tre coppie telemetria off/on con logging acceso, stesso carico concorrente e quote finali; goodput e p95 non peggiorano oltre5% per nodo/funzione. Registrare anche CPU/RAM del campionatore stesso. Gate logging off/on resta separato. Test RED→GREEN per normalizzazione/delta, restart/identità, memoria/swap, confini warmup/epoche, copertura/missing, cleanup/fallimenti e fingerprint/report. Nessun nuovo backend né dipendenza di raccolta.
