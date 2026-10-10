@@ -1,0 +1,43 @@
+Warning: Permanently added '10.83.80.239' (ED25519) to the list of known hosts.
+Fluent Bit v5.1.3
+* Copyright (C) 2015-2026 The Fluent Bit Authors
+* Fluent Bit is a CNCF graduated project under the Fluent organization
+* https://fluentbit.io
+
+______ _                  _    ______ _ _           _____  __  
+|  ___| |                | |   | ___ (_) |         |  ___|/  | 
+| |_  | |_   _  ___ _ __ | |_  | |_/ /_| |_  __   _|___ \ `| | 
+|  _| | | | | |/ _ \ '_ \| __| | ___ \ | __| \ \ / /   \ \ | | 
+| |   | | |_| |  __/ | | | |_  | |_/ / | |_   \ V //\__/ /_| |_
+\_|   |_|\__,_|\___|_| |_|\__| \____/|_|\__|   \_/ \____(_)___/
+
+
+[2026/10/10 10:19:20.399] [ info] [fluent bit] version=5.1.3, commit=d1be1ba389, pid=1
+[2026/10/10 10:19:20.399] [ info] [storage] created root path /var/lib/fluent-bit/chunks
+[2026/10/10 10:19:20.399] [ info] [storage] ver=1.5.4, type=memory+filesystem, sync=full, checksum=on, max_chunks_up=8
+[2026/10/10 10:19:20.399] [ info] [storage] backlog input plugin: storage_backlog.1
+[2026/10/10 10:19:20.399] [ info] [simd    ] NEON
+[2026/10/10 10:19:20.399] [ info] [cmetrics] version=2.2.5
+[2026/10/10 10:19:20.399] [ info] [ctraces ] version=0.7.3
+[2026/10/10 10:19:20.400] [ info] [input:tail:tail.0] initializing
+[2026/10/10 10:19:20.400] [ info] [input:tail:tail.0] storage_strategy='filesystem' (memory + filesystem)
+[2026/10/10 10:19:20.407] [ info] [input:tail:tail.0] db: delete unmonitored stale inodes from the database: count=0
+[2026/10/10 10:19:20.407] [ info] [input:storage_backlog:storage_backlog.1] initializing
+[2026/10/10 10:19:20.407] [ info] [input:storage_backlog:storage_backlog.1] storage_strategy='memory' (memory only)
+[2026/10/10 10:19:20.407] [ info] [input:storage_backlog:storage_backlog.1] queue memory limit: 7.6M
+[2026/10/10 10:19:20.407] [ info] [output:loki:loki.0] configured, hostname=10.83.80.1:43100
+[2026/10/10 10:19:20.407] [ info] [http_server] listen iface=0.0.0.0 tcp_port=2020
+[2026/10/10 10:19:20.407] [ info] [sp] stream processor started
+[2026/10/10 10:19:20.407] [ info] [engine] Shutdown Grace Period=10, Shutdown Input Grace Period=5
+[2026/10/10 10:19:35.414] [ info] [input:tail:tail.0] inotify_fs_add(): inode=528132 watch_fd=1 name=/var/log/containers/91abdf85ecf9943b6d810abe59fba72748299c2ea03bddc105fd099b4f0492f8/91abdf85ecf9943b6d810abe59fba72748299c2ea03bddc105fd099b4f0492f8-json.log
+[2026/10/10 10:19:35.414] [ info] [input:tail:tail.0] inotify_fs_add(): inode=528097 watch_fd=2 name=/var/log/containers/30b90a7b55701c19c527f3d0991eea50e2d80e18851ce5f86f68fa160bf98d25/30b90a7b55701c19c527f3d0991eea50e2d80e18851ce5f86f68fa160bf98d25-json.log
+[2026/10/10 10:21:07.114] [ info] [input:tail:tail.0] inotify_fs_remove(): inode=528097 watch_fd=2
+[2026/10/10 10:21:08.249] [ info] [input:tail:tail.0] inotify_fs_remove(): inode=528132 watch_fd=1
+[2026/10/10 10:21:11] [engine] caught signal (SIGTERM)
+[2026/10/10 10:21:11.005] [ warn] [engine] service will shutdown in max 10 seconds
+[2026/10/10 10:21:11.005] [ info] [engine] pausing all inputs..
+[2026/10/10 10:21:11.005] [ info] [input] pausing tail.0
+[2026/10/10 10:21:11.005] [ info] [input] pausing storage_backlog.1
+[2026/10/10 10:21:11.399] [ info] [engine] service has stopped (0 pending tasks)
+[2026/10/10 10:21:11.399] [ info] [input] pausing tail.0
+[2026/10/10 10:21:11.399] [ info] [input] pausing storage_backlog.1

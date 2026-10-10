@@ -1,0 +1,347 @@
+{
+  "method": "Cumulative CPU/block-I/O deltas bracketing each load window, including sequential capture/generator overhead. Memory is endpoint usage; this does not measure peaks or Docker-daemon/host I/O.",
+  "rows": [
+    {
+      "node": "backend",
+      "role": "grafana",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.007763708299849918,
+      "medianMemoryEndMiB": 245.96484375,
+      "medianReadBytes": 118784,
+      "medianWriteBytes": 49152
+    },
+    {
+      "node": "backend",
+      "role": "grafana",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.007781957108627131,
+      "medianMemoryEndMiB": 245.7734375,
+      "medianReadBytes": 126976,
+      "medianWriteBytes": 49152
+    },
+    {
+      "node": "backend",
+      "role": "loki",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.004550884738660017,
+      "medianMemoryEndMiB": 58.00390625,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "backend",
+      "role": "loki",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.004587300004779781,
+      "medianMemoryEndMiB": 57.90234375,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 20480
+    },
+    {
+      "node": "cloud",
+      "role": "collector",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.000763824669847691,
+      "medianMemoryEndMiB": 4.79296875,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 8192
+    },
+    {
+      "node": "cloud",
+      "role": "control-plane",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.010058743844292633,
+      "medianMemoryEndMiB": 63.12890625,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "cloud",
+      "role": "control-plane",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.010186919095573605,
+      "medianMemoryEndMiB": 63.1328125,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "cloud",
+      "role": "function",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.4227675902717908,
+      "medianMemoryEndMiB": 1.03515625,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "cloud",
+      "role": "function",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.42228520369705447,
+      "medianMemoryEndMiB": 1.1328125,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-1",
+      "role": "collector",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.0007401064432873332,
+      "medianMemoryEndMiB": 4.62109375,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 8192
+    },
+    {
+      "node": "edge-1",
+      "role": "control-plane",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.0025459772911927926,
+      "medianMemoryEndMiB": 53.52734375,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-1",
+      "role": "control-plane",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.0025983647986737132,
+      "medianMemoryEndMiB": 53.5625,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-1",
+      "role": "function",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.11257223828597765,
+      "medianMemoryEndMiB": 0.703125,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-1",
+      "role": "function",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.11319705002533129,
+      "medianMemoryEndMiB": 0.6953125,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-2",
+      "role": "collector",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.0006539070906417777,
+      "medianMemoryEndMiB": 4.62109375,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 8192
+    },
+    {
+      "node": "edge-2",
+      "role": "control-plane",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.004454159326425844,
+      "medianMemoryEndMiB": 62.55859375,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-2",
+      "role": "control-plane",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.004413502878765152,
+      "medianMemoryEndMiB": 62.56640625,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-2",
+      "role": "function",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.21571467837938835,
+      "medianMemoryEndMiB": 0.74609375,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-2",
+      "role": "function",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.2152171592679022,
+      "medianMemoryEndMiB": 0.74609375,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-3",
+      "role": "collector",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.0007573215901715714,
+      "medianMemoryEndMiB": 4.8125,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 8192
+    },
+    {
+      "node": "edge-3",
+      "role": "control-plane",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.005116052981620421,
+      "medianMemoryEndMiB": 62.609375,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-3",
+      "role": "control-plane",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.005030136128989802,
+      "medianMemoryEndMiB": 62.6328125,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-3",
+      "role": "function",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.21584615337939658,
+      "medianMemoryEndMiB": 0.74609375,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-3",
+      "role": "function",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.21325728231791974,
+      "medianMemoryEndMiB": 0.7421875,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-4",
+      "role": "collector",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.0007508803112177212,
+      "medianMemoryEndMiB": 4.8515625,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 8192
+    },
+    {
+      "node": "edge-4",
+      "role": "control-plane",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.0070881749015341,
+      "medianMemoryEndMiB": 62.63671875,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-4",
+      "role": "control-plane",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.007131205280337317,
+      "medianMemoryEndMiB": 62.6171875,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-4",
+      "role": "function",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.3195247170668517,
+      "medianMemoryEndMiB": 0.76171875,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-4",
+      "role": "function",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.3194229137673906,
+      "medianMemoryEndMiB": 0.7578125,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-5",
+      "role": "collector",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.0007665121955081623,
+      "medianMemoryEndMiB": 4.796875,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 8192
+    },
+    {
+      "node": "edge-5",
+      "role": "control-plane",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.007582483036590284,
+      "medianMemoryEndMiB": 62.6640625,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-5",
+      "role": "control-plane",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.007485251032743759,
+      "medianMemoryEndMiB": 62.66796875,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-5",
+      "role": "function",
+      "logging": false,
+      "windows": 3,
+      "medianMeanCores": 0.319877997232561,
+      "medianMemoryEndMiB": 0.76171875,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    },
+    {
+      "node": "edge-5",
+      "role": "function",
+      "logging": true,
+      "windows": 3,
+      "medianMeanCores": 0.31994960438375736,
+      "medianMemoryEndMiB": 0.76171875,
+      "medianReadBytes": 0,
+      "medianWriteBytes": 0
+    }
+  ],
+  "completed": 5428,
+  "verifiedArchives": 18
+}

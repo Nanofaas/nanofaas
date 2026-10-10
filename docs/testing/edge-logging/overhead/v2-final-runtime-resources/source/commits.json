@@ -1,0 +1,6 @@
+{
+  "nanofaas": "646b54fa",
+  "nanolab": "c2044ea",
+  "workloadImage": "sha256:45f2f4570bd3f7b5031b84a1f2b7bf7882bc79575772fa338b0f1ea217ac4d6c",
+  "scope": "single-replica/no-P2P/low-log-volume pilot; no full scientific qualification"
+}

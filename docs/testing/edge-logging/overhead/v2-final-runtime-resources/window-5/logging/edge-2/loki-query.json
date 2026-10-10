@@ -1,0 +1,387 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "streams",
+    "result": [
+      {
+        "stream": {
+          "campaignId": "logging-overhead",
+          "detected_level": "unknown",
+          "environment": "local",
+          "environment_extracted": "local",
+          "job": "nanofaas",
+          "log": "\n",
+          "mode": "LOGGING_ON",
+          "node": "edge-2",
+          "nodeId": "edge-2",
+          "nodeRole": "edge",
+          "runId": "window-5",
+          "service": "unstructured",
+          "service_extracted": "unstructured",
+          "service_name": "unstructured",
+          "stream": "stderr",
+          "time": "2026-10-10T10:25:52.722418167Z"
+        },
+        "values": [
+          [
+            "1791627952722418167",
+            "{\"log\":\"\\n\",\"stream\":\"stderr\",\"time\":\"2026-10-10T10:25:52.722418167Z\",\"nodeId\":\"edge-2\",\"environment\":\"local\",\"campaignId\":\"logging-overhead\",\"runId\":\"window-5\",\"mode\":\"LOGGING_ON\",\"nodeRole\":\"edge\",\"service\":\"unstructured\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "campaignId": "logging-overhead",
+          "detected_level": "warn",
+          "environment": "local",
+          "environment_extracted": "local",
+          "job": "nanofaas",
+          "level": "WARN",
+          "logger": "io.micrometer.core.instrument.binder.jvm.JvmGcMetrics",
+          "message": "GC notifications will not be available because no GarbageCollectorMXBean of the JVM provides any. GCs=[young generation scavenger, complete scavenger]",
+          "mode": "LOGGING_ON",
+          "node": "edge-2",
+          "nodeId": "edge-2",
+          "nodeRole": "edge",
+          "runId": "window-5",
+          "schemaVersion": "1",
+          "service": "control-plane",
+          "service_extracted": "control-plane",
+          "service_name": "control-plane",
+          "stream": "stdout",
+          "time": "2026-10-10T10:25:52.738143328Z",
+          "timestamp": "2026-10-10T10:25:52.738Z"
+        },
+        "values": [
+          [
+            "1791627952738143328",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T10:25:52.738Z\",\"level\":\"WARN\",\"service\":\"control-plane\",\"logger\":\"io.micrometer.core.instrument.binder.jvm.JvmGcMetrics\",\"message\":\"GC notifications will not be available because no GarbageCollectorMXBean of the JVM provides any. GCs=[young generation scavenger, complete scavenger]\",\"stream\":\"stdout\",\"time\":\"2026-10-10T10:25:52.738143328Z\",\"nodeId\":\"edge-2\",\"environment\":\"local\",\"campaignId\":\"logging-overhead\",\"runId\":\"window-5\",\"mode\":\"LOGGING_ON\",\"nodeRole\":\"edge\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "campaignId": "logging-overhead",
+          "detected_level": "warn",
+          "environment": "local",
+          "environment_extracted": "local",
+          "job": "nanofaas",
+          "level": "WARN",
+          "logger": "it.unimib.datai.nanofaas.modules.offload.OffloadConfiguration",
+          "message": "Offload module loaded without nanofaas.offload.target-url; only functions declaring their own offload.targetUrl can offload",
+          "mode": "LOGGING_ON",
+          "node": "edge-2",
+          "nodeId": "edge-2",
+          "nodeRole": "edge",
+          "runId": "window-5",
+          "schemaVersion": "1",
+          "service": "control-plane",
+          "service_extracted": "control-plane",
+          "service_name": "control-plane",
+          "stream": "stdout",
+          "time": "2026-10-10T10:25:52.72911991Z",
+          "timestamp": "2026-10-10T10:25:52.728Z"
+        },
+        "values": [
+          [
+            "1791627952729119910",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T10:25:52.728Z\",\"level\":\"WARN\",\"service\":\"control-plane\",\"logger\":\"it.unimib.datai.nanofaas.modules.offload.OffloadConfiguration\",\"message\":\"Offload module loaded without nanofaas.offload.target-url; only functions declaring their own offload.targetUrl can offload\",\"stream\":\"stdout\",\"time\":\"2026-10-10T10:25:52.72911991Z\",\"nodeId\":\"edge-2\",\"environment\":\"local\",\"campaignId\":\"logging-overhead\",\"runId\":\"window-5\",\"mode\":\"LOGGING_ON\",\"nodeRole\":\"edge\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "campaignId": "logging-overhead",
+          "detected_level": "warn",
+          "environment": "local",
+          "environment_extracted": "local",
+          "job": "nanofaas",
+          "log": "WARNING: A restricted method in java.lang.System has been called\n",
+          "mode": "LOGGING_ON",
+          "node": "edge-2",
+          "nodeId": "edge-2",
+          "nodeRole": "edge",
+          "runId": "window-5",
+          "service": "unstructured",
+          "service_extracted": "unstructured",
+          "service_name": "unstructured",
+          "stream": "stderr",
+          "time": "2026-10-10T10:25:52.722290359Z"
+        },
+        "values": [
+          [
+            "1791627952722290359",
+            "{\"log\":\"WARNING: A restricted method in java.lang.System has been called\\n\",\"stream\":\"stderr\",\"time\":\"2026-10-10T10:25:52.722290359Z\",\"nodeId\":\"edge-2\",\"environment\":\"local\",\"campaignId\":\"logging-overhead\",\"runId\":\"window-5\",\"mode\":\"LOGGING_ON\",\"nodeRole\":\"edge\",\"service\":\"unstructured\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "campaignId": "logging-overhead",
+          "detected_level": "warn",
+          "environment": "local",
+          "environment_extracted": "local",
+          "job": "nanofaas",
+          "log": "WARNING: Restricted methods will be blocked in a future release unless native access is enabled\n",
+          "mode": "LOGGING_ON",
+          "node": "edge-2",
+          "nodeId": "edge-2",
+          "nodeRole": "edge",
+          "runId": "window-5",
+          "service": "unstructured",
+          "service_extracted": "unstructured",
+          "service_name": "unstructured",
+          "stream": "stderr",
+          "time": "2026-10-10T10:25:52.722402983Z"
+        },
+        "values": [
+          [
+            "1791627952722402983",
+            "{\"log\":\"WARNING: Restricted methods will be blocked in a future release unless native access is enabled\\n\",\"stream\":\"stderr\",\"time\":\"2026-10-10T10:25:52.722402983Z\",\"nodeId\":\"edge-2\",\"environment\":\"local\",\"campaignId\":\"logging-overhead\",\"runId\":\"window-5\",\"mode\":\"LOGGING_ON\",\"nodeRole\":\"edge\",\"service\":\"unstructured\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "campaignId": "logging-overhead",
+          "detected_level": "warn",
+          "environment": "local",
+          "environment_extracted": "local",
+          "job": "nanofaas",
+          "log": "WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module\n",
+          "mode": "LOGGING_ON",
+          "node": "edge-2",
+          "nodeId": "edge-2",
+          "nodeRole": "edge",
+          "runId": "window-5",
+          "service": "unstructured",
+          "service_extracted": "unstructured",
+          "service_name": "unstructured",
+          "stream": "stderr",
+          "time": "2026-10-10T10:25:52.722401351Z"
+        },
+        "values": [
+          [
+            "1791627952722401351",
+            "{\"log\":\"WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module\\n\",\"stream\":\"stderr\",\"time\":\"2026-10-10T10:25:52.722401351Z\",\"nodeId\":\"edge-2\",\"environment\":\"local\",\"campaignId\":\"logging-overhead\",\"runId\":\"window-5\",\"mode\":\"LOGGING_ON\",\"nodeRole\":\"edge\",\"service\":\"unstructured\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "campaignId": "logging-overhead",
+          "detected_level": "warn",
+          "environment": "local",
+          "environment_extracted": "local",
+          "job": "nanofaas",
+          "log": "WARNING: java.lang.System::loadLibrary has been called by io.netty.util.internal.NativeLibraryUtil in an unnamed module (file:/app/application)\n",
+          "mode": "LOGGING_ON",
+          "node": "edge-2",
+          "nodeId": "edge-2",
+          "nodeRole": "edge",
+          "runId": "window-5",
+          "service": "unstructured",
+          "service_extracted": "unstructured",
+          "service_name": "unstructured",
+          "stream": "stderr",
+          "time": "2026-10-10T10:25:52.722381703Z"
+        },
+        "values": [
+          [
+            "1791627952722381703",
+            "{\"log\":\"WARNING: java.lang.System::loadLibrary has been called by io.netty.util.internal.NativeLibraryUtil in an unnamed module (file:/app/application)\\n\",\"stream\":\"stderr\",\"time\":\"2026-10-10T10:25:52.722381703Z\",\"nodeId\":\"edge-2\",\"environment\":\"local\",\"campaignId\":\"logging-overhead\",\"runId\":\"window-5\",\"mode\":\"LOGGING_ON\",\"nodeRole\":\"edge\",\"service\":\"unstructured\"}"
+          ]
+        ]
+      }
+    ],
+    "stats": {
+      "summary": {
+        "bytesProcessedPerSecond": 672252,
+        "linesProcessedPerSecond": 1824,
+        "totalBytesProcessed": 2579,
+        "totalLinesProcessed": 7,
+        "execTime": 0.003836,
+        "queueTime": 0.000178,
+        "subqueries": 0,
+        "totalEntriesReturned": 7,
+        "splits": 0,
+        "shards": 1,
+        "totalPostFilterLines": 7,
+        "totalStructuredMetadataBytesProcessed": 56
+      },
+      "querier": {
+        "store": {
+          "totalChunksRef": 0,
+          "totalChunksDownloaded": 0,
+          "chunksDownloadTime": 0,
+          "queryReferencedStructuredMetadata": false,
+          "queryUsedV2Engine": false,
+          "chunk": {
+            "headChunkBytes": 0,
+            "headChunkLines": 0,
+            "decompressedBytes": 0,
+            "decompressedLines": 0,
+            "compressedBytes": 0,
+            "totalDuplicates": 0,
+            "postFilterLines": 0,
+            "headChunkStructuredMetadataBytes": 0,
+            "decompressedStructuredMetadataBytes": 0
+          },
+          "chunkRefsFetchTime": 0,
+          "congestionControlLatency": 0,
+          "pipelineWrapperFilteredLines": 0,
+          "dataobj": {
+            "prePredicateDecompressedRows": 0,
+            "prePredicateDecompressedBytes": 0,
+            "prePredicateDecompressedStructuredMetadataBytes": 0,
+            "postPredicateRows": 0,
+            "postPredicateDecompressedBytes": 0,
+            "postPredicateStructuredMetadataBytes": 0,
+            "postFilterRows": 0,
+            "pagesScanned": 0,
+            "pagesDownloaded": 0,
+            "pagesDownloadedBytes": 0,
+            "pageBatches": 0,
+            "totalRowsAvailable": 0,
+            "totalPageDownloadTime": 0
+          }
+        },
+        "querierExecTime": 0.002979
+      },
+      "ingester": {
+        "totalReached": 1,
+        "totalChunksMatched": 2,
+        "totalBatches": 2,
+        "totalLinesSent": 7,
+        "store": {
+          "totalChunksRef": 0,
+          "totalChunksDownloaded": 0,
+          "chunksDownloadTime": 0,
+          "queryReferencedStructuredMetadata": false,
+          "queryUsedV2Engine": false,
+          "chunk": {
+            "headChunkBytes": 2579,
+            "headChunkLines": 7,
+            "decompressedBytes": 0,
+            "decompressedLines": 0,
+            "compressedBytes": 0,
+            "totalDuplicates": 0,
+            "postFilterLines": 7,
+            "headChunkStructuredMetadataBytes": 56,
+            "decompressedStructuredMetadataBytes": 0
+          },
+          "chunkRefsFetchTime": 66383,
+          "congestionControlLatency": 0,
+          "pipelineWrapperFilteredLines": 0,
+          "dataobj": {
+            "prePredicateDecompressedRows": 0,
+            "prePredicateDecompressedBytes": 0,
+            "prePredicateDecompressedStructuredMetadataBytes": 0,
+            "postPredicateRows": 0,
+            "postPredicateDecompressedBytes": 0,
+            "postPredicateStructuredMetadataBytes": 0,
+            "postFilterRows": 0,
+            "pagesScanned": 0,
+            "pagesDownloaded": 0,
+            "pagesDownloadedBytes": 0,
+            "pageBatches": 0,
+            "totalRowsAvailable": 0,
+            "totalPageDownloadTime": 0
+          }
+        },
+        "recvWaitTime": 0.00072
+      },
+      "cache": {
+        "chunk": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "index": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "result": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "statsResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "volumeResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "seriesResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "labelResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "instantMetricResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        }
+      },
+      "index": {
+        "totalChunks": 0,
+        "postFilterChunks": 0,
+        "shardsDuration": 0,
+        "usedBloomFilters": false,
+        "totalStreams": 0,
+        "chunkRefsLookupTime": 0,
+        "bloomFilterTime": 0
+      }
+    }
+  }
+}

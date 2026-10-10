@@ -1,0 +1,9 @@
+{
+  "qualified": false,
+  "reason": "Stopped-state archives verified, but removal of root-owned temporary files in sticky /tmp failed; workflow exit 1. This pre-private-directory helper is not the final source.",
+  "windows": 6,
+  "completed": 5432,
+  "ownedVmsRemaining": [],
+  "archivedStates": 18,
+  "overlap": "Final source tests/builds overlapped this failed series; it is not a clean qualification run."
+}

@@ -1,0 +1,146 @@
+{
+  "intervalSeconds": 63.44171895401087,
+  "measurement": "cumulative counters bracketing generator (includes sequential capture overhead); memory endpoints only",
+  "nodes": {
+    "edge-1": {
+      "3caddc4784b192c6e153575633660dff1a5e90209b2b3dc1f0300f14376b9cda": {
+        "cpuNs": 7180682000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logfn-3bb08e8292",
+        "meanCores": 0.1131854892709528,
+        "memoryStartBytes": 651264,
+        "memoryEndBytes": 741376
+      },
+      "e230e7303a4fb927c47f5d27fa17e9c34839af3347faca0898810f120053a87c": {
+        "cpuNs": 167599000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logcp-3bb08e8292",
+        "meanCores": 0.00264177898649772,
+        "memoryStartBytes": 46002176,
+        "memoryEndBytes": 56127488
+      }
+    },
+    "edge-2": {
+      "30390f10ed289124507f9d1e04db95eb08dc39dce1d444aefa251f1c210ddc58": {
+        "cpuNs": 13685310000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logfn-3bb08e8292",
+        "meanCores": 0.21571467837938835,
+        "memoryStartBytes": 667648,
+        "memoryEndBytes": 782336
+      },
+      "e76053688743bac8f4d51060fe809df467ede2cc5097c64086eb7e04b0cff7f9": {
+        "cpuNs": 281935000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logcp-3bb08e8292",
+        "meanCores": 0.004444000015264021,
+        "memoryStartBytes": 45998080,
+        "memoryEndBytes": 65597440
+      }
+    },
+    "edge-3": {
+      "ff99e94d4ff2354ec1ccba13951d227f2c430356257d703d4f00fcc764d2e768": {
+        "cpuNs": 13693651000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logfn-3bb08e8292",
+        "meanCores": 0.21584615337939658,
+        "memoryStartBytes": 667648,
+        "memoryEndBytes": 778240
+      },
+      "6c7b169938403c5ae4dc194c4247289597f8f0fb7244a56763f1b2245a328e78": {
+        "cpuNs": 330637000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logcp-3bb08e8292",
+        "meanCores": 0.005211665217326157,
+        "memoryStartBytes": 46063616,
+        "memoryEndBytes": 65650688
+      }
+    },
+    "edge-4": {
+      "129b00862139abe9c2781d0b330fb0ddc1b875b79670de58ebac7409cf509e6e": {
+        "cpuNs": 20198358000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logfn-3bb08e8292",
+        "meanCores": 0.3183765877252138,
+        "memoryStartBytes": 667648,
+        "memoryEndBytes": 794624
+      },
+      "4d6056c134d7f333c2f074d3d94e1dcd5507473c85bf316d15662cc56deee4c6": {
+        "cpuNs": 449686000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logcp-3bb08e8292",
+        "meanCores": 0.0070881749015341,
+        "memoryStartBytes": 46022656,
+        "memoryEndBytes": 65679360
+      }
+    },
+    "edge-5": {
+      "67eab9b1cbbaabe1cddf9c6e1b03cfa826c945c065aa48926a7457dc389cbf7d": {
+        "cpuNs": 20293610000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logfn-3bb08e8292",
+        "meanCores": 0.319877997232561,
+        "memoryStartBytes": 675840,
+        "memoryEndBytes": 1056768
+      },
+      "ab2a4de3bdbbfbea90a2b7e3934d4c16ff187e7a9e00ca316c281f803b98e828": {
+        "cpuNs": 488305000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logcp-3bb08e8292",
+        "meanCores": 0.0076969068311968985,
+        "memoryStartBytes": 46084096,
+        "memoryEndBytes": 65708032
+      }
+    },
+    "cloud": {
+      "564d8c387e540bc9be97f4e819aac67b95d7b7959eb69dc97c300602bbded78b": {
+        "cpuNs": 26787600000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logfn-3bb08e8292",
+        "meanCores": 0.4222395048819284,
+        "memoryStartBytes": 1175552,
+        "memoryEndBytes": 1421312
+      },
+      "b7a038b72e73ccbdb7683691fce0001eea924e7b972a80a861d78fbcca3f4674": {
+        "cpuNs": 638144000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nl-logcp-3bb08e8292",
+        "meanCores": 0.010058743844292633,
+        "memoryStartBytes": 46743552,
+        "memoryEndBytes": 66150400
+      }
+    },
+    "backend": {
+      "6e34efc5c851c18d37058b54c35c8105c785206b49033c18846ad784e017acb8": {
+        "cpuNs": 492543000,
+        "readBytes": 49152,
+        "writeBytes": 49152,
+        "name": "/nanolab-logs-18b701f31849-grafana-1",
+        "meanCores": 0.007763708299849918,
+        "memoryStartBytes": 257560576,
+        "memoryEndBytes": 257458176
+      },
+      "4d54f6b4e04fe226111bac1a348999014d7e015ed2bb4f38821c6ffdc0ef9094": {
+        "cpuNs": 296882000,
+        "readBytes": 0,
+        "writeBytes": 0,
+        "name": "/nanolab-logs-18b701f31849-loki-1",
+        "meanCores": 0.004679602080378857,
+        "memoryStartBytes": 66084864,
+        "memoryEndBytes": 68403200
+      }
+    }
+  }
+}

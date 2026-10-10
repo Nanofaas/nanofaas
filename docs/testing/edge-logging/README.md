@@ -9,7 +9,7 @@ The statistical campaign still requires its frozen topology/load/calibration pro
   the shared Java formatter's corpus. JSON escaping, optional absent IDs, reserved
   application attributes, worker reuse and context restoration are checked.
 - Platform modules and execution-runtime regressions pass. Java SDK suites pass;
-  Python 169 tests, Go race suite, JavaScript Node24 94 tests, Rust 98 unit + 9
+  Python 173 tests, Go race suite, JavaScript Node24 96 tests, Rust 99 unit + 11
   integration tests pass. Callback trace preservation and host Logback precedence
   have regression tests observed failing before their fixes.
 - Helm lint and 25 enabled/disabled chart tests pass. CRI rendering is checked;
@@ -64,3 +64,8 @@ exports and measured logging identity in profile fingerprints. Three paired
 windows on six heterogeneous Multipass VMs qualify the technology pilot;
 [all series, including the failed gate](overhead/README.md) are retained.
 The full scientific campaign must repeat its own gate before calibration.
+
+The [final independent review and fix record](final-review.md) includes the
+complete native decision ledger, RED/GREEN regressions and final checks in both
+repositories. Collector finalization now preserves a verified buffer archive
+before removing owned state and distinguishes query success from delivery.

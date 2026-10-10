@@ -1,0 +1,24 @@
+   Compiling nanofaas-sdk v0.1.0 (/home/michele/Documenti/nanofaas/.worktrees/edge-logging/sdks/rust)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.04s
+     Running unittests src/lib.rs (/tmp/edge-logging-rust-target/debug/deps/nanofaas-eae1703f3c441d44)
+
+running 1 test
+
+thread 'invoke::admission_tests::terminal_errors_preserve_the_resolved_trace' (2982481) panicked at src/invoke.rs:598:28:
+panic test handler
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'invoke::admission_tests::terminal_errors_preserve_the_resolved_trace' (2982481) panicked at src/invoke.rs:612:13:
+assertion `left == right` failed
+  left: Null
+ right: "trace-fail"
+test invoke::admission_tests::terminal_errors_preserve_the_resolved_trace ... FAILED
+
+failures:
+
+failures:
+    invoke::admission_tests::terminal_errors_preserve_the_resolved_trace
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 98 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `--lib`

@@ -1,0 +1,23 @@
+registered 201 {"name":"logging-work","image":"fixture","command":[],"env":{},"timeoutMs":5000,"concurrency":1,"queueSize":20,"maxRetries":0,"endpointUrl":"http://127.0.0.1:19085/invoke","requestedExecutionMode":"EXTERNAL","effectiveExecutionMode":"EXTERNAL"}
+response 200 {"executionId":"d74534fe-62d2-4f02-adca-e57b15087657","status":"success","output":10654779122033555500,"error":null,"statusCode":null,"headers":null,"encoding":null}
+actual native gateway + workload + k6 preflight {"sent": 3, "completed": 3, "checksum": "10654779122033555500"}
+observed generation gaps [1.0372638702392578, 1.0375142097473145]
+logs nl-log-debug-cp-bca742e6a3 
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.1.1)
+
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::loadLibrary has been called by io.netty.util.internal.NativeLibraryUtil in an unnamed module (file:/app/application)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+{"schemaVersion":1,"timestamp":"2026-10-10T10:03:37.782Z","level":"WARN","service":"control-plane","logger":"it.unimib.datai.nanofaas.modules.offload.OffloadConfiguration","message":"Offload module loaded without nanofaas.offload.target-url; only functions declaring their own offload.targetUrl can offload"}
+{"schemaVersion":1,"timestamp":"2026-10-10T10:03:37.793Z","level":"WARN","service":"control-plane","logger":"io.micrometer.core.instrument.binder.jvm.JvmGcMetrics","message":"GC notifications will not be available because no GarbageCollectorMXBean of the JVM provides any. GCs=[young generation scavenger, complete scavenger]"}
+
+logs nl-log-debug-fn-bca742e6a3 

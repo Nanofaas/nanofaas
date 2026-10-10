@@ -137,3 +137,10 @@ Execution qualification: all seven logging tasks delivered. Task 7 freezes the
 technology pilot; the full scientific campaign remains planned separately and
 must repeat its gate on its complete stack before calibration. Failed warmups
 and the failed fixed-phase series are retained alongside the passing protocol v2.
+
+Final review qualification: eight Important findings (including two regraded
+from Minor) fixed in one RED/GREEN pass. Supplemental final-stack pilot records
+cumulative application/collector/backend CPU and block-I/O, endpoint RAM, 18
+verified state archives and confirmed cleanup; median p95 +0.8286%, goodput
+-0.1105%, all 5428 requests complete. Full statistical campaign still requires
+its own frozen topology/replicas/P2P/trace gate. See docs/testing/edge-logging/final-review.md.
