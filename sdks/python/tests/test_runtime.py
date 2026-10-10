@@ -65,6 +65,18 @@ def test_health(client):
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+
+def test_successful_invocation_callback_has_no_routine_info(client, caplog):
+    @decorator.nanofaas_function
+    def quiet_handler(input_data):
+        return {"ok": True}
+    with patch.object(_app, "CALLBACK_URL", "http://callback.test"), patch.object(
+        _app.callback_transport, "post_callback", return_value=200
+    ), caplog.at_level("INFO"):
+        response = client.post("/invoke", json={"input": None}, headers={"X-Execution-Id": "quiet"})
+    assert response.status_code == 200
+    assert not [r for r in caplog.records if r.name == _app.logger.name and r.levelno == 20]
+
 def test_metrics_exposed_and_increments(client):
     @decorator.nanofaas_function
     def mock_handler(input_data):

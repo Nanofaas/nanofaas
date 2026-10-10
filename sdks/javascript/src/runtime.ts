@@ -856,9 +856,11 @@ async function handleInvoke(
         const running = startHandler(state, handler, context, payload, inputReservation.bytes);
         handlerStarted = running.started;
         const outcome = await running.wait;
-        writeOutcome(state, scope, outcome, coldStart);
+        runWithContext({executionId, ...(traceId ? {traceId} : {})}, () =>
+            writeOutcome(state, scope, outcome, coldStart));
     } catch (error) {
-        writeInvocationError(state, scope, error);
+        runWithContext({executionId, ...(traceId ? {traceId} : {})}, () =>
+            writeInvocationError(state, scope, error));
     } finally {
         req.off("aborted", cancelRequest);
         res.off("close", cancelRequest);

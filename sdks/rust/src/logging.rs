@@ -70,15 +70,6 @@ where
             .0
             .remove("message")
             .unwrap_or_else(|| Value::String(event.metadata().name().into()));
-        if !self.json {
-            return writeln!(
-                writer,
-                "{} {} {}",
-                event.metadata().level(),
-                event.metadata().target(),
-                message.as_str().unwrap_or("")
-            );
-        }
         let mut timestamp = String::new();
         SystemTime.format_time(&mut Writer::new(&mut timestamp))?;
         let mut record = Map::new();
@@ -97,11 +88,16 @@ where
             }
         }
         if let Some(scope) = ctx.event_scope() {
+            let mut application_spans = Map::new();
             for span in scope.from_root() {
                 let extensions = span.extensions();
                 if let Some(encoded) = extensions.get::<FormattedFields<JsonFields>>() {
                     if let Ok(values) = serde_json::from_str::<Map<String, Value>>(encoded.as_str())
                     {
+                        if span.metadata().target() != "nanofaas::invocation" {
+                            application_spans.insert(span.name().into(), json!(values));
+                            continue;
+                        }
                         for (source, target) in [
                             ("execution_id", "executionId"),
                             ("trace_id", "traceId"),
@@ -116,12 +112,26 @@ where
                     }
                 }
             }
+            if !application_spans.is_empty() {
+                fields.0.insert("spans".into(), json!(application_spans));
+            }
         }
         if !fields.0.is_empty() {
             record.insert("attributes".into(), json!(fields.0));
         }
         let encoded = serde_json::to_string(&record).map_err(|_| fmt::Error)?;
-        writeln!(writer, "{encoded}")
+        if self.json {
+            writeln!(writer, "{encoded}")
+        } else {
+            writeln!(
+                writer,
+                "{} {} {} {}",
+                event.metadata().level(),
+                event.metadata().target(),
+                record["message"].as_str().unwrap_or(""),
+                encoded
+            )
+        }
     }
 }
 

@@ -31,6 +31,7 @@ fn shared_corpus_and_reserved_fields_use_canonical_json() {
         let input = &case["input"];
         tracing::subscriber::with_default(subscriber, || {
             let span = tracing::info_span!(
+                target: "nanofaas::invocation",
                 "invocation",
                 execution_id = input["executionId"].as_str().unwrap_or(""),
                 trace_id = input["traceId"].as_str().unwrap_or("")
@@ -74,4 +75,56 @@ fn empty_service_uses_the_runtime_default() {
     tracing::subscriber::with_default(subscriber, || tracing::info!("empty service"));
     let event: Value = serde_json::from_slice(&buffer.lock().unwrap()).unwrap();
     assert_eq!(event["service"], "function-runtime");
+}
+
+#[test]
+fn application_child_spans_cannot_overwrite_runtime_identity() {
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let sink = Sink(buffer.clone());
+    let subscriber = tracing_subscriber::fmt()
+        .fmt_fields(JsonFields::default())
+        .event_format(LogFormatter::new("function-runtime", true))
+        .with_writer(move || sink.clone())
+        .finish();
+    tracing::subscriber::with_default(subscriber, || {
+        let runtime = tracing::info_span!(target: "nanofaas::invocation", "invocation", execution_id="real", trace_id="real-trace", function_name="real-function");
+        runtime.in_scope(|| {
+            let app = tracing::info_span!(
+                "child",
+                execution_id = "fake",
+                trace_id = "fake-trace",
+                function_name = "fake-function"
+            );
+            app.in_scope(|| tracing::warn!("child event"));
+        });
+    });
+    let event: Value = serde_json::from_slice(&buffer.lock().unwrap()).unwrap();
+    assert_eq!(event["executionId"], "real");
+    assert_eq!(event["traceId"], "real-trace");
+    assert_eq!(event["functionName"], "real-function");
+    assert_eq!(
+        event["attributes"]["spans"]["child"]["execution_id"],
+        "fake"
+    );
+}
+
+#[test]
+fn text_diagnostics_preserve_identity_and_error_fields() {
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let sink = Sink(buffer.clone());
+    let subscriber = tracing_subscriber::fmt()
+        .fmt_fields(JsonFields::default())
+        .event_format(LogFormatter::new("function-runtime", false))
+        .with_writer(move || sink.clone())
+        .finish();
+    tracing::subscriber::with_default(subscriber, || {
+        let runtime = tracing::info_span!(target: "nanofaas::invocation", "invocation", execution_id="text-exec", trace_id="text-trace");
+        runtime.in_scope(|| {
+            tracing::error!(error = "connection refused", status = 503, "handler failed")
+        });
+    });
+    let line = String::from_utf8(buffer.lock().unwrap().clone()).unwrap();
+    for value in ["text-exec", "text-trace", "connection refused", "503"] {
+        assert!(line.contains(value), "missing {value}: {line}");
+    }
 }

@@ -21,7 +21,7 @@ function write(level: Level, name: string, message: string, fields?: Record<stri
         };
         line = JSON.stringify(entry);
     } else {
-        line = `${level.toUpperCase()} ${name} [exec=${executionId ?? ""} trace=${traceId ?? ""}] ${message}`;
+        line = `${level.toUpperCase()} ${name} [exec=${executionId ?? ""} trace=${traceId ?? ""}] ${message}${fields && Object.keys(fields).length ? " " + JSON.stringify(fields) : ""}`;
     }
     if (level === "error") console.error(line); else console.log(line);
 }

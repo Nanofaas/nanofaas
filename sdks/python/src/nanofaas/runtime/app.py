@@ -902,7 +902,7 @@ async def send_callback(
         if not reservation.start():
             return
 
-        logger.info(f"Sending callback to {url}")
+        logger.debug("Sending callback")
         if not await _post_callback_with_retries(url, serialized_result, headers, reservation):
             logger.error("Callback failed after all retries")
             RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL.labels(function=FUNCTION_NAME).inc()
@@ -942,7 +942,7 @@ async def _post_callback_with_retries(
                     callback_reservation=reservation,
                 )
             if status < 400:
-                logger.info("Callback sent successfully")
+                logger.debug("Callback sent successfully")
                 return True
             if 400 <= status < 500 and status not in (408, 429):
                 logger.warning(f"Permanent callback failure with status {status}")
@@ -1135,7 +1135,7 @@ async def invoke(
                 )
             input_data = _handler_input(payload)
 
-            logger.info(f"Invoking handler for execution {execution_id}")
+            logger.debug("Invoking handler")
 
             try:
                 handler_execution = _runtime_work.start_handler(handler, input_data)

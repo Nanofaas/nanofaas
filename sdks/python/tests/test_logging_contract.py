@@ -7,6 +7,7 @@ from pathlib import Path
 
 from nanofaas.sdk import context
 from nanofaas.sdk.logging import JsonFormatter
+import pytest
 
 CORPUS = Path(__file__).resolve().parents[2] / 'runtime-contract/logging-corpus.json'
 
@@ -53,3 +54,13 @@ def test_scoped_context_restores_parent_and_isolates_concurrent_work():
 def test_importing_runtime_does_not_replace_host_logging():
     code = 'import logging; h=logging.StreamHandler(); logging.getLogger().addHandler(h); import nanofaas.runtime.app; assert h in logging.getLogger().handlers'
     subprocess.run([sys.executable, '-c', code], check=True)
+
+
+@pytest.mark.parametrize('sample', [float('nan'), float('inf'), -float('inf')])
+def test_non_finite_attributes_cannot_break_json(sample):
+    record = logging.LogRecord('probe', logging.INFO, '', 1, 'numeric sample', (), None)
+    record.attributes = {'sample': sample}
+    def reject(value):
+        raise ValueError('not JSON: ' + value)
+    event = json.loads(JsonFormatter().format(record), parse_constant=reject)
+    assert event['message'] == 'numeric sample'

@@ -31,11 +31,11 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             event["exception"] = self.formatException(record.exc_info)
         try:
-            return json.dumps(event, ensure_ascii=False)
+            return json.dumps(event, ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError):
             # Non-serializable application attributes must not suppress runtime logs.
             event.pop("attributes", None)
-            return json.dumps(event, ensure_ascii=False)
+            return json.dumps(event, ensure_ascii=False, allow_nan=False)
 
 
 def configure_logging(level: int = logging.INFO, *, format: str | None = None,

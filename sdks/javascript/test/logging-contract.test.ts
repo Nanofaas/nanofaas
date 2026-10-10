@@ -39,3 +39,17 @@ test("concurrent async contexts survive failures and restore their caller", asyn
     })));
     assert.equal(getExecutionId(), undefined);
 });
+
+test("text diagnostics preserve error status and scoped identity", () => {
+    const previous = console.error;
+    const lines: string[] = [];
+    console.error = line => { lines.push(String(line)); };
+    try {
+        runWithContext({executionId: "exec-text", traceId: "trace-text"}, () =>
+            createLogger("probe").error("callback delivery failed", {statusCode: 503, error: "connection refused"}));
+        assert.match(lines[0]!, /503/);
+        assert.match(lines[0]!, /connection refused/);
+        assert.match(lines[0]!, /exec-text/);
+        assert.match(lines[0]!, /trace-text/);
+    } finally { console.error = previous; }
+});
