@@ -26,3 +26,27 @@ proofs. Uncertain/expired observations quarantine the slot. Downscale first excl
 the backend from dispatch, then waits for physical drain; failure retains the container.
 Recovery refuses to adopt or delete a one-shot container whose physical idleness
 cannot be positively established.
+
+The same image also provides five distinct handlers, selected explicitly by
+`FUNCTION_HANDLER`: `one-shot-arithmetic`, `one-shot-sort`, `one-shot-memory`,
+`one-shot-matrix`, and `one-shot-mixed`. Without that variable the original
+`one-shot-workload` handler and its input remain available. Each new catalogue
+entry selects its own typed handler; inputs for another handler are rejected.
+
+New inputs use unsigned integers and reject unknown fields:
+
+| Handler | Fields in addition to `seed` | Bounds |
+| --- | --- | --- |
+| arithmetic | `iterations` | at most 1 billion |
+| sort | `items`, `passes` | items and passes at most 1 million; product at most 100 million |
+| memory | `working_set_bytes`, `passes` | at most 64 MiB, 1 million passes; product at most 1 billion |
+| matrix | `dimension`, `repetitions` | dimension at most 256, repetitions at most 1 million; cubic work at most 1 billion |
+| mixed | `arithmetic_iterations`, `sort_items`, `sort_passes`, `working_set_bytes`, `memory_passes`, `matrix_dimension`, `matrix_repetitions` | all four component bounds checked before work |
+
+Arithmetic evaluates an integer recurrence; sort permutes integer values between
+sorts; memory repeatedly updates and checksums every byte; matrix multiplies
+integer matrices and updates the left operand between repetitions. Mixed executes
+all four components sequentially and combines their checksums. All arithmetic
+wraps at 64 bits, and runtime work uses `spawn_blocking`. Independent Python
+reference vectors cover seeds 0, 7 and `u64::MAX`. Runtime overhead counts towards
+the strict memory limit; the input bounds do not guarantee a given container fits.

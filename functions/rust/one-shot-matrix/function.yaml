@@ -1,0 +1,20 @@
+name: one-shot-matrix-rust
+image: nanofaas/rust-one-shot-matrix:local
+timeoutMs: 30000
+concurrency: 1
+executionMode: DEPLOYMENT
+runtimeMode: HTTP
+maxRetries: 0
+env:
+  FUNCTION_HANDLER: one-shot-matrix
+  NANOFAAS_MAX_CONCURRENT_HANDLERS: '1'
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/rust/one-shot-matrix/Dockerfile
+    push: false
+catalog:
+  family: one-shot-matrix
+  runtime: rust
+  description: Integer matrix multiplication using the Rust SDK.
+  defaultImage: 127.0.0.1:5000/nanofaas/rust-one-shot-matrix:local

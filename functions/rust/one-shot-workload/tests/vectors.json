@@ -1,0 +1,149 @@
+[
+  {
+    "function": "one-shot-arithmetic",
+    "input": {
+      "iterations": 3,
+      "seed": 0
+    },
+    "expected": 4802108190468407786
+  },
+  {
+    "function": "one-shot-sort",
+    "input": {
+      "items": 5,
+      "passes": 2,
+      "seed": 0
+    },
+    "expected": 9039598705492341792
+  },
+  {
+    "function": "one-shot-memory",
+    "input": {
+      "working_set_bytes": 4,
+      "passes": 2,
+      "seed": 0
+    },
+    "expected": 36612182182
+  },
+  {
+    "function": "one-shot-matrix",
+    "input": {
+      "dimension": 2,
+      "repetitions": 2,
+      "seed": 0
+    },
+    "expected": 216461104941
+  },
+  {
+    "function": "one-shot-mixed",
+    "input": {
+      "arithmetic_iterations": 3,
+      "sort_items": 5,
+      "sort_passes": 2,
+      "working_set_bytes": 4,
+      "memory_passes": 2,
+      "matrix_dimension": 2,
+      "matrix_repetitions": 2,
+      "seed": 0
+    },
+    "expected": 2827226633867519434
+  },
+  {
+    "function": "one-shot-arithmetic",
+    "input": {
+      "iterations": 3,
+      "seed": 7
+    },
+    "expected": 10359235947863810205
+  },
+  {
+    "function": "one-shot-sort",
+    "input": {
+      "items": 5,
+      "passes": 2,
+      "seed": 7
+    },
+    "expected": 14446929517025959231
+  },
+  {
+    "function": "one-shot-memory",
+    "input": {
+      "working_set_bytes": 4,
+      "passes": 2,
+      "seed": 7
+    },
+    "expected": 7981470395789
+  },
+  {
+    "function": "one-shot-matrix",
+    "input": {
+      "dimension": 2,
+      "repetitions": 2,
+      "seed": 7
+    },
+    "expected": 7246671686849
+  },
+  {
+    "function": "one-shot-mixed",
+    "input": {
+      "arithmetic_iterations": 3,
+      "sort_items": 5,
+      "sort_passes": 2,
+      "working_set_bytes": 4,
+      "memory_passes": 2,
+      "matrix_dimension": 2,
+      "matrix_repetitions": 2,
+      "seed": 7
+    },
+    "expected": 810979128605492887
+  },
+  {
+    "function": "one-shot-arithmetic",
+    "input": {
+      "iterations": 3,
+      "seed": 18446744073709551615
+    },
+    "expected": 4008232796554778869
+  },
+  {
+    "function": "one-shot-sort",
+    "input": {
+      "items": 5,
+      "passes": 2,
+      "seed": 18446744073709551615
+    },
+    "expected": 13103117679765962180
+  },
+  {
+    "function": "one-shot-memory",
+    "input": {
+      "working_set_bytes": 4,
+      "passes": 2,
+      "seed": 18446744073709551615
+    },
+    "expected": 18446744072565486458
+  },
+  {
+    "function": "one-shot-matrix",
+    "input": {
+      "dimension": 2,
+      "repetitions": 2,
+      "seed": 18446744073709551615
+    },
+    "expected": 4501365784927812
+  },
+  {
+    "function": "one-shot-mixed",
+    "input": {
+      "arithmetic_iterations": 3,
+      "sort_items": 5,
+      "sort_passes": 2,
+      "working_set_bytes": 4,
+      "memory_passes": 2,
+      "matrix_dimension": 2,
+      "matrix_repetitions": 2,
+      "seed": 18446744073709551615
+    },
+    "expected": 17831444411744070055
+  }
+]

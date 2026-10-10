@@ -1,4 +1,7 @@
 use nanofaas::{BoxError, Context, Runtime};
+use one_shot_workload::{
+    Arithmetic, Matrix, MemoryScan, Mixed, Sorting, arithmetic, matrix, memory_scan, mixed, sorting,
+};
 use serde::Deserialize;
 
 #[derive(Clone, Copy, Deserialize)]
@@ -37,16 +40,41 @@ fn compute(input: Work) -> Result<u64, BoxError> {
 async fn handle(ctx: Context, input: Work) -> Result<u64, BoxError> {
     ctx.spawn_blocking(move || compute(input)).await?
 }
+async fn handle_arithmetic(ctx: Context, input: Arithmetic) -> Result<u64, BoxError> {
+    ctx.spawn_blocking(move || arithmetic(input)).await?
+}
+async fn handle_sort(ctx: Context, input: Sorting) -> Result<u64, BoxError> {
+    ctx.spawn_blocking(move || sorting(input)).await?
+}
+async fn handle_memory(ctx: Context, input: MemoryScan) -> Result<u64, BoxError> {
+    ctx.spawn_blocking(move || memory_scan(input)).await?
+}
+async fn handle_matrix(ctx: Context, input: Matrix) -> Result<u64, BoxError> {
+    ctx.spawn_blocking(move || matrix(input)).await?
+}
+async fn handle_mixed(ctx: Context, input: Mixed) -> Result<u64, BoxError> {
+    ctx.spawn_blocking(move || mixed(input)).await?
+}
 #[tokio::main]
 async fn main() {
     if std::env::var_os("NANOFAAS_LOG_FORMAT").is_some() {
         nanofaas::logging::init_logging().expect("configure standalone function logging");
     }
-    if let Err(error) = Runtime::from_env()
-        .register("one-shot-workload", handle)
-        .start()
-        .await
-    {
+    let runtime = Runtime::from_env();
+    let selected = std::env::var("FUNCTION_HANDLER").unwrap_or_else(|_| "one-shot-workload".into());
+    let runtime = match selected.as_str() {
+        "one-shot-workload" => runtime.register("one-shot-workload", handle),
+        "one-shot-arithmetic" => runtime.register("one-shot-arithmetic", handle_arithmetic),
+        "one-shot-sort" => runtime.register("one-shot-sort", handle_sort),
+        "one-shot-memory" => runtime.register("one-shot-memory", handle_memory),
+        "one-shot-matrix" => runtime.register("one-shot-matrix", handle_matrix),
+        "one-shot-mixed" => runtime.register("one-shot-mixed", handle_mixed),
+        _ => {
+            eprintln!("unknown FUNCTION_HANDLER: {selected}");
+            std::process::exit(2);
+        }
+    };
+    if let Err(error) = runtime.start().await {
         eprintln!("{error}");
         std::process::exit(1);
     }
