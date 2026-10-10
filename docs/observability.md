@@ -179,3 +179,9 @@ estimated-wait rejection, not capacity exhaustion.
 - Successful `/invoke` responses from the Java function runtime can carry `X-Cold-Start: true` and `X-Init-Duration-Ms` only for the first invocation attempt handled by that runtime process.
 - Successful `/invoke` responses from the Go function runtime also expose `X-Cold-Start: true` and `X-Init-Duration-Ms` only on the first handled invocation of that process.
 - Optional: OpenTelemetry export in later phase.
+
+## Shared logging contract
+
+Structured logging uses [logging schema v1](../sdks/runtime-contract/logging-schema.json) and a shared cross-language corpus. Each event is one UTF-8 JSON line with `schemaVersion`, UTC `timestamp`, uppercase `level`, `service`, `logger`, and `message`. Invocation fields `executionId`, `traceId`, `functionName`, and positive `attempt` are optional and omitted when unavailable. Application fields belong under `attributes`; they cannot overwrite runtime correlation.
+
+`NANOFAAS_LOG_FORMAT=json|text` selects the application format (default text); `NANOFAAS_LOG_SERVICE` optionally selects its service name. SDK embedding does not automatically replace the host logger. Python JSON output migrates `execution_id`/`trace_id` to the canonical camelCase names. Modules in one process share its backend; independent executables configure their own logging. No runtime sends directly to the log backend.

@@ -66,3 +66,9 @@ Python callback attempts use asynchronous HTTPX streaming. The attempt deadline
 includes callback-worker admission and the entire redirect chain. Response bodies
 are discarded by closing the response; cancellation closes the transport before
 releasing reserved capacity. Handler threads remain separately bounded.
+
+## Shared logging contract
+
+Structured logging uses [logging schema v1](logging-schema.json) and a shared cross-language corpus. Each event is one UTF-8 JSON line with `schemaVersion`, UTC `timestamp`, uppercase `level`, `service`, `logger`, and `message`. Invocation fields `executionId`, `traceId`, `functionName`, and positive `attempt` are optional and omitted when unavailable. Application fields belong under `attributes`; they cannot overwrite runtime correlation.
+
+`NANOFAAS_LOG_FORMAT=json|text` selects the application format (default text); `NANOFAAS_LOG_SERVICE` optionally selects its service name. SDK embedding does not automatically replace the host logger. Python JSON output migrates `execution_id`/`trace_id` to the canonical camelCase names. Modules in one process share its backend; independent executables configure their own logging. No runtime sends directly to the log backend.

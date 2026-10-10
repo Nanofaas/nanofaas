@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanofaas.dev/contracts/logging-v1",
+  "title": "NanoFaaS log event v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "timestamp",
+    "level",
+    "service",
+    "logger",
+    "message"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "type": "integer"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "level": {
+      "enum": [
+        "TRACE",
+        "DEBUG",
+        "INFO",
+        "WARN",
+        "ERROR",
+        "FATAL"
+      ]
+    },
+    "service": {
+      "type": "string",
+      "minLength": 1
+    },
+    "logger": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "attributes": {
+      "type": "object"
+    },
+    "functionName": {
+      "type": "string"
+    },
+    "executionId": {
+      "type": "string"
+    },
+    "traceId": {
+      "type": "string"
+    },
+    "event": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "exception": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}
