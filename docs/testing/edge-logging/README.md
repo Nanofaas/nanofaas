@@ -9,7 +9,7 @@ The statistical campaign still requires its frozen topology/load/calibration pro
   the shared Java formatter's corpus. JSON escaping, optional absent IDs, reserved
   application attributes, worker reuse and context restoration are checked.
 - Platform modules and execution-runtime regressions pass. Java SDK suites pass;
-  Python 169 tests, Go race suite, JavaScript Node24 94 tests, Rust 98 unit + 8
+  Python 169 tests, Go race suite, JavaScript Node24 94 tests, Rust 98 unit + 9
   integration tests pass. Callback trace preservation and host Logback precedence
   have regression tests observed failing before their fixes.
 - Helm lint and 25 enabled/disabled chart tests pass. CRI rendering is checked;
@@ -21,7 +21,8 @@ The statistical campaign still requires its frozen topology/load/calibration pro
 - Real Fluent Bit 5.1.3 → Loki 3.7.8, Grafana 13.2.3: Unicode/newline JSON and
   text fallback delivered. Forty events emitted while Loki was stopped survived
   collector restart on its persistent volume and were recovered; no duplicates
-  observed (not a general exactly-once promise). File rotation passed.
+  observed in the initial recovery checks; the final all-runtime check observed 10
+  duplicate deliveries (exactly-once is not promised). File rotation passed.
 - Separate **3 MiB** output quota test: 821 records explicitly dropped; delivery
   resumed after restoring Loki. Snapshot RSS 13.98 MiB / 64 MiB. These values
   describe the test workload, not a maximum memory guarantee under arbitrary load.
@@ -57,3 +58,9 @@ example (its public builder owns the port); it never stops an unrelated service.
 Scientific accounting and the one-shot sample stdout protocol are unchanged.
 Before calibration, NanoLab must include logging configuration/budgets in its
 fingerprint and pass the paired overhead gate described in the implementation plan.
+
+NanoLab integration adds opt-in collectors, ownership-safe teardown, bounded
+exports and measured logging identity in profile fingerprints. Three paired
+windows on six heterogeneous Multipass VMs qualify the technology pilot;
+[all series, including the failed gate](overhead/README.md) are retained.
+The full scientific campaign must repeat its own gate before calibration.

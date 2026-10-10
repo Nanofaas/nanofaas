@@ -1,0 +1,91 @@
+agent-1  | Fluent Bit v5.1.3
+agent-1  | * Copyright (C) 2015-2026 The Fluent Bit Authors
+agent-1  | * Fluent Bit is a CNCF graduated project under the Fluent organization
+agent-1  | * https://fluentbit.io
+agent-1  | 
+agent-1  | ______ _                  _    ______ _ _           _____  __  
+agent-1  | |  ___| |                | |   | ___ (_) |         |  ___|/  | 
+agent-1  | | |_  | |_   _  ___ _ __ | |_  | |_/ /_| |_  __   _|___ \ `| | 
+agent-1  | |  _| | | | | |/ _ \ '_ \| __| | ___ \ | __| \ \ / /   \ \ | | 
+agent-1  | | |   | | |_| |  __/ | | | |_  | |_/ / | |_   \ V //\__/ /_| |_
+agent-1  | \_|   |_|\__,_|\___|_| |_|\__| \____/|_|\__|   \_/ \____(_)___/
+agent-1  | 
+agent-1  | 
+agent-1  | [2026/10/10 07:38:59.475] [ info] [fluent bit] version=5.1.3, commit=d1be1ba389, pid=1
+agent-1  | [2026/10/10 07:38:59.475] [ info] [storage] ver=1.5.4, type=memory+filesystem, sync=full, checksum=on, max_chunks_up=8
+agent-1  | [2026/10/10 07:38:59.475] [ info] [storage] backlog input plugin: storage_backlog.1
+agent-1  | [2026/10/10 07:38:59.475] [ info] [simd    ] NEON
+agent-1  | [2026/10/10 07:38:59.475] [ info] [cmetrics] version=2.2.5
+agent-1  | [2026/10/10 07:38:59.475] [ info] [ctraces ] version=0.7.3
+agent-1  | [2026/10/10 07:38:59.475] [ info] [input:tail:tail.0] initializing
+agent-1  | [2026/10/10 07:38:59.475] [ info] [input:tail:tail.0] storage_strategy='filesystem' (memory + filesystem)
+agent-1  | [2026/10/10 07:38:59.476] [ info] [input:tail:tail.0] db: delete unmonitored stale inodes from the database: count=0
+agent-1  | [2026/10/10 07:38:59.476] [ info] [input:storage_backlog:storage_backlog.1] initializing
+agent-1  | [2026/10/10 07:38:59.476] [ info] [input:storage_backlog:storage_backlog.1] storage_strategy='memory' (memory only)
+agent-1  | [2026/10/10 07:38:59.476] [ info] [input:storage_backlog:storage_backlog.1] queue memory limit: 7.6M
+agent-1  | [2026/10/10 07:38:59.539] [ info] [output:loki:loki.0] configured, hostname=loki:3100
+agent-1  | [2026/10/10 07:38:59.540] [ info] [http_server] listen iface=0.0.0.0 tcp_port=2020
+agent-1  | [2026/10/10 07:38:59.540] [ info] [sp] stream processor started
+agent-1  | [2026/10/10 07:38:59.540] [ info] [engine] Shutdown Grace Period=10, Shutdown Input Grace Period=5
+agent-1  | [2026/10/10 07:38:59.540] [ info] [input:tail:tail.0] inotify_fs_add(): inode=41702219 watch_fd=1 name=/var/log/containers/fixture/fixture-json.log
+agent-1  | [2026/10/10 07:39:01.222] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:01.222] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:01.222] [ warn] [engine] failed to flush chunk '1-1791617940.479625561.flb', retry in 6 seconds: task_id=0, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:01.222] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:01.222] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:01.222] [ warn] [engine] failed to flush chunk '1-1791617940.660178519.flb', retry in 9 seconds: task_id=1, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:02.017] [ warn] [input chunk] chunk '1-1791617940.479625561.flb' evicted from output queue to make room under storage.total_limit_size: task_id=0, input=tail.0 > output=loki.0 (out_id=0), bytes=2068480, limit=3000000
+agent-1  | [2026/10/10 07:39:02.253] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:02.253] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:02.254] [ warn] [engine] failed to flush chunk '1-1791617941.994069465.flb', retry in 7 seconds: task_id=0, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:03.218] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:03.218] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:03.218] [ warn] [engine] failed to flush chunk '1-1791617942.240287398.flb', retry in 9 seconds: task_id=2, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:03.515] [ warn] [input chunk] chunk '1-1791617940.660178519.flb' evicted from output queue to make room under storage.total_limit_size: task_id=1, input=tail.0 > output=loki.0 (out_id=0), bytes=397312, limit=3000000
+agent-1  | [2026/10/10 07:39:03.530] [ warn] [input chunk] chunk '1-1791617941.994069465.flb' evicted from output queue to make room under storage.total_limit_size: task_id=0, input=tail.0 > output=loki.0 (out_id=0), bytes=2068480, limit=3000000
+agent-1  | [2026/10/10 07:39:04.220] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:04.220] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:04.220] [ warn] [engine] failed to flush chunk '1-1791617943.509210421.flb', retry in 8 seconds: task_id=0, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:04.220] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:04.220] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:04.220] [ warn] [engine] failed to flush chunk '1-1791617943.664669685.flb', retry in 7 seconds: task_id=1, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:05.031] [ warn] [input chunk] chunk '1-1791617942.240287398.flb' evicted from output queue to make room under storage.total_limit_size: task_id=2, input=tail.0 > output=loki.0 (out_id=0), bytes=397312, limit=3000000
+agent-1  | [2026/10/10 07:39:05.047] [ warn] [input chunk] chunk '1-1791617943.509210421.flb' evicted from output queue to make room under storage.total_limit_size: task_id=0, input=tail.0 > output=loki.0 (out_id=0), bytes=2068480, limit=3000000
+agent-1  | [2026/10/10 07:39:05.256] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:05.256] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:05.257] [ warn] [engine] failed to flush chunk '1-1791617945.23303396.flb', retry in 10 seconds: task_id=0, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:06.220] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:06.220] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:06.220] [ warn] [engine] failed to flush chunk '1-1791617945.242108460.flb', retry in 7 seconds: task_id=2, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:06.549] [ warn] [input chunk] chunk '1-1791617943.664669685.flb' evicted from output queue to make room under storage.total_limit_size: task_id=1, input=tail.0 > output=loki.0 (out_id=0), bytes=397312, limit=3000000
+agent-1  | [2026/10/10 07:39:06.564] [ warn] [input chunk] chunk '1-1791617945.23303396.flb' evicted from output queue to make room under storage.total_limit_size: task_id=0, input=tail.0 > output=loki.0 (out_id=0), bytes=1642496, limit=3000000
+agent-1  | [2026/10/10 07:39:06.844] [ warn] [input chunk] chunk '1-1791617945.242108460.flb' evicted from output queue to make room under storage.total_limit_size: task_id=2, input=tail.0 > output=loki.0 (out_id=0), bytes=856064, limit=3000000
+agent-1  | [2026/10/10 07:39:07.219] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:07.219] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:07.219] [ warn] [engine] failed to flush chunk '1-1791617946.540036072.flb', retry in 10 seconds: task_id=0, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:07.219] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:07.219] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:07.219] [ warn] [engine] failed to flush chunk '1-1791617946.841402637.flb', retry in 9 seconds: task_id=1, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:08.081] [ warn] [input chunk] chunk '1-1791617946.540036072.flb' evicted from output queue to make room under storage.total_limit_size: task_id=0, input=tail.0 > output=loki.0 (out_id=0), bytes=2068480, limit=3000000
+agent-1  | [2026/10/10 07:39:08.218] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:08.218] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:08.218] [ warn] [engine] failed to flush chunk '1-1791617948.51357968.flb', retry in 10 seconds: task_id=0, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:08.218] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:08.218] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:08.218] [ warn] [engine] failed to flush chunk '1-1791617948.159908008.flb', retry in 6 seconds: task_id=2, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:09.572] [ warn] [input chunk] chunk '1-1791617946.841402637.flb' evicted from output queue to make room under storage.total_limit_size: task_id=1, input=tail.0 > output=loki.0 (out_id=0), bytes=397312, limit=3000000
+agent-1  | [2026/10/10 07:39:09.587] [ warn] [input chunk] chunk '1-1791617948.51357968.flb' evicted from output queue to make room under storage.total_limit_size: task_id=0, input=tail.0 > output=loki.0 (out_id=0), bytes=2068480, limit=3000000
+agent-1  | [2026/10/10 07:39:10.218] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:10.218] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:10.218] [ warn] [engine] failed to flush chunk '1-1791617949.565141549.flb', retry in 11 seconds: task_id=0, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:10.218] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:10.218] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:10.218] [ warn] [engine] failed to flush chunk '1-1791617949.659565484.flb', retry in 7 seconds: task_id=1, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:11.085] [ warn] [input chunk] chunk '1-1791617948.159908008.flb' evicted from output queue to make room under storage.total_limit_size: task_id=2, input=tail.0 > output=loki.0 (out_id=0), bytes=397312, limit=3000000
+agent-1  | [2026/10/10 07:39:11.103] [ warn] [input chunk] chunk '1-1791617949.565141549.flb' evicted from output queue to make room under storage.total_limit_size: task_id=0, input=tail.0 > output=loki.0 (out_id=0), bytes=2068480, limit=3000000
+agent-1  | [2026/10/10 07:39:11.252] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:11.252] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:11.253] [ warn] [engine] failed to flush chunk '1-1791617951.79545063.flb', retry in 8 seconds: task_id=0, input=tail.0 > output=loki.0 (out_id=0)
+agent-1  | [2026/10/10 07:39:12.220] [ warn] [net] getaddrinfo(host='loki', err=11): Could not contact DNS servers
+agent-1  | [2026/10/10 07:39:12.220] [error] [output:loki:loki.0] no upstream connections available
+agent-1  | [2026/10/10 07:39:12.220] [ warn] [engine] failed to flush chunk '1-1791617951.243426662.flb', retry in 7 seconds: task_id=2, input=tail.0 > output=loki.0 (out_id=0)

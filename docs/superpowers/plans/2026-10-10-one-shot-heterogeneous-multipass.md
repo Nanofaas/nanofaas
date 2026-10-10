@@ -82,7 +82,7 @@ Percorsi nei task: `N/` = root NanoFaaS; `L/` = root NanoLab. Prefisso Java test
 
 ## Task 3: Calibrazione per nodo e indice immutabile
 
-**Prerequisito obbligatorio:** gate logging Task 7 completato; stack/config/formato/livello/budget nei fingerprint. Tre coppie overhead entro 5% per goodput/p95; non riusare profili dello stack precedente.
+**Prerequisito obbligatorio:** ripetere il gate logging sullo stack completo congelato della campagna; il pilot tecnologico a una replica/nodo e P2P disabilitato non lo qualifica. stack/config/formato/livello/budget nei fingerprint. Tre coppie overhead entro 5% per goodput/p95; non riusare profili dello stack precedente.
 
 **Files:** creare `L/packages/nanolab/src/nanolab/one_shot/profiles.py`, `L/packages/nanolab/src/nanolab/assets/one-shot/profile-set.schema.json`, `L/packages/nanolab/tests/one_shot/test_node_profiles.py`; modificare `models.py`, `tasks/one_shot/calibration.py`, `plans/one_shot_calibration.py` sotto `L/packages/nanolab/src/nanolab/`; aggiornare i test di calibrazione esistenti.
 

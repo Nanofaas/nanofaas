@@ -16,8 +16,13 @@ pub struct LogFormatter {
 }
 impl LogFormatter {
     pub fn new(service: impl Into<String>, json: bool) -> Self {
+        let service = service.into();
         Self {
-            service: service.into(),
+            service: if service.is_empty() {
+                "function-runtime".into()
+            } else {
+                service
+            },
             json,
         }
     }

@@ -1,0 +1,107 @@
+{
+  "purpose": "observer-interference-pilot",
+  "scientificCampaignQualified": false,
+  "pairs": [
+    {
+      "pair": 0,
+      "goodputChange": 0.0011049723756906271,
+      "p95Change": -0.09350429626263612
+    },
+    {
+      "pair": 1,
+      "goodputChange": -0.001103752759381793,
+      "p95Change": -0.20344196622422583
+    },
+    {
+      "pair": 2,
+      "goodputChange": 0.0011049723756906271,
+      "p95Change": -0.12223563999346321
+    }
+  ],
+  "medianGoodputChange": 0.0011049723756906271,
+  "medianP95Change": -0.12223563999346321,
+  "gatePassed": false,
+  "topology": [
+    [
+      "edge-1",
+      "edge",
+      1,
+      2048,
+      0.35,
+      1
+    ],
+    [
+      "edge-2",
+      "edge",
+      1,
+      3072,
+      0.5,
+      2
+    ],
+    [
+      "edge-3",
+      "edge",
+      2,
+      3072,
+      0.6,
+      2
+    ],
+    [
+      "edge-4",
+      "edge",
+      2,
+      4096,
+      0.7,
+      3
+    ],
+    [
+      "edge-5",
+      "edge",
+      3,
+      6144,
+      0.85,
+      3
+    ],
+    [
+      "cloud",
+      "cloud",
+      8,
+      12288,
+      1.0,
+      4
+    ]
+  ],
+  "images": {
+    "nanofaas/edge-logging-control-plane:20261010": "sha256:d07d3996cd8e12d1708d92167614b80358392262676c7740ad15e542ff8fd776",
+    "nanofaas/edge-logging-workload:20261010": "sha256:26a914de93d12696baaafed4b176ee50fb59a73458230f83e7c9d51995d5b5f6"
+  },
+  "logging": {
+    "enabled": true,
+    "endpoint": "http://10.83.80.1:43100/loki/api/v1/push",
+    "image": "fluent/fluent-bit:5.1.3",
+    "cpu": 0.1,
+    "memoryMiB": 64,
+    "bufferMiB": 256,
+    "environment": "local",
+    "backendOwned": true,
+    "backendBind": "10.83.80.1",
+    "exportLimit": 5000,
+    "format": "json",
+    "levels": {
+      "controlPlane": "WARN",
+      "functions": "runtime-default"
+    },
+    "collectorConfigVersion": 1,
+    "backendImages": [
+      "grafana/loki:3.7.8",
+      "grafana/grafana:13.2.3"
+    ],
+    "backendBudget": {
+      "cpu": 1.5,
+      "memoryMiB": 768
+    }
+  },
+  "limitations": [
+    "Single replica per node; P2P disabled. Repeat gate on frozen full campaign stack before calibration."
+  ]
+}

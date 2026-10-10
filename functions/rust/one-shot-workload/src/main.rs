@@ -39,6 +39,9 @@ async fn handle(ctx: Context, input: Work) -> Result<u64, BoxError> {
 }
 #[tokio::main]
 async fn main() {
+    if std::env::var_os("NANOFAAS_LOG_FORMAT").is_some() {
+        nanofaas::logging::init_logging().expect("configure standalone function logging");
+    }
     if let Err(error) = Runtime::from_env()
         .register("one-shot-workload", handle)
         .start()

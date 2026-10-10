@@ -61,3 +61,17 @@ fn shared_corpus_and_reserved_fields_use_canonical_json() {
         }
     }
 }
+
+#[test]
+fn empty_service_uses_the_runtime_default() {
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let sink = Sink(buffer.clone());
+    let subscriber = tracing_subscriber::fmt()
+        .fmt_fields(JsonFields::default())
+        .event_format(LogFormatter::new("", true))
+        .with_writer(move || sink.clone())
+        .finish();
+    tracing::subscriber::with_default(subscriber, || tracing::info!("empty service"));
+    let event: Value = serde_json::from_slice(&buffer.lock().unwrap()).unwrap();
+    assert_eq!(event["service"], "function-runtime");
+}
