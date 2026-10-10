@@ -25,6 +25,7 @@ import java.util.concurrent.TimeoutException;
 
 @Component
 public class ExternalDispatcher implements Dispatcher {
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ExternalDispatcher.class);
     // ponytail: plain JsonMapper (not the app's configured Spring ObjectMapper bean) — this
     // is a narrow re-decode of a response body whose Content-Type label lied about its actual
     // JSON encoding; not worth widening the constructor for. Revisit if a custom Jackson
@@ -46,6 +47,7 @@ public class ExternalDispatcher implements Dispatcher {
 
     @Override
     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
+        InvocationLogs.event(LOG, task, "dispatch-external-started");
         String endpoint = task.functionSpec().endpointUrl();
         if (endpoint == null || endpoint.isBlank()) {
             return CompletableFuture.completedFuture(
@@ -126,6 +128,7 @@ public class ExternalDispatcher implements Dispatcher {
                         DispatchResult.warm(InvocationResult.error("EXTERNAL_TIMEOUT", "External request timed out after " + timeoutMs + "ms"))))
                 .onErrorResume(ex -> reactor.core.publisher.Mono.just(
                         DispatchResult.warm(InvocationResult.error("EXTERNAL_ERROR", ex.getMessage()))))
+                .doOnNext(ignored -> InvocationLogs.event(LOG, task, "dispatch-external-completed"))
                 .toFuture();
     }
 

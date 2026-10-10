@@ -20,6 +20,7 @@ if (selectedOptionalControlPlaneModuleNames.contains('containerd-deployment-prov
 
 dependencies {
     implementation project(':common')
+    implementation project(':logging-runtime')
     implementation project(':control-plane-spi')
     implementation project(':forecasting-api')
     // api, not implementation (Task 10 step 4, issue #208): control-plane's own PUBLIC types

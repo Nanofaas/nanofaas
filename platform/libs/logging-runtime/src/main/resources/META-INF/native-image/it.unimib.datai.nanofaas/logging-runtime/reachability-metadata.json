@@ -1,0 +1,27 @@
+{
+  "reflection": [
+    {
+      "type": "it.unimib.datai.nanofaas.logging.LogEncoder",
+      "allDeclaredConstructors": true,
+      "methods": [
+        {
+          "name": "setFormat",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "setService",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "glob": "nanofaas-logback.xml"
+    }
+  ]
+}
