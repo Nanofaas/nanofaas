@@ -37,9 +37,11 @@ Files: `EpochCoordinator`, `EpochOutcome`, `ReplicaPlanActuator`, `OneShotOperat
 
 Files: `ReplicaPlanActuator`, allocation/provider tests and transition documentation.
 
-- [ ] Replace the regression that approves a whole-epoch delay with one requiring the new allocation at its transition, even with the previous memory budget full.
-- [ ] Separate negotiation from physical transition. Close old incoming grants at retirement, drain only removed/reassigned physical replicas, then grow and install the current allocation. Preserve accepted queue contents and retained running work. Failed/slow drain is an explicit transition outcome, never fabricated release.
-- [ ] Verify the real provider boundary, unchanged warm pools, reductions before growth, failure paths and no double memory allocation.
+- [x] Replace the regression that approves a whole-epoch delay with one requiring the new allocation at its transition, even with the previous memory budget full.
+- [x] Separate negotiation from physical transition. Close old incoming grants at retirement, drain only removed/reassigned physical replicas, then grow and install the current allocation. Preserve accepted queue contents and retained running work. Failed/slow drain is an explicit transition outcome, never fabricated release.
+- [x] Verify the real provider boundary, unchanged warm pools, reductions before growth, failure paths and no double memory allocation.
+- [x] User clarification: new original requests arriving during the physical allocation change select the local bounded queue if it has space, rather than falling back to cloud merely because routing is temporarily retired. Scope the exception to the live transition; retain ordinary input validation and queue limits.
+- [ ] Clarify separately whether newly arriving remote requests with a previous-epoch assignment also bypass assignment validation during transition; keep existing validation until the user answers.
 
 ## Task 4: Complete clock-independent operation and integration
 
@@ -67,3 +69,5 @@ readiness updates. Public API, automatic initiation, NanoLab bindings, native
 qualification and final review are still outstanding; the campaign stays paused.
 
 Runtime checkpoint: v2 manual prepare/activate and explicit automatic session start are implemented. Monotonic neighbor initiation is tested on a line and two triangles, including duplicate/lost proposals, late-peer STATUS catch-up, stop/rearm and unproven physical drain. Full ten-module regression: 1720 tests, zero failures/errors, three existing core skips. NanoLab contracts/correlation, native qualification and the final whole-change review remain outstanding. An already-dispatched request racing proxy quiesce is still being checked; no campaign measurements have restarted.
+
+Artifact clarification: the frozen campaign recipe is JVM SerialGC/-Xmx256m for the control-plane and Rust for the five functions. Preserve that recipe when qualifying protocol v2; inline/native execution is not permission to change compiler or GC. GraalVM compatibility and scientific JVM qualification must be reported separately.

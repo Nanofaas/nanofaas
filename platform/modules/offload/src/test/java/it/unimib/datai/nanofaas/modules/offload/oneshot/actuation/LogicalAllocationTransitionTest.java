@@ -94,6 +94,29 @@ class LogicalAllocationTransitionTest {
     }
 
     @Test
+    void localQueueIsAvailableDuringPhysicalTransitionOnly() {
+        try (var f = new Fixture()) {
+            assertThat(f.actuator.transitionQueueNode("f")).isEmpty();
+            f.firstAllocation();
+            f.actuator.prepare(f.outcome(2, 0, 2)).block();
+            assertThat(f.actuator.transitionQueueNode("f")).isEmpty();
+            var observed = new java.util.concurrent.atomic.AtomicBoolean();
+            doAnswer(a -> {
+                assertThat(f.actuator.activePlan()).isEmpty();
+                assertThat(f.actuator.transitionQueueNode("f")).contains("a");
+                assertThat(f.actuator.transitionQueueNode("g")).contains("a");
+                assertThat(f.actuator.transitionQueueNode("unknown")).isEmpty();
+                observed.set(true);
+                return Optional.of(new ReplicaQuiesceToken(a.getArgument(0), a.getArgument(1),
+                        new ReplicaAdmissionToken(UUID.randomUUID().toString())));
+            }).when(f.control).pauseReplicaAdmission(any(), any());
+            assertThat(f.actuator.activate("session", 2).block().status()).isEqualTo(PlanActivation.Status.PREPARED);
+            assertThat(observed).isTrue();
+            assertThat(f.actuator.transitionQueueNode("f")).isEmpty();
+        }
+    }
+
+    @Test
     void unprovenPhysicalDrainKeepsMemoryReservedAndDoesNotGrowAnotherFunction() {
         try (var f = new Fixture()) {
             f.firstAllocation();

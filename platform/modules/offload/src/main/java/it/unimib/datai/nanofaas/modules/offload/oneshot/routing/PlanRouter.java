@@ -40,10 +40,15 @@ public final class PlanRouter {
     }
     private final Supplier<Optional<ActiveRoutingPlan>> plans;private final Supplier<Optional<OneShotSettings>> current;private final LongFunction<Optional<OneShotSettings>> configurations;
     private final PeerTransport peers;private final LongSupplier nanoTime;
+    private final Function<String,Optional<String>> transitionQueueNode;
     private final JsonMapper mapper=JsonMapper.builder().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY).build();
     private State state;
     public PlanRouter(Supplier<Optional<ActiveRoutingPlan>> plans,Supplier<Optional<OneShotSettings>> current,LongFunction<Optional<OneShotSettings>> configurations,PeerTransport peers,LongSupplier time) {
+        this(plans,current,configurations,peers,time,name->Optional.empty());
+    }
+    public PlanRouter(Supplier<Optional<ActiveRoutingPlan>> plans,Supplier<Optional<OneShotSettings>> current,LongFunction<Optional<OneShotSettings>> configurations,PeerTransport peers,LongSupplier time,Function<String,Optional<String>> transitionQueueNode) {
         this.plans=plans;this.current=current;this.configurations=configurations;this.peers=peers;nanoTime=time;
+        this.transitionQueueNode=transitionQueueNode;
     }
     public boolean manages(String name) { return current.get().map(s->s.functions().containsKey(name)).orElse(false) || plans.get().map(p->p.functions().containsKey(name)).orElse(false); }
     public synchronized PlannedInvocationRoute route(InvocationTask task,OffloadContext context) {
@@ -56,6 +61,10 @@ public final class PlanRouter {
         var configured=settings.get().functions().get(task.functionName());
         if(!ServiceProfileStore.imageMatches(task.functionSpec().image(),configured.imageDigest())) return PlannedInvocationRoute.reject("workload image differs from calibration");
         if(!ServiceProfileStore.hash(mapper.writeValueAsBytes(task.request().input())).equals(configured.inputHash())) return PlannedInvocationRoute.reject("workload input differs from calibration");
+        if(!context.offloadedHop()) {
+            var local=transitionQueueNode.apply(task.functionName());
+            if(local.isPresent()) return PlannedInvocationRoute.local(local.get());
+        }
         if(active.isEmpty()) return context.offloadedHop()?PlannedInvocationRoute.reject("seller has no active ready plan"):cloud(settings.get(),0);
         var plan=active.get();var f=plan.functions().get(task.functionName());
         if(f==null || f.generation()!=configured.generation()) return PlannedInvocationRoute.reject("function generation differs from plan");

@@ -151,6 +151,13 @@ are neither rerouted nor rejected merely because their arrival epoch ended.
 Requests already executing retain their physical leases until matching release
 proof. Validation of newly arriving remote assignments remains a separate
 admission decision before they enter the destination's local queue.
+During a logical physical-allocation transition, new original requests for the
+affected functions select LOCAL even while no ready plan is published. They use
+the normal bounded queue admission; a full queue retains its existing rejection
+behavior. Dispatch waits for available capacity in the new allocation. This
+temporary local route ends when local readiness is published or the transition
+fails/stops; merely having no plan at startup does not enable it. Input/image
+validation and validation of incoming remote assignments still apply.
 Scientific-driver and native-image integration remain pending.
 
 ### Logical epoch primitives (integration in progress)
