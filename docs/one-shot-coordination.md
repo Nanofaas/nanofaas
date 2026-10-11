@@ -151,7 +151,7 @@ are neither rerouted nor rejected merely because their arrival epoch ended.
 Requests already executing retain their physical leases until matching release
 proof. Validation of newly arriving remote assignments remains a separate
 admission decision before they enter the destination's local queue.
-The logical epoch protocol integration remains pending.
+Automatic initiation and scientific-driver integration remain pending.
 
 ### Logical epoch primitives (integration in progress)
 
@@ -165,9 +165,23 @@ are rejected before refreezing inputs. Stop/restart during input freezing cannot
 install the old preparation into the new lifecycle. Native reflection includes
 the new envelope.
 
-The logical coordinator now passes its timing context to the actuator. The
-administrative API and automatic scheduler still use the legacy path until their
-integration is complete. These internal capabilities do not qualify the campaign.
+The logical coordinator passes its timing context to the actuator. Configuration
+`schemaVersion: 2` requires a bounded, nonblank `sessionId`; v1 keeps its existing
+JSON contract and cannot use logical endpoints. Once logical preparation starts,
+the session, anchor and period are frozen for the process. Automatic v2 initiation
+is still unavailable and `scheduled: true` is rejected for v2 until that integration
+is complete. None of these software capabilities qualifies the campaign.
+
+Manual v2 operation uses `POST /v1/admin/offload/one-shot/sessions/{sessionId}/epochs/{epoch}/prepare`
+with `startsAt`, `endsAt`, and `activationDelay` (ISO-8601 duration). Labels must
+match `anchor + epoch * period`; their relation to the node wall clock is irrelevant.
+Timing is captured before profile/forecast pinning. The response `NEGOTIATED`
+requires `POST .../sessions/{sessionId}/epochs/{epoch}/activate`. Activation is
+cached for the current staged epoch. The complete operational timing sample adds
+negotiation/input-pinning and physical activation time, excluding the intentional
+wait between these calls. Negotiation alone cannot qualify scheduling. Status
+reports the configured protocol version and session. Native binding includes the
+new request shape; native-image execution still requires qualification.
 Tests exercise UTC offsets/jumps, monotonic deadline exhaustion/wrap, duplicate
 requests and lifecycle fencing.
 
@@ -196,7 +210,7 @@ no additional allocation. Superseded epochs cannot be activated again. UTC in
 activation results is diagnostic; logical expiry uses monotonic time.
 
 The ordinary inter-epoch burst policy has not been changed by this step. Broader
-burst-policy qualification and API/scheduler/NanoLab integration remain tracked
+burst-policy qualification and automatic-scheduler/NanoLab integration remain tracked
 in the remediation plan. Provider-boundary tests run the real local provider and
 physical slot ledger with a simulated container adapter; they are not VM campaign
 measurements or native-image qualification.

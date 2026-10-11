@@ -98,6 +98,11 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
             return begin(epoch,startsAt,endsAt,timing);
         });
     }
+    /** The operational layer captures timing before pinning profiles and forecasts. */
+    public Mono<EpochOutcome> prepareLogical(long epoch,EpochTiming timing) {
+        Objects.requireNonNull(timing);
+        return Mono.defer(()->begin(epoch,timing.startsAt(),timing.endsAt(),timing));
+    }
     private Mono<EpochOutcome> begin(long epoch,Instant startsAt,Instant endsAt,EpochTiming timing) {
         synchronized(initiation) {
             long started=timing==null?nanos.getAsLong():timing.startedNanos();
@@ -126,13 +131,15 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
             if(peers.size()>selected.maxPeers()) return Mono.just(failure(epoch,started,"peer bound exceeded"));
             var run=new Run(local,peers,epoch,startsAt,endsAt,started,timing==null?started+Math.min(untilStart,selected.auctionBudget().toNanos()):timing.auctionDeadline(selected.auctionBudget()),selected.queueCapacity());
             run.input=frozen;run.settings=selected;run.timing=timing;
-            if(timing!=null) logicalSession=timing.sessionId();
-            if(!active.compareAndSet(null,run)) return Mono.just(failure(epoch,started,"negotiation already active"));
-            if(epoch<=lastEpoch.get()) { active.compareAndSet(run,null); return Mono.just(failure(epoch,started,"epoch is not monotonic")); }
-            lastEpoch.set(epoch);
-            return Mono.fromCallable(()->execute(run)).subscribeOn(scheduler).doFinally(signal -> {
-                run.cancelled=true; var exchange=run.exchange.get(); if(exchange!=null) exchange.cancel(true); active.compareAndSet(run,null);
-            });
+            synchronized(this) {
+                if(!running || token!=lifecycle) return Mono.just(failure(epoch,started,"coordinator stopped during preparation"));
+                if(!active.compareAndSet(null,run)) return Mono.just(failure(epoch,started,"negotiation already active"));
+                if(timing!=null) logicalSession=timing.sessionId();
+                lastEpoch.set(epoch);
+            }
+            return Mono.using(()->run,current->Mono.fromCallable(()->execute(current)).subscribeOn(scheduler),current->{
+                current.cancelled=true;var exchange=current.exchange.get();if(exchange!=null) exchange.cancel(true);active.compareAndSet(current,null);
+            },true);
         }
     }
     private EpochOutcome failure(long epoch,long started,String reason) { return new EpochOutcome(epoch,EpochOutcome.Status.FAILED,null,nanos.getAsLong()-started,0,0,reason); }

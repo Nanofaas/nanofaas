@@ -148,6 +148,35 @@ class LogicalEpochProtocolTest {
         }
     }
 
+    @Test
+    void completedResultAllowsImmediatePreparationOfTheNextEpoch() {
+        var network=new ConcurrentHashMap<String,Link>();
+        try(var node=node(new Link("a",network),(epoch,from,until)->EpochProtocolTest.input("a",epoch,from,until),()->FROM,System::nanoTime)) {
+            node.start();
+            var result=node.prepareLogical("session",0,FROM,FROM.plusSeconds(60),Duration.ofSeconds(5))
+                    .flatMap(first->node.prepareLogical("session",1,FROM.plusSeconds(60),FROM.plusSeconds(120),Duration.ofSeconds(5)))
+                    .block(Duration.ofSeconds(5));
+            assertThat(result.status()).as(result.reason()).isEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED);
+        }
+    }
+
+    @Test
+    void restartDuringPeerSnapshotCannotInstallRetiredPreparation() {
+        var network=new ConcurrentHashMap<String,Link>();
+        var link=org.mockito.Mockito.spy(new Link("a",network));
+        var restarted=new java.util.concurrent.atomic.AtomicBoolean();
+        try(var node=node(link,(epoch,from,until)->EpochProtocolTest.input("a",epoch,from,until),()->FROM,System::nanoTime)) {
+            node.start();
+            org.mockito.Mockito.doAnswer(call->{
+                if(restarted.compareAndSet(false,true)) { node.stop();node.start(); }
+                return call.callRealMethod();
+            }).when(link).activeNeighbors();
+            var result=node.prepareLogical("session",0,FROM,FROM.plusSeconds(60),Duration.ofSeconds(5)).block(Duration.ofSeconds(5));
+            assertThat(result.status()).isEqualTo(EpochOutcome.Status.FAILED);
+            assertThat(node.lastPreparedEpoch()).isEqualTo(-1);
+        }
+    }
+
     private static EpochCoordinator node(Link link, EpochInput.Factory input, java.util.function.Supplier<Instant> wall,
                                          java.util.function.LongSupplier nano) {
         var health = new ClockHealth(Duration.ofMillis(100), Duration.ofSeconds(10), wall);
