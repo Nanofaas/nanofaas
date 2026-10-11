@@ -83,11 +83,11 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
     @Override public int getPhase() { return Integer.MAX_VALUE-2045; }
     @Override public void close() { stop();scheduler.dispose(); }
     /** Local ingress may queue while dispatch is paused for a physical allocation change. */
-    public Optional<String> transitionQueueNode(String functionName) {
+    public Optional<AllocationTransition> transitionQueueNode(String functionName) {
         var p=preparing.get();
         if(!running || p==null || p.lifecycle!=lifecycle || p.closed || p.outcome.timing()==null
                 || logicalReady.get()!=null || !p.snapshot.identities().containsKey(functionName)) return Optional.empty();
-        return Optional.of(p.snapshot.nodeId());
+        return Optional.of(new AllocationTransition(p.snapshot.nodeId(),p.snapshot.epoch()));
     }
     public Optional<ActiveRoutingPlan> activePlan() {
         var logical=logicalReady.get();

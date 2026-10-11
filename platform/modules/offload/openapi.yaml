@@ -1,6 +1,7 @@
 x-nanofaas-overlays:
   - operationId: invokeFunctionSync
     patch:
+      description: With one-shot routing, a validated neighbor request carrying an earlier epoch assignment remains eligible for bounded local queue admission during and after allocation changes. Execution uses current available capacity and ordinary timeouts. The previous grant does not reserve current capacity; received requests cannot be forwarded again. Current-epoch grants retain readiness and quota checks.
       responses:
         '200':
           headers:

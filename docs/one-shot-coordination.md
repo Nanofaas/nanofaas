@@ -87,8 +87,9 @@ occupied resources. Only a positive physical drain to zero releases ownership.
 The function concurrency setting is a node-wide ceiling sufficient for all ready
 replicas. Each physical replica uses SDK `NANOFAAS_MAX_CONCURRENT_HANDLERS=1` and
 `STATIC_PER_POD` with `targetInFlightPerPod=1`. The lease holder sets effective
-admission from fresh ready counts. A zero-ready plan provides no local capacity,
-independently of the ordinary admission state's legacy minimum of one.
+dispatch capacity from fresh ready counts, including zero. A zero-ready plan
+provides no execution capacity; requests eligible for bounded local admission
+can wait in the queue until capacity opens or their ordinary timeout expires.
 
 The actuator reduces old replicas only after physical drain, and keeps capacity
 reserved by still-valid commitments. It accounts existing replicas before adding
@@ -96,7 +97,7 @@ new ones, so adjacent windows cannot oversubscribe memory during preparation.
 Desired replicas never constitute readiness. READY subsets may only reduce
 provisional assignments; the buyer installs a grant after the seller acknowledges
 READY_ACK. Lost replies retain seller reservations until window expiry and drain.
-The immutable routing plan activates at the agreed UTC start, provided clock,
+In v1, the immutable routing plan activates at the agreed UTC start, provided clock,
 incarnation and generations remain valid. Unready capacity becomes cloud residual.
 
 ### Automatic schedule grid
@@ -119,18 +120,18 @@ requires that same unconsumed capability and its receiver-issued opaque admissio
 identity, unchanged backend membership/incarnations, and no occupied or permanently
 draining slots. An unchanged warm backend is retained across this pause.
 
-After resume, the proxy checks `X-NanoFaaS-Replica-Epoch` at physical slot
-acquisition. Missing or retired identities receive503 before handler dispatch.
+After resume, the proxy acquires physical slots from the current pool; queued
+requests carry no replica-epoch identity. An already admitted dispatch racing
+quiesce waits up to the proxy timeout rather than failing solely for the pause.
 A dispatch that acquired its slot before closure remains tracked and prevents
 reuse until physical release. Pool membership changes close admission again;
 a fresh quiesce capability is required. Permanent `beginDrain()` cannot be
 undone through this mechanism.
 
-This is a runtime building block, not the completed clock-independent one-shot
-protocol. The current v1 coordinator still requires measured clock health and
-UTC epoch windows. Provider lease fencing, propagation of the pinned admission
-identity through control-plane dispatch, logical epoch initiation and scientific
-qualification must be completed before enabling the new mechanism in a campaign.
+The legacy v1 coordinator still requires measured clock health and UTC epoch
+windows. V2 manual and automatic logical initiation are implemented below with
+monotonic deadlines. Runtime tests do not qualify the scientific campaign;
+NanoLab integration and scientific qualification remain pending.
 The scientific v11 failure is not reclassified by these tests.
 
 For unchanged allocations, the container proxy also exposes an explicit retained
@@ -149,15 +150,24 @@ not attached to LOCAL routes or queued invocation tasks. Routing happens before
 local admission and is preserved across the allocation change. Queue entries
 are neither rerouted nor rejected merely because their arrival epoch ended.
 Requests already executing retain their physical leases until matching release
-proof. Validation of newly arriving remote assignments remains a separate
-admission decision before they enter the destination's local queue.
-During a logical physical-allocation transition, new original requests for the
-affected functions select LOCAL even while no ready plan is published. They use
+proof. Remote arrivals still validate metadata, the current neighbor incarnation,
+and calibrated image/input. A request carrying an earlier epoch's assignment is
+eligible for ordinary LOCAL admission under the current allocation, even if its
+old grant is absent from the new plan. It does not consume or recreate an expired
+assignment quota. The old assignment records the sender's routing decision; it
+does not reserve capacity in the new epoch. Current-epoch assignments retain
+their ready-grant/quota checks; future-epoch assignments are rejected.
+During a logical physical-allocation transition, new original requests and
+validated previous-epoch neighbor requests for the affected functions select
+LOCAL even while no ready plan is published. They use
 the normal bounded queue admission; a full queue retains its existing rejection
 behavior. Dispatch waits for available capacity in the new allocation. This
 temporary local route ends when local readiness is published or the transition
 fails/stops; merely having no plan at startup does not enable it. Input/image
-validation and validation of incoming remote assignments still apply.
+validation still applies. Queue admission does not promise immediate execution:
+physical dispatch acquires available capacity from the current allocation, and
+ordinary queue/execution timeouts remain applicable. A received neighbor request
+cannot be forwarded again to another peer or the cloud.
 Scientific-driver and native-image integration remain pending.
 
 ### Logical epoch primitives (integration in progress)

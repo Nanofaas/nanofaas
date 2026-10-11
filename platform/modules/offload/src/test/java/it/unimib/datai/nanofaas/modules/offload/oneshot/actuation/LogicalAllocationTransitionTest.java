@@ -103,8 +103,8 @@ class LogicalAllocationTransitionTest {
             var observed = new java.util.concurrent.atomic.AtomicBoolean();
             doAnswer(a -> {
                 assertThat(f.actuator.activePlan()).isEmpty();
-                assertThat(f.actuator.transitionQueueNode("f")).contains("a");
-                assertThat(f.actuator.transitionQueueNode("g")).contains("a");
+                assertThat(f.actuator.transitionQueueNode("f")).contains(new AllocationTransition("a", 2));
+                assertThat(f.actuator.transitionQueueNode("g")).contains(new AllocationTransition("a", 2));
                 assertThat(f.actuator.transitionQueueNode("unknown")).isEmpty();
                 observed.set(true);
                 return Optional.of(new ReplicaQuiesceToken(a.getArgument(0), a.getArgument(1),

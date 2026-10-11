@@ -41,7 +41,7 @@ Files: `ReplicaPlanActuator`, allocation/provider tests and transition documenta
 - [x] Separate negotiation from physical transition. Close old incoming grants at retirement, drain only removed/reassigned physical replicas, then grow and install the current allocation. Preserve accepted queue contents and retained running work. Failed/slow drain is an explicit transition outcome, never fabricated release.
 - [x] Verify the real provider boundary, unchanged warm pools, reductions before growth, failure paths and no double memory allocation.
 - [x] User clarification: new original requests arriving during the physical allocation change select the local bounded queue if it has space, rather than falling back to cloud merely because routing is temporarily retired. Scope the exception to the live transition; retain ordinary input validation and queue limits.
-- [ ] Clarify separately whether newly arriving remote requests with a previous-epoch assignment also bypass assignment validation during transition; keep existing validation until the user answers.
+- [x] User clarification: previous-epoch neighbor requests are eligible for ordinary local admission during and after transition when queue/resource conditions permit. Preserve metadata, current peer incarnation and calibrated workload validation; the expired grant/quota does not gate current admission. Dispatch waits for real current capacity; no second hop is introduced.
 
 ## Task 4: Complete clock-independent operation and integration
 

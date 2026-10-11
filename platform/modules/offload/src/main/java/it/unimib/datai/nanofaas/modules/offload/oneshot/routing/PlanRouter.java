@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.offload.oneshot.routing;
 import it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ActiveRoutingPlan;
+import it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.AllocationTransition;
 import it.unimib.datai.nanofaas.modules.offload.oneshot.api.*;
 import it.unimib.datai.nanofaas.modules.offload.oneshot.auction.Assignment;
 import it.unimib.datai.nanofaas.controlplane.offload.*;
@@ -40,13 +41,13 @@ public final class PlanRouter {
     }
     private final Supplier<Optional<ActiveRoutingPlan>> plans;private final Supplier<Optional<OneShotSettings>> current;private final LongFunction<Optional<OneShotSettings>> configurations;
     private final PeerTransport peers;private final LongSupplier nanoTime;
-    private final Function<String,Optional<String>> transitionQueueNode;
+    private final Function<String,Optional<AllocationTransition>> transitionQueueNode;
     private final JsonMapper mapper=JsonMapper.builder().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY).build();
     private State state;
     public PlanRouter(Supplier<Optional<ActiveRoutingPlan>> plans,Supplier<Optional<OneShotSettings>> current,LongFunction<Optional<OneShotSettings>> configurations,PeerTransport peers,LongSupplier time) {
         this(plans,current,configurations,peers,time,name->Optional.empty());
     }
-    public PlanRouter(Supplier<Optional<ActiveRoutingPlan>> plans,Supplier<Optional<OneShotSettings>> current,LongFunction<Optional<OneShotSettings>> configurations,PeerTransport peers,LongSupplier time,Function<String,Optional<String>> transitionQueueNode) {
+    public PlanRouter(Supplier<Optional<ActiveRoutingPlan>> plans,Supplier<Optional<OneShotSettings>> current,LongFunction<Optional<OneShotSettings>> configurations,PeerTransport peers,LongSupplier time,Function<String,Optional<AllocationTransition>> transitionQueueNode) {
         this.plans=plans;this.current=current;this.configurations=configurations;this.peers=peers;nanoTime=time;
         this.transitionQueueNode=transitionQueueNode;
     }
@@ -61,13 +62,22 @@ public final class PlanRouter {
         var configured=settings.get().functions().get(task.functionName());
         if(!ServiceProfileStore.imageMatches(task.functionSpec().image(),configured.imageDigest())) return PlannedInvocationRoute.reject("workload image differs from calibration");
         if(!ServiceProfileStore.hash(mapper.writeValueAsBytes(task.request().input())).equals(configured.inputHash())) return PlannedInvocationRoute.reject("workload input differs from calibration");
-        if(!context.offloadedHop()) {
-            var local=transitionQueueNode.apply(task.functionName());
-            if(local.isPresent()) return PlannedInvocationRoute.local(local.get());
+        var metadata=context.metadata();
+        if(context.offloadedHop() && (metadata==null || peers.activeNeighbors().stream().noneMatch(p->p.peerId().equals(metadata.origin()) && p.incarnation().equals(metadata.originIncarnation()))))
+            return PlannedInvocationRoute.reject("native ready assignment required");
+        var transition=transitionQueueNode.apply(task.functionName());
+        if(transition.isPresent()) {
+            var local=transition.get();
+            if(!context.offloadedHop() || metadata.epoch()<local.epoch())
+                return PlannedInvocationRoute.local(local.nodeId());
         }
+        // Readiness may have been published after the initial read but before the transition check.
+        if(active.isEmpty()) active=plans.get();
         if(active.isEmpty()) return context.offloadedHop()?PlannedInvocationRoute.reject("seller has no active ready plan"):cloud(settings.get(),0);
         var plan=active.get();var f=plan.functions().get(task.functionName());
         if(f==null || f.generation()!=configured.generation()) return PlannedInvocationRoute.reject("function generation differs from plan");
+        // Delayed neighbor work uses current local admission, not an expired assignment quota.
+        if(context.offloadedHop() && metadata.epoch()<plan.epoch()) return PlannedInvocationRoute.local(plan.nodeId());
         if(state==null || !state.plan.equals(plan)) {
             var next=new State(plan,settings.get().burst(),nanoTime);
             if(state!=null && state.plan.epoch()==plan.epoch() && state.plan.nodeId().equals(plan.nodeId())
@@ -84,7 +94,7 @@ public final class PlanRouter {
             state=next;
         }
         if(context.offloadedHop()) {
-            var metadata=context.metadata();if(metadata==null || metadata.epoch()!=plan.epoch() || peers.activeNeighbors().stream().noneMatch(p->p.peerId().equals(metadata.origin()) && p.incarnation().equals(metadata.originIncarnation()))) return PlannedInvocationRoute.reject("native ready assignment required");
+            if(metadata.epoch()!=plan.epoch()) return PlannedInvocationRoute.reject("native ready assignment required");
             var inbound=f.inbound().stream().filter(a->a.id().equals(metadata.assignment()) && a.buyerId().equals(metadata.origin()) && a.buyerIncarnation().equals(metadata.originIncarnation()) && a.readyConfirmed()).findFirst();
             if(inbound.isEmpty() || !state.quotas.get("in:"+inbound.get().id()).tryAdmit()) return PlannedInvocationRoute.reject("inbound assignment absent or quota exhausted");
             return PlannedInvocationRoute.local(plan.nodeId());
