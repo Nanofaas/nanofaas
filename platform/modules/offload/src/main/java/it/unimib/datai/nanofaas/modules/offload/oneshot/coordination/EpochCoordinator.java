@@ -183,16 +183,13 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
                 state=run.ledger.snapshot();
                 boolean changed=!state.assignments().equals(before.assignments()) || !state.desiredReplicas().equals(before.desiredReplicas()) || !state.prices().equals(before.prices());
                 exchange(run,AuctionCodec.Phase.CHECK,peer->List.of(),changed);
-                boolean peerChanged=await(run,AuctionCodec.Phase.CHECK).stream().anyMatch(AuctionCodec.Batch::changed); rounds++;
-                if(!changed && !peerChanged) {
-                    var finalized=run.ledger.finalizeAuction(); check(run);
-                    if(!"FINALIZED".equals(finalized.state().status())) throw new IllegalStateException(finalized.state().status());
-                    return outcome(run,EpochOutcome.Status.CONVERGED,rounds,"all peer round closures received; no changes");
-                }
+                await(run,AuctionCodec.Phase.CHECK); rounds++;
                 run.accepted.keySet().removeIf(key->key.round()<run.round);
                 if(round+1<run.settings.maxRounds()) run.ledger.nextRound();
             }
-            return outcome(run,EpochOutcome.Status.ROUND_LIMIT,rounds,"round limit is censored, not convergence");
+            var finalized=run.ledger.finalizeAuction(); check(run);
+            if(!"FINALIZED".equals(finalized.state().status())) throw new IllegalStateException(finalized.state().status());
+            return outcome(run,EpochOutcome.Status.FIXED_ROUNDS_COMPLETED,rounds,"all configured rounds and peer phase closures completed");
         } catch(Deadline expired) { return outcome(run,EpochOutcome.Status.DEADLINE,rounds,"auction deadline");
         } catch(Exception failure) { return outcome(run,System.nanoTime()>=run.deadline?EpochOutcome.Status.DEADLINE:EpochOutcome.Status.FAILED,rounds,failure.getMessage()); }
     }

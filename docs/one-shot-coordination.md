@@ -56,13 +56,21 @@ still exceed the record or byte bound and fail preparation. Batches are not
 fragmented: each is the complete phase closure, and conflicting repeated content
 is rejected. Retries resend the same serialized batch and do not add commitments.
 
-CONVERGED means unchanged decisions after all closures in the local participating
-neighborhood. It does not assert convergence of a separate node that did not
-participate. ROUND_LIMIT, DEADLINE and FAILED are censored operational outcomes,
-never fast completed-auction timing samples. Missing closures cannot produce
-CONVERGED. Record exact solver durations separately from the whole wall-operational
-auction, including waiting, serialization and exchange. Grants remain provisional;
-readiness and exclusive replica ownership are required before routing.
+Every participant executes exactly `negotiation.maxRounds` complete rounds,
+including rounds with no local changes. All peers must use the same configured
+count. CHECK remains a phase barrier; its change flag is diagnostic and never
+allows a node to leave early. After the final closure, the ledger is finalized
+and the outcome is `FIXED_ROUNDS_COMPLETED`. This is a bounded auction, not a
+claim of global convergence. No distributed convergence detector is required.
+
+DEADLINE and FAILED remain censored outcomes: a missing closure never counts as
+a completed round. Legacy CONVERGED and ROUND_LIMIT values remain readable but
+are not emitted by this coordinator or eligible for new physical preparation.
+A completed fixed-round auction may proceed to physical readiness. Its duration
+measures execution of the configured rounds, never time to convergence. Record
+solver durations separately from the whole operational auction, including
+waiting, serialization and exchange. Grants remain provisional; readiness and
+exclusive replica ownership are required before routing.
 
 Identical installed batches are acknowledged again, including after round close,
 without reapplying them. Only bounded fingerprints of the previous closed round

@@ -30,7 +30,7 @@ class OneShotTimingQualificationTest {
             when(peers.activeNeighbors()).thenReturn(List.of());
             when(peers.localEndpoint()).thenReturn(Optional.of(new PeerEndpoint("edge","inc",URI.create("http://edge:8080"))));
             when(actuator.ownedFunctions()).thenReturn(Set.of());
-            when(coordinator.prepare(anyLong(),any(),any())).thenAnswer(inv->Mono.just(new EpochOutcome(inv.getArgument(0),EpochOutcome.Status.CONVERGED,null,10,5,1,"ok")));
+            when(coordinator.prepare(anyLong(),any(),any())).thenAnswer(inv->Mono.just(new EpochOutcome(inv.getArgument(0),EpochOutcome.Status.FIXED_ROUNDS_COMPLETED,null,10,5,1,"ok")));
             when(actuator.prepare(any(),any())).thenReturn(Mono.just(activation(PlanActivation.Status.PREPARED)));
             operations=new OneShotOperations(store,profiles,inputs,coordinator,actuator,events,peers,new SimpleMeterRegistry(),true,clock);
             operations.configure(0,config);operations.start();

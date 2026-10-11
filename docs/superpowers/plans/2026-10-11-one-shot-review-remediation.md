@@ -21,17 +21,17 @@
 
 Files: `InvocationTask`, `PlannedInvocationRoute`, `ExecutionRecord`, `ExecutionInputResources`, `ExternalDispatcher`, `ReplicaSlots`, `RoundRobinFunctionProxy`, their admission tests and `docs/one-shot-coordination.md`.
 
-- [ ] Add a failing actual HTTP regression: admit locally, retain in queue, rotate the same warm pool, dispatch once successfully using the current allocation. Verify no second routing decision, preserved input/dispatch ownership and no premature release of occupied slots.
-- [ ] Remove the recently added request-bound epoch token from local routes/tasks and HTTP dispatch. Keep receiver-issued quiesce/resume capabilities for allocation changes; they authorize management operations, not a queue lifetime.
-- [ ] Verify pending physical admission is closed during a transition and open against the current pool afterwards, regardless of request arrival epoch. Update conflicting tests/docs and run core/SPI/runtime/provider suites.
+- [x] Add a failing actual HTTP regression: admit locally, retain in queue, rotate the same warm pool, dispatch once successfully using the current allocation. Verify no second routing decision, preserved input/dispatch ownership and no premature release of occupied slots.
+- [x] Remove the recently added request-bound epoch token from local routes/tasks and HTTP dispatch. Keep receiver-issued quiesce/resume capabilities for allocation changes; they authorize management operations, not a queue lifetime.
+- [x] Verify pending physical admission is closed during a transition and open against the current pool afterwards, regardless of request arrival epoch. Update conflicting tests/docs and run core/SPI/runtime/provider suites.
 
 ## Task 2: Fixed-round protocol
 
 Files: `EpochCoordinator`, `EpochOutcome`, `ReplicaPlanActuator`, `OneShotOperations`, protocol/API tests and documentation.
 
-- [ ] Promote the failed two-triangle reproduction into a regression; add line and complete graph cases. Every healthy participant completes the configured rounds, including quiet nodes.
-- [ ] Remove local early termination. Finalize after the configured count and report explicit fixed-round completion distinct from convergence, deadline and missing messages; allow that finalized outcome to proceed to physical preparation.
-- [ ] Keep phase batching/idempotence and all identities; update timing qualification and result expectations without labeling a cutoff as measured convergence. Verify aggregate/unit reference parity and protocol fault tests.
+- [x] Promote the failed two-triangle reproduction into a regression; add line and complete graph cases. Every healthy participant completes the configured rounds, including quiet nodes.
+- [x] Remove local early termination. Finalize after the configured count and report explicit fixed-round completion distinct from convergence, deadline and missing messages; allow that finalized outcome to proceed to physical preparation.
+- [x] Keep phase batching/idempotence and all identities; update timing qualification and result expectations without labeling a cutoff as measured convergence. Verify aggregate/unit reference parity and protocol fault tests.
 
 ## Task 3: Apply allocation changes at the current transition
 
@@ -54,3 +54,5 @@ Continue the existing clock-robustness plan's logical session/epoch and monotoni
 - The Python reference at `71899f7` has a centralized simulation loop with global stopping predicates; that is not equivalent to the old Java neighbor-local early exit.
 - The user explicitly chose a fixed number of rounds rather than introducing distributed global termination.
 - The previous Task 1 completion remains historical verification of the old implementation; its queued epoch-permit semantics are superseded and must be corrected.
+
+Execution update: queue ownership correction is committed at e6deeff0. Fixed-round protocol verified on two triangles, a line and a complete graph, with duplicate/loss and real P2P transport coverage. Ten-module regression: 1693 tests, zero failures/errors, three existing core skips. Two pending logical-epoch tests are excluded only by a temporary verification init script until Task 4 implements their APIs. No campaign qualification is implied.

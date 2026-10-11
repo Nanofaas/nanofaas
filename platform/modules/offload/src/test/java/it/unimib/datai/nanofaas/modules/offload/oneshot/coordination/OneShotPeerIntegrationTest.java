@@ -27,7 +27,7 @@ class OneShotPeerIntegrationTest {
             await().atMost(Duration.ofSeconds(15)).untilAsserted(()->nodes.forEach(n->assertThat(n.transport().activeNeighbors()).hasSize(2)));
             var from=Instant.now().plusSeconds(10);
             var results=Mono.zip(nodes.stream().map(n->n.coordinator().prepare(1,from,from.plusSeconds(300))).toList(),objects->Arrays.stream(objects).map(o->(EpochOutcome)o).toList()).block(Duration.ofSeconds(5));
-            assertThat(results).allSatisfy(r->assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.CONVERGED));
+            assertThat(results).allSatisfy(r->assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED));
             assertThat(results.getFirst().snapshot().assignments()).hasSize(2);
         } finally {
             nodes.forEach(n->n.coordinator().close()); nodes.forEach(n->n.transport().stop()); nodes.reversed().forEach(n->n.service().stop());
@@ -68,7 +68,7 @@ class OneShotPeerIntegrationTest {
             var from = Instant.now().plusSeconds(10);
             var results = Mono.zip(nodes.stream().map(n -> n.coordinator().prepare(1, from, from.plusSeconds(300))).toList(),
                     objects -> Arrays.stream(objects).map(o -> (EpochOutcome) o).toList()).block(Duration.ofSeconds(5));
-            assertThat(results).allSatisfy(r -> assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.CONVERGED));
+            assertThat(results).allSatisfy(r -> assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED));
             assertThat(results.getFirst().snapshot().assignments()).isNotEmpty();
         } finally {
             nodes.forEach(n -> n.coordinator().close());

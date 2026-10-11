@@ -122,7 +122,7 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
             var preparation=Mono.defer(()->run!=null && run.stopped?Mono.empty():coordinator.prepare(epoch,window.startsAt(),window.endsAt())).flatMap(outcome-> {
                 meters.timer("nanofaas_oneshot_solver_seconds").record(outcome.solverNanos(),TimeUnit.NANOSECONDS);
                 meters.timer("nanofaas_oneshot_auction_seconds","status",outcome.status().name()).record(outcome.auctionNanos(),TimeUnit.NANOSECONDS);
-                if(outcome.status()!=EpochOutcome.Status.CONVERGED) return Mono.just(new PlanActivation(PlanActivation.Status.FAILED,null,Map.of(),Map.of(),outcome.reason(),Instant.now()));
+                if(outcome.status()!=EpochOutcome.Status.FIXED_ROUNDS_COMPLETED) return Mono.just(new PlanActivation(PlanActivation.Status.FAILED,null,Map.of(),Map.of(),outcome.reason(),Instant.now()));
                 return actuator.prepare(outcome,settings.preparationBudget());
             }).doOnNext(result-> {
                 recorded.set(true);long elapsed=System.nanoTime()-start;boolean censored=result.status()!=PlanActivation.Status.PREPARED;

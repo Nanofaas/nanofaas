@@ -80,7 +80,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
     public Mono<PlanActivation> prepare(EpochOutcome outcome,Duration budget) {
         if(budget==null || budget.isZero() || budget.isNegative() || budget.compareTo(Duration.ofHours(1))>0) throw new IllegalArgumentException("invalid preparation budget");
         return Mono.defer(()-> {
-            if(outcome.status()!=EpochOutcome.Status.CONVERGED || outcome.snapshot()==null || outcome.input()==null) return Mono.just(failed("only converged frozen input can prepare"));
+            if(outcome.status()!=EpochOutcome.Status.FIXED_ROUNDS_COMPLETED || outcome.snapshot()==null || outcome.input()==null) return Mono.just(failed("only a completed fixed-round auction with frozen input can prepare"));
             activePlan();
             var current=active.get();
             if((current!=null && outcome.snapshot().validFrom().isBefore(current.endsAt())) || outcome.snapshot().validFrom().isBefore(reservedUntil.get())) return Mono.just(failed("epoch windows overlap reserved commitments"));

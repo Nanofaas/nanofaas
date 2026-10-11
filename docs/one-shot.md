@@ -85,8 +85,11 @@ accepts `after` cursor and `limit` (1..1000); retention is 10000 node-global eve
 The envelope includes schema version and content hash. Each event follows the
 version 1 event schema; page entries add cursor and full operational duration.
 Solver, auction, qualified full operational durations and bounded status counters
-are separate metrics. Deadline, round-limit, failure, cancellation and degraded
-readiness never count as complete qualified duration samples. Node/epoch IDs
+are separate metrics. Auctions execute exactly `negotiation.maxRounds` rounds
+on every peer and report `FIXED_ROUNDS_COMPLETED`; local stability does not stop
+the protocol early. Timing qualification measures this bounded algorithm, not
+time to convergence. Deadline, failure, cancellation, legacy round-limit and
+degraded readiness never count as complete qualified duration samples. Node/epoch IDs
 belong in events, never metric labels.
 
 Ownership persists across lease expiry and uncertain preparation. After every
