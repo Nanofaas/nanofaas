@@ -14,7 +14,7 @@ import java.time.*;
 import java.util.*;
 @RestController
 @RequestMapping("/v1/admin/offload/one-shot")
-@RegisterReflectionForBinding({OneShotSettings.class,OneShotSettings.Function.class,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochSettings.class,it.unimib.datai.nanofaas.p2papi.PeerEndpoint.class,OneShotConfigurationStore.Snapshot.class,ServiceProfileStore.Profile.class,ServiceProfileStore.Function.class,ServiceProfileStore.Environment.class,ServiceProfileStore.Statistics.class,ServiceProfileStore.Validity.class,ServiceProfileStore.Measurement.class,ServiceProfileStore.Stored.class,EpochEventStore.Event.class,EpochEventStore.Entry.class,OneShotController.ClockSample.class,OneShotOperations.Window.class,OneShotOperations.LogicalWindow.class,PlanActivation.class,it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ActiveRoutingPlan.class,it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ActiveRoutingPlan.FunctionPlan.class})
+@RegisterReflectionForBinding({OneShotSettings.class,OneShotSettings.Function.class,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochSettings.class,it.unimib.datai.nanofaas.p2papi.PeerEndpoint.class,OneShotConfigurationStore.Snapshot.class,ServiceProfileStore.Profile.class,ServiceProfileStore.Function.class,ServiceProfileStore.Environment.class,ServiceProfileStore.Statistics.class,ServiceProfileStore.Validity.class,ServiceProfileStore.Measurement.class,ServiceProfileStore.Stored.class,EpochEventStore.Event.class,EpochEventStore.Entry.class,OneShotController.ClockSample.class,OneShotOperations.Window.class,OneShotOperations.LogicalWindow.class,OneShotOperations.SessionStart.class,LogicalEpochInitiator.Message.class,PlanActivation.class,it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ActiveRoutingPlan.class,it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ActiveRoutingPlan.FunctionPlan.class})
 public final class OneShotController {
     public record ClockSample(Duration offset,Instant measuredAt) {}
     private final boolean enabled;
@@ -61,6 +61,10 @@ public final class OneShotController {
     @PostMapping("/sessions/{sessionId}/epochs/{epoch}/activate")
     public Mono<PlanActivation> activate(@PathVariable("sessionId") String sessionId,@PathVariable("epoch") long epoch) {
         return operations.activate(sessionId,epoch);
+    }
+    @PostMapping(value="/sessions/{sessionId}/start",consumes="application/json")
+    public Mono<Map<String,Object>> startSession(@PathVariable("sessionId") String sessionId,@RequestBody Flux<DataBuffer> body) {
+        return body(body).map(bytes->operations.startSession(sessionId,mapper.readValue(bytes,OneShotOperations.SessionStart.class)));
     }
     @ExceptionHandler({IllegalArgumentException.class,tools.jackson.core.JacksonException.class}) public ResponseEntity<Map<String,String>> invalid(Exception error) { String message=error.getMessage()==null?"invalid input":error.getMessage();return ResponseEntity.badRequest().body(Map.of("error","INVALID_ONE_SHOT_INPUT","message",message.substring(0,Math.min(256,message.length())))); }
     @ExceptionHandler(IllegalStateException.class) public ResponseEntity<Map<String,String>> conflict(Exception error) { return ResponseEntity.status(409).body(Map.of("error","ONE_SHOT_CONFLICT")); }

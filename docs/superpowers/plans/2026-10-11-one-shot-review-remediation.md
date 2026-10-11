@@ -65,3 +65,5 @@ the old whole-epoch-delay expectation, exercise real provider/physical-slot
 boundaries and lost READY_ACK replies, and prevent quota refill on same-epoch
 readiness updates. Public API, automatic initiation, NanoLab bindings, native
 qualification and final review are still outstanding; the campaign stays paused.
+
+Runtime checkpoint: v2 manual prepare/activate and explicit automatic session start are implemented. Monotonic neighbor initiation is tested on a line and two triangles, including duplicate/lost proposals, late-peer STATUS catch-up, stop/rearm and unproven physical drain. Full ten-module regression: 1720 tests, zero failures/errors, three existing core skips. NanoLab contracts/correlation, native qualification and the final whole-change review remain outstanding. An already-dispatched request racing proxy quiesce is still being checked; no campaign measurements have restarted.

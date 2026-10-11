@@ -45,6 +45,7 @@ class LogicalOperationsTest {
             });
             when(peers.localEndpoint()).thenReturn(Optional.of(new PeerEndpoint("edge","inc",URI.create("http://edge:8080"))));
             when(peers.activeNeighbors()).thenReturn(List.of());
+            when(peers.subscribe(anyString(),any())).thenReturn(()->{});
             when(actuator.ownedFunctions()).thenReturn(Set.of());
             when(coordinator.lastPreparedEpoch()).thenReturn(-1L);
             when(coordinator.prepareLogical(anyLong(),any(EpochTiming.class))).thenAnswer(a-> {

@@ -151,7 +151,7 @@ are neither rerouted nor rejected merely because their arrival epoch ended.
 Requests already executing retain their physical leases until matching release
 proof. Validation of newly arriving remote assignments remains a separate
 admission decision before they enter the destination's local queue.
-Automatic initiation and scientific-driver integration remain pending.
+Scientific-driver and native-image integration remain pending.
 
 ### Logical epoch primitives (integration in progress)
 
@@ -168,9 +168,8 @@ the new envelope.
 The logical coordinator passes its timing context to the actuator. Configuration
 `schemaVersion: 2` requires a bounded, nonblank `sessionId`; v1 keeps its existing
 JSON contract and cannot use logical endpoints. Once logical preparation starts,
-the session, anchor and period are frozen for the process. Automatic v2 initiation
-is still unavailable and `scheduled: true` is rejected for v2 until that integration
-is complete. None of these software capabilities qualifies the campaign.
+the session, anchor and period are frozen for the process. None of these software
+capabilities qualifies the campaign.
 
 Manual v2 operation uses `POST /v1/admin/offload/one-shot/sessions/{sessionId}/epochs/{epoch}/prepare`
 with `startsAt`, `endsAt`, and `activationDelay` (ISO-8601 duration). Labels must
@@ -210,7 +209,32 @@ no additional allocation. Superseded epochs cannot be activated again. UTC in
 activation results is diagnostic; logical expiry uses monotonic time.
 
 The ordinary inter-epoch burst policy has not been changed by this step. Broader
-burst-policy qualification and automatic-scheduler/NanoLab integration remain tracked
+burst-policy qualification and NanoLab/native integration remain tracked
 in the remediation plan. Provider-boundary tests run the real local provider and
 physical slot ledger with a simulated container adapter; they are not VM campaign
 measurements or native-image qualification.
+
+### Automatic logical session initiation
+
+After collecting at least 20 complete qualified manual timing samples, set
+`scheduled: true` and call `POST .../sessions/{sessionId}/start` with
+`firstEpoch` and `activationDelay`. The initial epoch must exceed the existing
+preparation fence; epoch zero is valid only with a fresh fence. Identical start
+requests are idempotent. Configuration changes require disabling the automatic
+session first. A process/component restart requires explicit rearming.
+
+The existing timer uses monotonic deadlines to initiate negotiation and activate
+the negotiated allocation. `nanofaas.oneshot.epochs.v2` carries bounded
+`PROPOSE`/`STATUS_REQUEST`/`STATUS` messages. A valid proposal starts and forwards
+one preparation per epoch, with bounded retries; it does not terminate the
+auction. Only current neighbors with matching session, incarnation and canonical
+labels can trigger it. A peer behind multiple epochs confirms the sender's status
+and must obtain positive physical drain before joining; an unavailable drain is
+a failed transition, not evidence of released capacity. Accepted local queues
+retain their destination. No UTC-derived skip or global convergence detector is
+introduced.
+
+Tests cover propagation on a line and two triangles, duplicate/lost messages,
+monotonic wrap, delayed peers, mixed/stale control identities, and explicit HTTP
+arming after timing qualification. These in-process tests do not replace native
+multi-node qualification or the suspended scientific campaign.

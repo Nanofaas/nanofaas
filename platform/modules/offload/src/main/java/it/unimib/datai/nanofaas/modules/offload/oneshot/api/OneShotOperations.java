@@ -15,6 +15,7 @@ import java.util.function.LongSupplier;
 public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     public record Window(Instant startsAt,Instant endsAt) {}
     public record LogicalWindow(Instant startsAt,Instant endsAt,Duration activationDelay) {}
+    public record SessionStart(long firstEpoch,Duration activationDelay) {}
     record ScheduledWindow(long epoch,Window window) {}
 
     static Optional<ScheduledWindow> nextWindow(OneShotSettings settings,Instant now) {
@@ -46,6 +47,7 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     private final boolean enabled;
     private final Clock clock;
     private final LongSupplier nanos;
+    private final LogicalEpochInitiator initiator;
     private long lifecycle;
     private String claimedSession;
     private LogicalPreparation logicalPreparation;
@@ -97,13 +99,23 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         this.nanos=Objects.requireNonNull(nanos);
         this.enabled=enabled;
         this.configs=configs;this.profiles=profiles;this.inputs=inputs;this.coordinator=coordinator;this.actuator=actuator;this.events=events;this.peers=peers;this.meters=meters;
+        initiator=new LogicalEpochInitiator(peers,nanos,new LogicalEpochInitiator.Work() {
+            @Override public Mono<Boolean> prepare(long epoch,EpochTiming timing,boolean catchUp) {
+                var window=new LogicalWindow(timing.startsAt(),timing.endsAt(),Duration.ofNanos(timing.activationDeadline()-timing.startedNanos()));
+                return prepareLogical(timing.sessionId(),epoch,window,true,timing,catchUp)
+                        .map(result->result.status()==PlanActivation.Status.NEGOTIATED)
+                        .doOnError(error->recordLogicalFailure(epoch,nanos.getAsLong()-timing.startedNanos()));
+            }
+            @Override public Mono<Void> activate(String session,long epoch) {return OneShotOperations.this.activate(session,epoch).then();}
+        });
     }
     public synchronized OneShotConfigurationStore.Snapshot configure(long expected,OneShotSettings settings) {
         var current=configs.snapshot();
         if(expected!=current.map(OneShotConfigurationStore.Snapshot::revision).orElse(0L)) throw new OneShotConfigurationStore.RevisionConflict();
         if(claimedSession!=null && (settings.schemaVersion()!=2 || !claimedSession.equals(settings.sessionId())))
             throw new IllegalStateException("logical session is frozen for this process");
-        if(settings.schemaVersion()==2 && settings.scheduled()) throw new IllegalArgumentException("logical automatic initiation is not available yet");
+        if(initiator.isArmed() && settings.scheduled() && current.map(c->!c.settings().equals(settings)).orElse(true))
+            throw new IllegalStateException("disable automatic initiation before changing its configuration");
         if(claimedGrid!=null && !claimedGrid.equals(new Grid(settings.anchor(),settings.period())))
             throw new IllegalStateException("automatic epoch grid is frozen; drain and restart all peers to change anchor or period");
         if(!actuator.ownedFunctions().isEmpty() && !actuator.ownedFunctions().equals(settings.functions().keySet())) throw new IllegalStateException("drain owned function scope before changing selection");
@@ -113,12 +125,16 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         if(settings.scheduled() && !qualified(settings)) throw new IllegalArgumentException("scheduled mode requires at least 20 complete timing samples with p99 and margin");
         if(settings.scheduled()) {
             if(current.map(s->!s.settings().scheduled()).orElse(true) && busy.get()) throw new IllegalStateException("manual preparation must finish before enabling scheduling");
-            var now=clock.instant();
-            var candidate=nextWindow(settings,now).orElseGet(()->firstFutureWindow(settings,now));
-            long fence=coordinator.lastPreparedEpoch();
-            if(fence>lastScheduled.get() && candidate.epoch()<=fence) throw new IllegalStateException("scheduled epoch must advance beyond the last manual epoch");
+            if(settings.schemaVersion()==1) {
+                var now=clock.instant();
+                var candidate=nextWindow(settings,now).orElseGet(()->firstFutureWindow(settings,now));
+                long fence=coordinator.lastPreparedEpoch();
+                if(fence>lastScheduled.get() && candidate.epoch()<=fence) throw new IllegalStateException("scheduled epoch must advance beyond the last manual epoch");
+            }
         }
-        return configs.replace(expected,settings);
+        var result=configs.replace(expected,settings);
+        if(!settings.scheduled()) initiator.disarm();
+        return result;
     }
     public Mono<Boolean> drainAndRelease() { if(busy.get()) return Mono.error(new IllegalStateException("preparation active"));return actuator.drainAndRelease(); }
     public Optional<OneShotSettings> settingsFor(long revision) { return Optional.ofNullable(preparedSettings.get(revision)); }
@@ -147,25 +163,31 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         });
     }
     public Mono<PlanActivation> prepareLogical(String sessionId,long epoch,LogicalWindow window) {
+        return prepareLogical(sessionId,epoch,window,false,null,false);
+    }
+    private Mono<PlanActivation> prepareLogical(String sessionId,long epoch,LogicalWindow window,boolean automatic,EpochTiming acceptedTiming,boolean catchUp) {
         return Mono.defer(()-> {
             OneShotConfigurationStore.Snapshot frozen;EpochTiming timing;long token;
             synchronized(this) {
                 frozen=configs.snapshot().orElseThrow(()->new IllegalStateException("configuration missing"));
                 var settings=frozen.settings();
-                if(!running || settings.schemaVersion()!=2 || !Objects.equals(sessionId,settings.sessionId()) || settings.scheduled())
+                if(!running || settings.schemaVersion()!=2 || !Objects.equals(sessionId,settings.sessionId()) || settings.scheduled()!=automatic)
                     return Mono.error(new IllegalStateException("logical session or trigger mode conflict"));
+                if(automatic && !qualified(settings)) return Mono.error(new IllegalStateException("timing qualification expired"));
                 if(epoch<0 || window==null) throw new IllegalArgumentException("invalid logical epoch");
                 var canonical=windowAt(settings,epoch).window();
                 if(!canonical.startsAt().equals(window.startsAt()) || !canonical.endsAt().equals(window.endsAt()))
                     throw new IllegalArgumentException("canonical epoch labels differ from configuration");
-                timing=EpochTiming.capture(sessionId,window.startsAt(),window.endsAt(),window.activationDelay(),nanos);
+                timing=acceptedTiming==null?EpochTiming.capture(sessionId,window.startsAt(),window.endsAt(),window.activationDelay(),nanos):acceptedTiming;
                 if(window.activationDelay().compareTo(settings.negotiation().auctionBudget().plus(settings.preparationBudget()))<0)
                     throw new IllegalArgumentException("activation delay is smaller than operational budget");
                 if(logicalPreparation!=null && epoch<=logicalPreparation.epoch || !busy.compareAndSet(false,true))
                     return Mono.error(new IllegalStateException("epoch is not monotonic or preparation active"));
                 claimedSession=sessionId;claimedGrid=new Grid(settings.anchor(),settings.period());token=lifecycle;
             }
-            return Mono.using(()->epoch,ignored-> {
+            return Mono.using(()->epoch,ignored->(catchUp?actuator.drainAndRelease():Mono.just(true)).flatMap(drained-> {
+                if(!drained) return Mono.error(new IllegalStateException("catch-up awaits physical drain"));
+                if(catchUp) events.record(epoch,"CATCH_UP_SKIPPED_"+Math.max(0,epoch-coordinator.lastPreparedEpoch()-1),true,0,clock.instant());
                 var input=inputs.pin(epoch,window.startsAt(),window.endsAt(),frozen);
                 String identity=key(frozen.settings(),input.profileHash());
                 synchronized(this) { if(!running || token!=lifecycle) return Mono.error(new IllegalStateException("preparation retired")); }
@@ -187,9 +209,23 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                     }
                     recordLogical(epoch,result,identity,elapsed,false);
                 });
-            },ignored->{inputs.unpin(epoch);busy.set(false);},true)
-                    .doOnError(error->recordLogicalFailure(epoch,nanos.getAsLong()-timing.startedNanos()));
+            }),ignored->{inputs.unpin(epoch);busy.set(false);},true)
+                    .doOnError(error->{if(!automatic) recordLogicalFailure(epoch,nanos.getAsLong()-timing.startedNanos());});
         });
+    }
+    public synchronized Map<String,Object> startSession(String sessionId,SessionStart start) {
+        var selected=configs.snapshot().orElseThrow(()->new IllegalStateException("configuration missing")).settings();
+        if(!running || selected.schemaVersion()!=2 || !selected.scheduled() || !Objects.equals(sessionId,selected.sessionId()))
+            throw new IllegalStateException("logical automatic session unavailable");
+        if(start==null || start.firstEpoch()<0) throw new IllegalArgumentException("invalid session start");
+        if(!initiator.isArmed()) {
+            long fence=Math.max(coordinator.lastPreparedEpoch(),logicalPreparation==null?-1:logicalPreparation.epoch);
+            if(busy.get() || start.firstEpoch()<=fence) throw new IllegalStateException("session start must advance beyond the last preparation");
+        }
+        if(!qualified(selected)) throw new IllegalStateException("timing qualification expired");
+        initiator.arm(selected,start.firstEpoch(),start.activationDelay());
+        claimedSession=sessionId;claimedGrid=new Grid(selected.anchor(),selected.period());
+        return Map.of("schemaVersion",2,"sessionId",sessionId,"firstEpoch",start.firstEpoch(),"armed",true);
     }
     public Mono<PlanActivation> activate(String sessionId,long epoch) {
         return Mono.defer(()-> {
@@ -251,12 +287,17 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         result.put("localEndpoint",peers.localEndpoint().map(p->(Object)p).orElse(Map.of()));
         result.put("revision",config.map(OneShotConfigurationStore.Snapshot::revision).orElse(0L));
         result.put("activePlan",actuator.activePlan().map(p->(Object)p).orElse(Map.of()));
+        result.put("automaticArmed",initiator.isArmed());
         return Map.copyOf(result);
     }
     @Override public boolean isAutoStartup() { return enabled; }
-    @Override public synchronized void start() { if(running || !enabled) return;running=true;tickTask=timer.scheduleWithFixedDelay(this::tick,100,100,TimeUnit.MILLISECONDS); }
+    @Override public synchronized void start() { if(running || !enabled) return;running=true;initiator.start();tickTask=timer.scheduleWithFixedDelay(this::tick,100,100,TimeUnit.MILLISECONDS); }
     void tick() {
         try {
+            if(configs.snapshot().map(c->c.settings().schemaVersion()==2).orElse(false)) {
+                if(running) initiator.tick();
+                return;
+            }
             OneShotConfigurationStore.Snapshot frozen; long epoch; Window window; ScheduledRun run;
             synchronized(this) {
                 if(!running || busy.get()) return;
@@ -274,7 +315,7 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     }
     @Override public void stop() {
         ScheduledRun run;
-        synchronized(this) { running=false;lifecycle++;logicalPreparation=null;if(tickTask!=null) tickTask.cancel(false);run=scheduledRun; }
+        synchronized(this) { running=false;lifecycle++;logicalPreparation=null;initiator.stop();if(tickTask!=null) tickTask.cancel(false);run=scheduledRun; }
         if(run!=null) run.cancel();
     }
     @Override public boolean isRunning() { return running; }
