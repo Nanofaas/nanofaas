@@ -222,8 +222,10 @@ reach the function proxy during quiescence. The proxy keeps that admitted HTTP
 request within its existing in-flight bound and waits for the current allocation
 to reopen, including a temporary zero-replica pool. It then acquires a slot from
 the new pool and invokes once. The configured per-hop timeout still bounds this
-wait; expiry produces a 504 without starting a handler. Pool occupancy overload
-still produces 503. Waiting never releases an occupied physical slot.
+wait; expiry produces a 504 without starting a handler. If the new pool is
+smaller, accepted transition waiters keep that original deadline and wait for
+positive physical release. Ordinary overload outside a transition still produces
+503. Waiting never releases an occupied physical slot.
 
 Logical READY/ACK exchanges use a separate v2 topic and verify session, epoch,
 round count, canonical labels, function generation and node incarnation. The

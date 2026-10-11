@@ -67,24 +67,26 @@ public final class ReplicaSlots {
             throws InterruptedException,TimeoutException {
         if(timeout==null || timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException("positive allocation wait required");
         long deadline=System.nanoTime()+timeout.toNanos();
-        while(quiescing || admissionEpoch!=null && slots.isEmpty()) {
+        boolean waitedForAllocation=quiescing || admissionEpoch!=null && slots.isEmpty();
+        while(true) {
+            var lease=tryAcquire(executionId,attempt);
+            if(lease.isPresent() || !waitedForAllocation) return lease;
             long remaining=deadline-System.nanoTime();
-            if(remaining<=0) throw new TimeoutException("allocation did not reopen before dispatch timeout");
+            if(remaining<=0) throw new TimeoutException("allocation capacity unavailable before dispatch timeout");
             TimeUnit.NANOSECONDS.timedWait(this,remaining);
         }
-        return tryAcquire(executionId,attempt);
     }
     synchronized boolean cancelUndispatched(ReplicaLease lease) {
         var slot=slots.get(lease.backend());
         if(slot==null || slot.lease!=lease) return false;
-        slot.lease=null; return true;
+        slot.lease=null; notifyAll(); return true;
     }
     synchronized boolean release(ReplicaLease lease, ExecutionObservation proof) {
         var slot=slots.get(lease.backend());
         if(slot==null || slot.lease!=lease || proof==null || !"RELEASED".equals(proof.state())
             || !Objects.equals(lease.incarnation(),proof.incarnation()) || !Objects.equals(lease.executionId(),proof.executionId())
             || !Objects.equals(lease.dispatchAttempt(),proof.dispatchAttempt())) return false;
-        slot.lease=null; return true;
+        slot.lease=null; notifyAll(); return true;
     }
     public synchronized void beginDrain(String backendId) { var slot=slots.get(backendId); if(slot!=null) slot.draining=true; }
     public synchronized QuiesceToken beginQuiesce() {
