@@ -131,5 +131,9 @@ rejects changed membership/incarnations or permanently draining backends. It
 preserves occupied physical leases: new-epoch invocations can acquire only free
 slots, and old-epoch dispatches are rejected. This operation does not authorize
 container removal or resource reassignment; those still require positive physical
-release and the strict quiesce/resume path. The production provider and logical
-epoch protocol integration remain pending.
+release and the strict quiesce/resume path. The managed container provider and replica controller now expose the same
+operations through SPI capabilities bound to the exact writer lease and deployment.
+Renewal/replacement makes old wrappers stale; expiry during provider calls leaves
+admission closed and physical ownership retained. Unsupported providers cannot
+issue a capability. LOCAL route/dispatch propagation and the logical epoch
+protocol integration remain pending.
