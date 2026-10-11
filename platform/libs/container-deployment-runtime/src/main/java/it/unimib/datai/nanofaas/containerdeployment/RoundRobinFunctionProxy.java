@@ -237,6 +237,11 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         return !closed.get() && physicalSlots.get() && replicaSlots.resume(token, admissionEpoch);
     }
 
+    @Override
+    public boolean resumeRetained(ReplicaSlots.QuiesceToken token, String admissionEpoch) {
+        return !closed.get() && physicalSlots.get() && replicaSlots.resumeRetained(token, admissionEpoch);
+    }
+
     private void observeUntilReleased(ReplicaLease lease) {
         long deadline=System.nanoTime()+proxyProperties.executionProbeRetention().toNanos();
         while(!closed.get() && System.nanoTime()<deadline) {

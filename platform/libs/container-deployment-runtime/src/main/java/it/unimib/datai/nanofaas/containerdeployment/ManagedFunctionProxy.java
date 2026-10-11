@@ -36,6 +36,11 @@ public interface ManagedFunctionProxy extends AutoCloseable {
         throw new UnsupportedOperationException("Epoch replica fencing unsupported");
     }
 
+    /** Rotates admission on unchanged allocations without releasing occupied physical leases. */
+    default boolean resumeRetained(ReplicaSlots.QuiesceToken token, String admissionEpoch) {
+        throw new UnsupportedOperationException("Retained epoch replica fencing unsupported");
+    }
+
     @Override
     void close();
 }

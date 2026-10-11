@@ -83,12 +83,21 @@ public final class ReplicaSlots {
 
     /** Only the receiving pool's fresh, unconsumed capability can reopen admission. */
     public synchronized boolean resume(QuiesceToken token, String epoch) {
+        return resume(token, epoch, false);
+    }
+
+    /** Changes admission only: occupied leases still own their original physical slots. */
+    public synchronized boolean resumeRetained(QuiesceToken token, String epoch) {
+        return resume(token, epoch, true);
+    }
+
+    private boolean resume(QuiesceToken token, String epoch, boolean retainOccupied) {
         if (epoch == null || epoch.isBlank() || epoch.length() > 256) {
             throw new IllegalArgumentException("bounded admission epoch required");
         }
         if (token == null || token != quiesceToken || !token.admissionEpoch.equals(epoch)
                 || token.membershipRevision != membershipRevision
-                || slots.values().stream().anyMatch(slot -> slot.draining || slot.lease != null)) {
+                || slots.values().stream().anyMatch(slot -> slot.draining || (!retainOccupied && slot.lease != null))) {
             return false;
         }
         admissionEpoch = epoch;

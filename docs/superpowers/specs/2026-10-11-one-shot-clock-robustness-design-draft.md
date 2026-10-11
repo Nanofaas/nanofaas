@@ -68,7 +68,7 @@ failure. There is no confirmed root cause for that HTTP delay.
   exact identity. A lost acknowledgement must not authorize extra capacity.
 - New and old commitments may not share the same capacity twice. Before changing
   replica allocation, the seller atomically closes old admission, fences stale
-  requests, and positively drains already admitted execution. When drain is not
+  requests, and positively drains execution on resources actually removed or reassigned. Unchanged replicas may continue already admitted work under their original physical leases; new-epoch work can acquire only free physical slots. When drain is not
   proven, capacity stays reserved and the conflicting preparation cannot proceed.
 - Sender readiness and seller readiness need not change simultaneously. Late
   old-epoch traffic is rejected at the seller; early new-epoch traffic cannot be
@@ -139,7 +139,7 @@ operation that closes admission and waits for occupied slots without destroying
 unchanged warm containers. The existing beginDrain is irreversible; updateBackends
 does not clear it, so simply calling it and updating the pool is not a valid
 resume implementation. A new resume capability must match the exact quiesce
-operation, generation and backend incarnation and require every old slot drained.
+operation, generation and backend incarnation. Strict resume requires every old slot drained when reassigning physical capacity. A distinct retained-allocation operation rotates admission without freeing occupied leases; old work remains counted against the same c1 slot, and no resource is reallocated by that operation.
 Downscale obsolete replicas through the existing positive-drain path before
 upscale; retained replicas resume only with the new admission epoch.
 
@@ -168,7 +168,7 @@ bucket across rate changes so transition cannot create an extra burst; all
 inbound/local decisions also obey physically ready c1 dispatch capacity.
 
 Local monotonic expiry closes admission. Positive drain is still required before
-capacity reuse or ownership release, even after expiry, a failed acknowledgement,
+physical resource reassignment, removal or ownership release, even after expiry, a failed acknowledgement,
 a partition or a configuration change. During a partition one-shot may degrade
 to finite cloud capacity and errors; unchanged local monotonic timeouts bound
 work. It is not a claim that offload remains successful under unlimited delay.
@@ -247,3 +247,7 @@ Record node, attempt index, before/after UTC, remote timestamp, RTT and exceptio
 class in clock-probes.jsonl. Retain successful attempts preceding a failure.
 Tests were observed failing before implementation, then 43 focused tests passed.
 Verification completed: 3,870 pure tests passed (three ordinary skips; checkout-only tests were skipped in that invocation), 636 pinned-checkout contracts passed, and 51 tui-toolkit tests passed. All 15 hooks pass. Diagnostics are committed locally in NanoLab; no push or new frozen runtime qualification.
+
+## Task1 transition refinement supported by physical observations
+
+Retained failed-v11 data is technical design evidence, not qualified experimental results. Edge memory handlers reached approximately2.98s p95 and3.10s maximum physical occupancy, beyond the current1s preparation budget. Requiring every unchanged replica to drain at each logical boundary would introduce avoidable downtime. Admission rotation therefore preserves ongoing leases on unchanged allocations; physical downscale or resource reassignment still requires positive release before growth. Strict memory budgets, c1, stale-dispatch fencing and all measurement gates remain unchanged.

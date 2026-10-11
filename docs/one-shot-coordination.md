@@ -124,3 +124,12 @@ UTC epoch windows. Provider lease fencing, propagation of the pinned admission
 identity through control-plane dispatch, logical epoch initiation and scientific
 qualification must be completed before enabling the new mechanism in a campaign.
 The scientific v11 failure is not reclassified by these tests.
+
+For unchanged allocations, the container proxy also exposes an explicit retained
+admission rotation. It consumes the same receiver-issued one-use capability and
+rejects changed membership/incarnations or permanently draining backends. It
+preserves occupied physical leases: new-epoch invocations can acquire only free
+slots, and old-epoch dispatches are rejected. This operation does not authorize
+container removal or resource reassignment; those still require positive physical
+release and the strict quiesce/resume path. The production provider and logical
+epoch protocol integration remain pending.
