@@ -200,6 +200,14 @@ and inbound grants, and reopens queued dispatch. No old queued request is rerout
 or evicted by this operation. Retained executing slots are never declared free.
 A failed reduction retains occupied memory and prevents conflicting growth.
 
+A local request already dispatched just before queued dispatch is paused may
+reach the function proxy during quiescence. The proxy keeps that admitted HTTP
+request within its existing in-flight bound and waits for the current allocation
+to reopen, including a temporary zero-replica pool. It then acquires a slot from
+the new pool and invokes once. The configured per-hop timeout still bounds this
+wait; expiry produces a 504 without starting a handler. Pool occupancy overload
+still produces 503. Waiting never releases an occupied physical slot.
+
 Logical READY/ACK exchanges use a separate v2 topic and verify session, epoch,
 round count, canonical labels, function generation and node incarnation. The
 seller installs inbound readiness before acknowledging it; final outbound

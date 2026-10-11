@@ -339,7 +339,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                 return;
             }
             List<String> currentBackends = backends.get();
-            if (currentBackends.isEmpty()) {
+            if (currentBackends.isEmpty() && !physicalSlots.get()) {
                 send(exchange, 503, NO_BACKENDS);
                 return;
             }
@@ -355,7 +355,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                     if(id==null || id.isBlank() || id.length()>256) { send(exchange,400,"Execution identity required".getBytes(StandardCharsets.UTF_8)); return; }
                     String attempt=exchange.getRequestHeaders().getFirst("X-Dispatch-Attempt");
                     if(attempt==null) { attempt=java.util.UUID.randomUUID().toString(); exchange.getRequestHeaders().set("X-Dispatch-Attempt",attempt); }
-                    lease=replicaSlots.tryAcquire(id,attempt).orElse(null);
+                    lease=replicaSlots.acquireWhenResumed(id,attempt,singleHopTimeout.get()).orElse(null);
                     if(lease==null) { send(exchange,503,BUSY); return; }
                     backend=lease.backend();
                 } else backend=selectBackend(currentBackends);
@@ -374,7 +374,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                 send(exchange, 500, INTERRUPTED);
             } catch (HttpConnectTimeoutException e) {
                 send(exchange, 502, proxyError(e));
-            } catch (HttpTimeoutException _) {
+            } catch (HttpTimeoutException | java.util.concurrent.TimeoutException _) {
                 send(exchange, 504, PROXY_TIMEOUT);
             } catch (IOException | RuntimeException e) { // NOSONAR (java:S2147): the connect-timeout catch must precede HttpTimeoutException
                 send(exchange, 502, proxyError(e));

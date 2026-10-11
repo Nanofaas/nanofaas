@@ -33,7 +33,7 @@ class ReplicaEpochProxyTest {
             var next = proxy.beginQuiesce();
             assertThat(proxy.awaitQuiesced(Duration.ofMillis(100))).isFalse();
             assertThat(proxy.resume(next, next.admissionEpoch())).isFalse();
-            assertThat(invoke(client, proxy.endpointUrl(), "early", next.admissionEpoch()).statusCode()).isEqualTo(503);
+            assertThat(invoke(client, proxy.endpointUrl(), "early", next.admissionEpoch()).statusCode()).isEqualTo(504);
             assertThat(calls.get()).isEqualTo(1);
             released.set(true);
             assertThat(proxy.awaitQuiesced(Duration.ofSeconds(2))).isTrue();

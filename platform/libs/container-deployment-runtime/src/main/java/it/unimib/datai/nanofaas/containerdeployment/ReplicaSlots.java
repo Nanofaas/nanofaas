@@ -1,5 +1,8 @@
 package it.unimib.datai.nanofaas.containerdeployment;
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 /** Pool mutations and dispatch share one lock. Occupied or draining entries survive pool updates. */
 public final class ReplicaSlots {
     public static final class QuiesceToken {
@@ -59,6 +62,18 @@ public final class ReplicaSlots {
         }
         return Optional.empty();
     }
+    /** Preserve an already accepted dispatch while its allocation is temporarily closed. */
+    public synchronized Optional<ReplicaLease> acquireWhenResumed(String executionId,String attempt,Duration timeout)
+            throws InterruptedException,TimeoutException {
+        if(timeout==null || timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException("positive allocation wait required");
+        long deadline=System.nanoTime()+timeout.toNanos();
+        while(quiescing || admissionEpoch!=null && slots.isEmpty()) {
+            long remaining=deadline-System.nanoTime();
+            if(remaining<=0) throw new TimeoutException("allocation did not reopen before dispatch timeout");
+            TimeUnit.NANOSECONDS.timedWait(this,remaining);
+        }
+        return tryAcquire(executionId,attempt);
+    }
     synchronized boolean cancelUndispatched(ReplicaLease lease) {
         var slot=slots.get(lease.backend());
         if(slot==null || slot.lease!=lease) return false;
@@ -100,6 +115,7 @@ public final class ReplicaSlots {
         admissionEpoch = epoch;
         quiesceToken = null;
         quiescing = false;
+        notifyAll();
         return true;
     }
 
