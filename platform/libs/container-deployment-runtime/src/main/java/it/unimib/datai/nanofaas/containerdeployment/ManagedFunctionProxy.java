@@ -26,6 +26,15 @@ public interface ManagedFunctionProxy extends AutoCloseable {
     default boolean backendReady(String backendId) { return true; }
     default void beginDrain(String backendId) { }
     default boolean awaitDrained(String backendId, Duration timeout) { return true; }
+    default ReplicaSlots.QuiesceToken beginQuiesce() {
+        throw new UnsupportedOperationException("Epoch replica fencing unsupported");
+    }
+    default boolean awaitQuiesced(Duration timeout) {
+        throw new UnsupportedOperationException("Epoch replica fencing unsupported");
+    }
+    default boolean resume(ReplicaSlots.QuiesceToken token, String admissionEpoch) {
+        throw new UnsupportedOperationException("Epoch replica fencing unsupported");
+    }
 
     @Override
     void close();

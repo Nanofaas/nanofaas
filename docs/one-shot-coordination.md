@@ -100,3 +100,27 @@ To change the grid, disable scheduling and drain commitments and physical execut
 Each automatic claim registers its cancellation ownership before input pinning. Stopping the lifecycle cancels that claim even when subscription initialization has not finished; a later start cannot resume the cancelled preparation. Pinned input and the busy flag remain owned until cleanup completes.
 
 Automatic epoch windows retain the full `Duration` precision, including fractional milliseconds and fractional anchors. Both endpoints derive from the same exact period, so adjacent windows share an endpoint without overlap or gaps. A window whose start is already reached is not prepared retroactively. Arithmetic or `Instant` range overflow raises an explicit configuration/calculation error rather than wrapping the epoch index.
+
+### Preparation for clock-independent epoch transitions
+
+The container runtime now provides a reusable admission pause separately from
+permanent replica removal. `beginQuiesce()` closes physical slot acquisition and
+returns a pool-owned capability. `awaitQuiesced()` waits for exact SDK release
+proofs, including handlers whose HTTP response has already timed out. `resume()`
+requires that same unconsumed capability and its receiver-issued opaque admission
+identity, unchanged backend membership/incarnations, and no occupied or permanently
+draining slots. An unchanged warm backend is retained across this pause.
+
+After resume, the proxy checks `X-NanoFaaS-Replica-Epoch` at physical slot
+acquisition. Missing or retired identities receive503 before handler dispatch.
+A dispatch that acquired its slot before closure remains tracked and prevents
+reuse until physical release. Pool membership changes close admission again;
+a fresh quiesce capability is required. Permanent `beginDrain()` cannot be
+undone through this mechanism.
+
+This is a runtime building block, not the completed clock-independent one-shot
+protocol. The current v1 coordinator still requires measured clock health and
+UTC epoch windows. Provider lease fencing, propagation of the pinned admission
+identity through control-plane dispatch, logical epoch initiation and scientific
+qualification must be completed before enabling the new mechanism in a campaign.
+The scientific v11 failure is not reclassified by these tests.
