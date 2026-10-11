@@ -165,13 +165,38 @@ are rejected before refreezing inputs. Stop/restart during input freezing cannot
 install the old preparation into the new lifecycle. Native reflection includes
 the new envelope.
 
-These are coordinator primitives: the administrative API, physical activation
-and automatic scheduler still use the legacy path until their integration is
-complete. They do not qualify the campaign. Tests exercise UTC offsets/jumps,
-monotonic deadline exhaustion/wrap, duplicate requests and lifecycle fencing.
+The logical coordinator now passes its timing context to the actuator. The
+administrative API and automatic scheduler still use the legacy path until their
+integration is complete. These internal capabilities do not qualify the campaign.
+Tests exercise UTC offsets/jumps, monotonic deadline exhaustion/wrap, duplicate
+requests and lifecycle fencing.
 
 Effective dispatch capacity can be zero. The replica owner can pause queued
 dispatch with `setReadyConcurrency(lease, 0)` without revoking already acquired
 leases. Returning to positive capacity wakes the scheduler. This is a prerequisite
-for preserving accepted local queues during a physical allocation transition;
-it does not by itself wire the full transition into the actuator.
+for preserving accepted local queues during a physical allocation transition.
+The logical actuator uses it while changing physical allocation.
+
+For a logical outcome, `prepare` returns `NEGOTIATED` without changing the current
+physical allocation. `activate(sessionId, epoch)` retires old routing, pauses queued
+dispatch and physical admission, reduces obsolete replicas through the provider's
+positive-drain path, then grows the new allocation within the same memory budget.
+It obtains fresh capabilities for changed pools and reopens them while queued
+dispatch remains paused. It then observes actual ready capacity, installs local
+and inbound grants, and reopens queued dispatch. No old queued request is rerouted
+or evicted by this operation. Retained executing slots are never declared free.
+A failed reduction retains occupied memory and prevents conflicting growth.
+
+Logical READY/ACK exchanges use a separate v2 topic and verify session, epoch,
+round count, canonical labels, function generation and node incarnation. The
+seller installs inbound readiness before acknowledging it; final outbound
+readiness updates preserve unchanged quotas within the same epoch. Repeating
+activation for the current staged epoch returns the cached result and performs
+no additional allocation. Superseded epochs cannot be activated again. UTC in
+activation results is diagnostic; logical expiry uses monotonic time.
+
+The ordinary inter-epoch burst policy has not been changed by this step. Broader
+burst-policy qualification and API/scheduler/NanoLab integration remain tracked
+in the remediation plan. Provider-boundary tests run the real local provider and
+physical slot ledger with a simulated container adapter; they are not VM campaign
+measurements or native-image qualification.

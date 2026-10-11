@@ -248,7 +248,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
                 || forecast.query().generation()!=identity.generation() || !forecast.query().function().equals(f.id()) || !forecast.query().start().equals(run.from) || !forecast.query().end().equals(run.until)) throw new IllegalArgumentException("forecast missing or incompatible");
         }
     }
-    private EpochOutcome outcome(Run run,EpochOutcome.Status status,int rounds,String reason) { run.closed=true; if(running && active.get()==run && !run.cancelled) lastClosed.set(run); run.inbox.clear(); run.waiting.clear(); return new EpochOutcome(run.epoch,status,run.ledger==null?null:run.ledger.snapshot(),nanos.getAsLong()-run.started,run.solverNanos.get(),rounds,reason,run.input); }
+    private EpochOutcome outcome(Run run,EpochOutcome.Status status,int rounds,String reason) { run.closed=true; if(running && active.get()==run && !run.cancelled) lastClosed.set(run); run.inbox.clear(); run.waiting.clear(); return new EpochOutcome(run.epoch,status,run.ledger==null?null:run.ledger.snapshot(),nanos.getAsLong()-run.started,run.solverNanos.get(),rounds,reason,run.input,run.timing); }
     private AuctionMessage.Envelope envelope(Run run) { return new AuctionMessage.Envelope(1,run.local.peerId(),run.local.incarnation(),run.epoch,run.round,UUID.randomUUID().toString(),run.ledger.snapshot().revision(),run.from,run.until); }
     private void hello(Run run) throws Exception {
         var missing=new HashSet<>(run.peers.keySet());

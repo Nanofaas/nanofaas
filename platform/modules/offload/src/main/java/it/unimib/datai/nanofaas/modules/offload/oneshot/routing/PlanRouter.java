@@ -59,7 +59,21 @@ public final class PlanRouter {
         if(active.isEmpty()) return context.offloadedHop()?PlannedInvocationRoute.reject("seller has no active ready plan"):cloud(settings.get(),0);
         var plan=active.get();var f=plan.functions().get(task.functionName());
         if(f==null || f.generation()!=configured.generation()) return PlannedInvocationRoute.reject("function generation differs from plan");
-        if(state==null || !state.plan.equals(plan)) state=new State(plan,settings.get().burst(),nanoTime);
+        if(state==null || !state.plan.equals(plan)) {
+            var next=new State(plan,settings.get().burst(),nanoTime);
+            if(state!=null && state.plan.epoch()==plan.epoch() && state.plan.nodeId().equals(plan.nodeId())
+                    && state.plan.incarnation().equals(plan.incarnation()) && state.plan.flowQuantum()==plan.flowQuantum()) {
+                // Completing outbound readiness must not refill unchanged seller/local quotas.
+                for(var entry:plan.functions().entrySet()) {
+                    var prior=state.plan.functions().get(entry.getKey());var updated=entry.getValue();
+                    if(prior==null || prior.generation()!=updated.generation() || !prior.version().equals(updated.version())) continue;
+                    if(prior.localRate()==updated.localRate()) next.quotas.put("local:"+entry.getKey(),state.quotas.get("local:"+entry.getKey()));
+                    for(var a:updated.inbound()) if(prior.inbound().contains(a)) next.quotas.put("in:"+a.id(),state.quotas.get("in:"+a.id()));
+                    for(var a:updated.outbound()) if(prior.outbound().contains(a)) next.quotas.put("out:"+a.id(),state.quotas.get("out:"+a.id()));
+                }
+            }
+            state=next;
+        }
         if(context.offloadedHop()) {
             var metadata=context.metadata();if(metadata==null || metadata.epoch()!=plan.epoch() || peers.activeNeighbors().stream().noneMatch(p->p.peerId().equals(metadata.origin()) && p.incarnation().equals(metadata.originIncarnation()))) return PlannedInvocationRoute.reject("native ready assignment required");
             var inbound=f.inbound().stream().filter(a->a.id().equals(metadata.assignment()) && a.buyerId().equals(metadata.origin()) && a.buyerIncarnation().equals(metadata.originIncarnation()) && a.readyConfirmed()).findFirst();

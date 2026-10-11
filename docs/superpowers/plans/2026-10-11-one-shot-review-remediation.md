@@ -56,3 +56,12 @@ Continue the existing clock-robustness plan's logical session/epoch and monotoni
 - The previous Task 1 completion remains historical verification of the old implementation; its queued epoch-permit semantics are superseded and must be corrected.
 
 Execution update: queue ownership correction is committed at e6deeff0. Fixed-round protocol verified on two triangles, a line and a complete graph, with duplicate/loss and real P2P transport coverage. Ten-module regression: 1693 tests, zero failures/errors, three existing core skips. Two pending logical-epoch tests are excluded only by a temporary verification init script until Task 4 implements their APIs. No campaign qualification is implied.
+
+Task 3/4 checkpoint: logical negotiation carries its monotonic timing into a
+separate `NEGOTIATED`/explicit activation path. The actuator closes old routing,
+pauses queued dispatch, drains removals before growth, obtains fresh pool
+capabilities, then installs measured readiness before READY_ACK. New tests replace
+the old whole-epoch-delay expectation, exercise real provider/physical-slot
+boundaries and lost READY_ACK replies, and prevent quota refill on same-epoch
+readiness updates. Public API, automatic initiation, NanoLab bindings, native
+qualification and final review are still outstanding; the campaign stays paused.
