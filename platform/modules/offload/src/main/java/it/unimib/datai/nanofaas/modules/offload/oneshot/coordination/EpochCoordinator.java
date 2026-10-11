@@ -12,14 +12,17 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
+import java.util.function.LongSupplier;
 
 /** Quasi-synchronous, phase-barrier protocol. Missing closures never imply convergence. */
 public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     public static final String TOPIC="nanofaas.oneshot.v1";
+    public static final String LOGICAL_TOPIC="nanofaas.oneshot.v2";
     private record Key(String peer,int round,AuctionCodec.Phase phase) {}
     private static final class Run {
         final PeerEndpoint local; final Map<String,PeerEndpoint> peers; final long epoch,deadline;
         final Instant from,until; final long started;
+        EpochTiming timing;
         final ArrayBlockingQueue<AuctionCodec.Batch> inbox;
         final Semaphore pending;
         final Map<Key,String> accepted=new ConcurrentHashMap<>();
@@ -34,6 +37,9 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         }
     }
     private final boolean enabled;
+    private final LongSupplier nanos;
+    private final Object initiation=new Object();
+    private String logicalSession;
     private final PeerTransport transport; private final EpochInput.Factory inputs; private final EpochSettings settings;
     private final ClockHealth clockHealth; private final Supplier<Instant> now; private final AuctionCodec codec=new AuctionCodec();
     private final OneShotAuctionEngine.Options options;
@@ -42,6 +48,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     private final AtomicLong lastEpoch=new AtomicLong(-1);
     private final Scheduler scheduler;
     private volatile long lifecycle;
+    private volatile PeerSubscription logicalSubscription;
     private volatile PeerSubscription subscription; private volatile boolean running;
     public EpochCoordinator(PeerTransport transport,EpochInput.Factory inputs,EpochSettings settings,ClockHealth health) {
         this(transport,inputs,settings,health,Instant::now,OneShotAuctionEngine.Options.base());
@@ -53,7 +60,11 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         this(transport,inputs,settings,health,now,options,true);
     }
     public EpochCoordinator(PeerTransport transport,EpochInput.Factory inputs,EpochSettings settings,ClockHealth health,Supplier<Instant> now,OneShotAuctionEngine.Options options,boolean enabled) {
+        this(transport,inputs,settings,health,now,options,enabled,System::nanoTime);
+    }
+    public EpochCoordinator(PeerTransport transport,EpochInput.Factory inputs,EpochSettings settings,ClockHealth health,Supplier<Instant> now,OneShotAuctionEngine.Options options,boolean enabled,LongSupplier nanos) {
         this.enabled=enabled;
+        this.nanos=Objects.requireNonNull(nanos);
         this.transport=transport; this.inputs=inputs; this.settings=settings; clockHealth=health; this.now=now; this.options=options;
         scheduler=Schedulers.newBoundedElastic(1,1,"one-shot-control");
     }
@@ -61,6 +72,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     @Override public synchronized void start() {
         if(running || !enabled) return;
         long token=++lifecycle;
+        logicalSubscription=transport.subscribe(LOGICAL_TOPIC,(sender,payload)->Mono.fromCallable(()->token==lifecycle && running?receiveLogical(sender,payload):new byte[]{0}));
         subscription=transport.subscribe(TOPIC,(sender,payload)->Mono.fromCallable(()->token==lifecycle && running?receive(sender,payload):new byte[]{0}));
         running=true;
     }
@@ -68,6 +80,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         running=false; lifecycle++; lastClosed.set(null); var run=active.get();
         if(run!=null) { run.cancelled=true; var exchange=run.exchange.get(); if(exchange!=null) exchange.cancel(true); }
         if(subscription!=null) { subscription.close(); subscription=null; }
+        if(logicalSubscription!=null) { logicalSubscription.close(); logicalSubscription=null; }
     }
     @Override public boolean isRunning() { return running; }
     @Override public int getPhase() { return Integer.MAX_VALUE-2046; }
@@ -75,56 +88,83 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     public boolean clockHealthy() { return clockHealth.healthy(); }
     public long lastPreparedEpoch() { return lastEpoch.get(); }
     public Mono<EpochOutcome> prepare(long epoch,Instant startsAt,Instant endsAt) {
+        return Mono.defer(()->begin(epoch,startsAt,endsAt,null));
+    }
+    public Mono<EpochOutcome> prepareLogical(String sessionId,long epoch,Instant startsAt,Instant endsAt,Duration activationDelay) {
         return Mono.defer(()-> {
-            long started=System.nanoTime();
-            if(!running || epoch<0 || startsAt==null || endsAt==null || !startsAt.isBefore(endsAt) || !clockHealth.healthy())
+            EpochTiming timing;
+            try { timing=EpochTiming.capture(sessionId,startsAt,endsAt,activationDelay,nanos); }
+            catch(IllegalArgumentException invalid) { return Mono.just(failure(epoch,nanos.getAsLong(),invalid.getMessage())); }
+            return begin(epoch,startsAt,endsAt,timing);
+        });
+    }
+    private Mono<EpochOutcome> begin(long epoch,Instant startsAt,Instant endsAt,EpochTiming timing) {
+        synchronized(initiation) {
+            long started=timing==null?nanos.getAsLong():timing.startedNanos();
+            long token=lifecycle;
+            if(active.get()!=null || epoch<=lastEpoch.get()) return Mono.just(failure(epoch,started,"negotiation active or epoch is not monotonic"));
+            if((timing==null && logicalSession!=null) || (timing!=null && (logicalSession!=null && !logicalSession.equals(timing.sessionId()) || logicalSession==null && lastEpoch.get()>=0)))
+                return Mono.just(failure(epoch,started,"session or protocol cannot change within a coordinator lifetime"));
+            if(!running || epoch<0 || startsAt==null || endsAt==null || !startsAt.isBefore(endsAt) || timing==null && !clockHealth.healthy())
                 return Mono.just(failure(epoch,started,"inactive coordinator, window or clock invalid"));
             var local=transport.localEndpoint().orElse(null);
             if(local==null) return Mono.just(failure(epoch,started,"local P2P endpoint unavailable"));
-            if(!now.get().isBefore(startsAt)) return Mono.just(failure(epoch,started,"preparation must precede epoch start"));
+            if(timing==null && !now.get().isBefore(startsAt)) return Mono.just(failure(epoch,started,"preparation must precede epoch start"));
             EpochInput frozen;
             try { frozen=inputs.freeze(epoch,startsAt,endsAt); } catch(RuntimeException error) { return Mono.just(failure(epoch,started,"input freeze failed: "+error.getMessage())); }
+            if(!running || token!=lifecycle) return Mono.just(failure(epoch,started,"coordinator stopped during input freeze"));
             var selected=frozen.negotiation()==null?settings:frozen.negotiation();
             var period=Duration.between(startsAt,endsAt);
-            if(period.compareTo(Duration.ofDays(1))>0 || startsAt.isAfter(now.get().plus(Duration.ofDays(1))) || selected.auctionBudget().toNanos()>period.toNanos()*selected.maxAuctionFraction())
+            if(period.compareTo(Duration.ofDays(1))>0 || timing==null && startsAt.isAfter(now.get().plus(Duration.ofDays(1))) || selected.auctionBudget().toNanos()>period.toNanos()*selected.maxAuctionFraction())
                 return Mono.just(failure(epoch,started,"auction budget too large for period"));
-            long untilStart=Duration.between(now.get(),startsAt).toNanos();
-            if(untilStart<=0) return Mono.just(new EpochOutcome(epoch,EpochOutcome.Status.DEADLINE,null,System.nanoTime()-started,0,0,"epoch started during input freeze"));
+            long untilStart=timing==null?Duration.between(now.get(),startsAt).toNanos():timing.activationDeadline()-nanos.getAsLong();
+            if(untilStart<=0) return Mono.just(new EpochOutcome(epoch,EpochOutcome.Status.DEADLINE,null,nanos.getAsLong()-started,0,0,"epoch started during input freeze"));
             var peers=new LinkedHashMap<String,PeerEndpoint>();
             for(var peer:transport.activeNeighbors()) if(!peer.peerId().equals(local.peerId())) {
                 if(peers.put(peer.peerId(),peer)!=null) return Mono.just(failure(epoch,started,"duplicate peer identity"));
             }
             if(peers.size()>selected.maxPeers()) return Mono.just(failure(epoch,started,"peer bound exceeded"));
-            var run=new Run(local,peers,epoch,startsAt,endsAt,started,started+Math.min(untilStart,selected.auctionBudget().toNanos()),selected.queueCapacity());
-            run.input=frozen;run.settings=selected;
+            var run=new Run(local,peers,epoch,startsAt,endsAt,started,timing==null?started+Math.min(untilStart,selected.auctionBudget().toNanos()):timing.auctionDeadline(selected.auctionBudget()),selected.queueCapacity());
+            run.input=frozen;run.settings=selected;run.timing=timing;
+            if(timing!=null) logicalSession=timing.sessionId();
             if(!active.compareAndSet(null,run)) return Mono.just(failure(epoch,started,"negotiation already active"));
             if(epoch<=lastEpoch.get()) { active.compareAndSet(run,null); return Mono.just(failure(epoch,started,"epoch is not monotonic")); }
             lastEpoch.set(epoch);
             return Mono.fromCallable(()->execute(run)).subscribeOn(scheduler).doFinally(signal -> {
                 run.cancelled=true; var exchange=run.exchange.get(); if(exchange!=null) exchange.cancel(true); active.compareAndSet(run,null);
             });
-        });
+        }
     }
-    private EpochOutcome failure(long epoch,long started,String reason) { return new EpochOutcome(epoch,EpochOutcome.Status.FAILED,null,System.nanoTime()-started,0,0,reason); }
+    private EpochOutcome failure(long epoch,long started,String reason) { return new EpochOutcome(epoch,EpochOutcome.Status.FAILED,null,nanos.getAsLong()-started,0,0,reason); }
     private byte[] receive(String sender,byte[] payload) {
         if(!running) return new byte[]{0};
         AuctionCodec.Batch batch;
         try { batch=codec.decode(payload); } catch(IllegalArgumentException invalid) { return new byte[]{0}; }
+        return receiveBatch(sender,payload,batch,null,0);
+    }
+    private byte[] receiveLogical(String sender,byte[] payload) {
+        if(!running) return new byte[]{0};
+        AuctionCodec.LogicalBatch logical;
+        try { logical=codec.decodeLogical(payload); } catch(IllegalArgumentException invalid) { return new byte[]{0}; }
+        return receiveBatch(sender,payload,logical.batch(),logical.sessionId(),logical.maxRounds());
+    }
+    private byte[] receiveBatch(String sender,byte[] payload,AuctionCodec.Batch batch,String sessionId,int maxRounds) {
         if(batch.phase()==AuctionCodec.Phase.READY || batch.phase()==AuctionCodec.Phase.READY_ACK) return new byte[]{0};
         var run=active.get();
         if(run==null || run.epoch!=batch.epoch()) run=lastClosed.get();
-        if(run==null) return new byte[]{0};
+        if(run==null || !Objects.equals(sessionId,run.timing==null?null:run.timing.sessionId())
+                || sessionId!=null && maxRounds!=run.settings.maxRounds()) return new byte[]{0};
         var peer=run.peers.get(sender);
         if(peer==null || !sender.equals(batch.senderId()) || !peer.incarnation().equals(batch.incarnation()) || batch.epoch()!=run.epoch
             || Double.compare(batch.flowQuantum(),run.input.flowQuantum())!=0 || !batch.startsAt().equals(run.from) || !batch.endsAt().equals(run.until)
-            || !sameIncarnation(run) || !clockHealth.healthy() || !now.get().isBefore(run.from)) return new byte[]{0};
+            || !sameIncarnation(run) || !windowOpen(run)) return new byte[]{0};
         synchronized(run) {
         var key=new Key(sender,batch.round(),batch.phase());
         String fingerprint=java.util.Base64.getEncoder().encodeToString(digest(payload));
         var previous=run.accepted.get(key);
         // A closed round may acknowledge an identical installed batch without applying it again.
         if(previous!=null) return new byte[]{(byte)(previous.equals(fingerprint)?1:0)};
-        if(run!=active.get() || run.cancelled || run.closed || System.nanoTime()>=run.deadline || batch.round()<run.round || batch.round()>run.round+1) return new byte[]{0};
+        if(run!=active.get() || run.cancelled || run.closed || nanos.getAsLong()-run.deadline>=0 || batch.round()<run.round || batch.round()>run.round+1) return new byte[]{0};
         if(batch.phase()==AuctionCodec.Phase.HELLO) return new byte[]{1};
         previous=run.accepted.putIfAbsent(key,fingerprint);
         if(previous!=null) return new byte[]{(byte)(previous.equals(fingerprint)?1:0)};
@@ -144,18 +184,25 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     }
     private void check(Run run) {
         if(run.cancelled || !running || Thread.currentThread().isInterrupted()) throw new IllegalStateException("epoch stopped");
-        if(System.nanoTime()>=run.deadline || !now.get().isBefore(run.from)) throw new Deadline();
-        if(!clockHealth.healthy() || !sameIncarnation(run)) throw new IllegalStateException("clock or peer incarnation changed");
+        if(nanos.getAsLong()-run.deadline>=0 || (run.timing==null?!now.get().isBefore(run.from):run.timing.expired(run.timing.activationDeadline()))) throw new Deadline();
+        if(run.timing==null && !clockHealth.healthy() || !sameIncarnation(run)) throw new IllegalStateException("clock or peer incarnation changed");
+    }
+    private boolean windowOpen(Run run) {
+        return run.timing==null?clockHealth.healthy() && now.get().isBefore(run.from):!run.timing.expired(run.timing.activationDeadline());
+    }
+    private String topic(Run run) { return run.timing==null?TOPIC:LOGICAL_TOPIC; }
+    private byte[] encode(Run run,AuctionCodec.Batch batch) {
+        return run.timing==null?codec.encode(batch):codec.encodeLogical(run.timing.sessionId(),run.settings.maxRounds(),batch);
     }
     private static final class Deadline extends RuntimeException {}
     private SolveLimits limits(Run run) {
-        check(run); return new SolveLimits(run.input.maxSolverStates(),run.input.maxSolverBytes(),Math.min(run.deadline,System.nanoTime()+run.settings.solverBudget().toNanos()));
+        check(run); return new SolveLimits(run.input.maxSolverStates(),run.input.maxSolverBytes(),nanos.getAsLong()+Math.min(Math.max(0,run.deadline-nanos.getAsLong()),run.settings.solverBudget().toNanos()));
     }
     private EpochOutcome execute(Run run) {
         int rounds=0;
         try {
             check(run); var input=run.input; validateInput(run,input);
-            var solver=new LocalReplicaSolver(); var initial=solver.solve(input.problem(),limits(run)); run.solverNanos.addAndGet(initial.durationNanos());
+            var solver=new LocalReplicaSolver(nanos); var initial=solver.solve(input.problem(),limits(run)); run.solverNanos.addAndGet(initial.durationNanos());
             if(initial.status()!=LocalSolution.Status.OPTIMAL) throw new IllegalStateException("initial solver: "+initial.status());
             var peers=new LinkedHashMap<String,String>(); run.peers.values().forEach(p->peers.put(p.peerId(),p.incarnation()));
             var engine=new OneShotAuctionEngine(options,solver,()->limits(run),result->run.solverNanos.addAndGet(result.durationNanos()));
@@ -191,7 +238,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
             if(!"FINALIZED".equals(finalized.state().status())) throw new IllegalStateException(finalized.state().status());
             return outcome(run,EpochOutcome.Status.FIXED_ROUNDS_COMPLETED,rounds,"all configured rounds and peer phase closures completed");
         } catch(Deadline expired) { return outcome(run,EpochOutcome.Status.DEADLINE,rounds,"auction deadline");
-        } catch(Exception failure) { return outcome(run,System.nanoTime()>=run.deadline?EpochOutcome.Status.DEADLINE:EpochOutcome.Status.FAILED,rounds,failure.getMessage()); }
+        } catch(Exception failure) { return outcome(run,nanos.getAsLong()-run.deadline>=0?EpochOutcome.Status.DEADLINE:EpochOutcome.Status.FAILED,rounds,failure.getMessage()); }
     }
     private void validateInput(Run run,EpochInput input) {
         if(input.problem().functions().size()>1000 || input.problem().model()!=LocalProblem.Model.LSP) throw new IllegalArgumentException("unsupported frozen catalog");
@@ -201,7 +248,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
                 || forecast.query().generation()!=identity.generation() || !forecast.query().function().equals(f.id()) || !forecast.query().start().equals(run.from) || !forecast.query().end().equals(run.until)) throw new IllegalArgumentException("forecast missing or incompatible");
         }
     }
-    private EpochOutcome outcome(Run run,EpochOutcome.Status status,int rounds,String reason) { run.closed=true; if(running && active.get()==run && !run.cancelled) lastClosed.set(run); run.inbox.clear(); run.waiting.clear(); return new EpochOutcome(run.epoch,status,run.ledger==null?null:run.ledger.snapshot(),System.nanoTime()-run.started,run.solverNanos.get(),rounds,reason,run.input); }
+    private EpochOutcome outcome(Run run,EpochOutcome.Status status,int rounds,String reason) { run.closed=true; if(running && active.get()==run && !run.cancelled) lastClosed.set(run); run.inbox.clear(); run.waiting.clear(); return new EpochOutcome(run.epoch,status,run.ledger==null?null:run.ledger.snapshot(),nanos.getAsLong()-run.started,run.solverNanos.get(),rounds,reason,run.input); }
     private AuctionMessage.Envelope envelope(Run run) { return new AuctionMessage.Envelope(1,run.local.peerId(),run.local.incarnation(),run.epoch,run.round,UUID.randomUUID().toString(),run.ledger.snapshot().revision(),run.from,run.until); }
     private void hello(Run run) throws Exception {
         var missing=new HashSet<>(run.peers.keySet());
@@ -209,7 +256,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
             check(run);
             for(var peer:List.copyOf(missing)) {
                 var batch=new AuctionCodec.Batch(1,run.local.peerId(),run.local.incarnation(),run.epoch,0,AuctionCodec.Phase.HELLO,run.from,run.until,false,List.of(),run.input.flowQuantum());
-                var request=transport.request(peer,TOPIC,codec.encode(batch),peerTimeout(run)).toFuture();
+                var request=transport.request(peer,topic(run),encode(run,batch),peerTimeout(run)).toFuture();
                 run.exchange.set(request);
                 try {
                     byte[] reply=request.get(peerTimeout(run).toNanos(),TimeUnit.NANOSECONDS);
@@ -220,16 +267,16 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
             if(!missing.isEmpty()) Thread.sleep(10);
         }
     }
-    private Duration peerTimeout(Run run) { return Duration.ofNanos(Math.max(1,Math.min(run.settings.peerTimeout().toNanos(),run.deadline-System.nanoTime()))); }
+    private Duration peerTimeout(Run run) { return Duration.ofNanos(Math.max(1,Math.min(run.settings.peerTimeout().toNanos(),run.deadline-nanos.getAsLong()))); }
     private void exchange(Run run,AuctionCodec.Phase phase,java.util.function.Function<String,List<AuctionMessage>> messages,boolean changed) throws Exception {
         check(run);
         var request=Flux.fromIterable(run.peers.keySet()).flatMap(peer->{
             var batch=new AuctionCodec.Batch(1,run.local.peerId(),run.local.incarnation(),run.epoch,run.round,phase,run.from,run.until,changed,messages.apply(peer),run.input.flowQuantum());
-            byte[] bytes=codec.encode(batch);
-            return Mono.defer(()->transport.request(peer,TOPIC,bytes,peerTimeout(run))).flatMap(reply->reply.length==1 && reply[0]==1?Mono.just(true):Mono.error(new IllegalStateException("peer did not accept closed phase"))).retry(1);
+            byte[] bytes=encode(run,batch);
+            return Mono.defer(()->transport.request(peer,topic(run),bytes,peerTimeout(run))).flatMap(reply->reply.length==1 && reply[0]==1?Mono.just(true):Mono.error(new IllegalStateException("peer did not accept closed phase"))).retry(1);
         },run.settings.parallelism()).collectList().toFuture();
         run.exchange.set(request);
-        try { request.get(Math.max(1,run.deadline-System.nanoTime()),TimeUnit.NANOSECONDS); }
+        try { request.get(Math.max(1,run.deadline-nanos.getAsLong()),TimeUnit.NANOSECONDS); }
         finally { run.exchange.compareAndSet(request,null); if(!request.isDone()) request.cancel(true); }
         check(run);
     }

@@ -138,8 +138,8 @@ public final class ManagedDeploymentCoordinator implements ManagedReplicaControl
         var name=lease.generation().functionName();
         return locks.withLock(name,()-> {
             if(!lease.equals(ownerOf(name)) || nanoTime.getAsLong()>=lease.deadlineNanos() || readyReplicas>generations.configuredConcurrency(name)) return false;
-            // Zero remains closed by the active routing plan; the legacy admission state has a minimum of one.
-            generations.setEffectiveConcurrency(name,Math.max(1,readyReplicas));
+            // Zero pauses queued dispatch without revoking work that already owns a slot.
+            generations.setEffectiveConcurrency(name,readyReplicas);
             return true;
         });
     }

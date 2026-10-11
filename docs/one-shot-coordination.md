@@ -152,3 +152,26 @@ Requests already executing retain their physical leases until matching release
 proof. Validation of newly arriving remote assignments remains a separate
 admission decision before they enter the destination's local queue.
 The logical epoch protocol integration remains pending.
+
+### Logical epoch primitives (integration in progress)
+
+`EpochCoordinator.prepareLogical(sessionId, epoch, startsAt, endsAt, activationDelay)`
+uses the labels only as message/forecast identities. Auction and solver budgets
+use the same injected monotonic clock, captured before input freezing. Logical
+messages use the strict `nanofaas.oneshot.v2` envelope and include the session and
+configured round count; mixed sessions, protocols or counts cannot negotiate.
+The session is fixed for the coordinator lifetime. Duplicate/older preparations
+are rejected before refreezing inputs. Stop/restart during input freezing cannot
+install the old preparation into the new lifecycle. Native reflection includes
+the new envelope.
+
+These are coordinator primitives: the administrative API, physical activation
+and automatic scheduler still use the legacy path until their integration is
+complete. They do not qualify the campaign. Tests exercise UTC offsets/jumps,
+monotonic deadline exhaustion/wrap, duplicate requests and lifecycle fencing.
+
+Effective dispatch capacity can be zero. The replica owner can pause queued
+dispatch with `setReadyConcurrency(lease, 0)` without revoking already acquired
+leases. Returning to positive capacity wakes the scheduler. This is a prerequisite
+for preserving accepted local queues during a physical allocation transition;
+it does not by itself wire the full transition into the actuator.
