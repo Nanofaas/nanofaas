@@ -135,5 +135,9 @@ release and the strict quiesce/resume path. The managed container provider and r
 operations through SPI capabilities bound to the exact writer lease and deployment.
 Renewal/replacement makes old wrappers stale; expiry during provider calls leaves
 admission closed and physical ownership retained. Unsupported providers cannot
-issue a capability. LOCAL route/dispatch propagation and the logical epoch
-protocol integration remain pending.
+issue a capability. LOCAL routes now pin the receiver-issued admission identity into the internal task
+before publication to queues. Dispatch/queue copies, materialized input and
+internal retries preserve that identity; the managed HTTP dispatcher sets the
+private header exclusively from the task, overriding any client default. A
+request queued before retirement therefore cannot acquire the successor epoch
+implicitly. The logical epoch protocol integration remains pending.
