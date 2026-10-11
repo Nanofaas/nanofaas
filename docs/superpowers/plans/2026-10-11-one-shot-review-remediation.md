@@ -47,9 +47,9 @@ Files: `ReplicaPlanActuator`, allocation/provider tests and transition documenta
 
 Continue the existing clock-robustness plan's logical session/epoch and monotonic timing work, incorporating the queue and fixed-round corrections above. Retain its RED tests until implemented; do not hide or remove them to obtain a green normal build.
 
-- [ ] Verify offset/jump independence through negotiation, activation, physical transitions and incoming grant validation, including manual and automatic triggers.
-- [ ] Update configuration/API/native reflection/docs and dependent NanoLab contracts before claiming the protocol is integrated. UTC remains diagnostic/correlation metadata.
-- [ ] Run relevant full suites, graph checks and a final whole-change review. Report software completion separately from the still-suspended scientific campaign.
+- [x] Verify offset/jump independence through negotiation, activation, physical transitions and incoming grant validation, including manual and automatic triggers.
+- [x] Update configuration/API/native reflection/docs and dependent NanoLab contracts before claiming the protocol is integrated. UTC remains diagnostic/correlation metadata.
+- [x] Run relevant full suites, graph checks and a final whole-change review. Report software completion separately from the still-suspended scientific campaign.
 
 ## Decisions
 
@@ -71,3 +71,16 @@ qualification and final review are still outstanding; the campaign stays paused.
 Runtime checkpoint: v2 manual prepare/activate and explicit automatic session start are implemented. Monotonic neighbor initiation is tested on a line and two triangles, including duplicate/lost proposals, late-peer STATUS catch-up, stop/rearm and unproven physical drain. Full ten-module regression: 1720 tests, zero failures/errors, three existing core skips. NanoLab contracts/correlation, native qualification and the final whole-change review remain outstanding. An already-dispatched request racing proxy quiesce is still being checked; no campaign measurements have restarted.
 
 Artifact clarification: the frozen campaign recipe is JVM SerialGC/-Xmx256m for the control-plane and Rust for the five functions. Preserve that recipe when qualifying protocol v2; inline/native execution is not permission to change compiler or GC. GraalVM compatibility and scientific JVM qualification must be reported separately.
+
+Final software verification: fresh integrated review found a concurrent shrink
+rejecting accepted dispatches and a missing terminal clock bracket in VM coverage.
+Both have RED/GREEN regressions and fixes; parent-scope malformed probe accounting
+is also corrected. Accepted transition waiters retain their original timeout and
+acquire current capacity only after positive physical release. VM streams are
+stopped and drained before terminal diagnostics and immutable coverage.
+NanoFaaS: 1731 tests, zero failures/errors, three existing core skips.
+NanoLab: 3911 general tests passed, 17 skipped; 637 real-checkout contracts and
+51 TUI tests passed. Static/type/import checks and installed-wheel smoke passed.
+This closes software remediation only. Scientific qualification, new frozen
+campaign identity, observer overhead, pilot, measured runs and the final data
+report remain outstanding; previous unqualified runs remain unchanged.
