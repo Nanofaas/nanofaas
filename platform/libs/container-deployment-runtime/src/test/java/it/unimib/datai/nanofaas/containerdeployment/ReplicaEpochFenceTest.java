@@ -19,7 +19,7 @@ class ReplicaEpochFenceTest {
         assertThat(slots.tryAcquire("late")).isEmpty();
         assertThat(slots.routable("http://a")).isFalse();
         assertThat(slots.resume(token, token.admissionEpoch())).isTrue();
-        var admitted = slots.tryAcquire("new", "1", token.admissionEpoch()).orElseThrow();
+        var admitted = slots.tryAcquire("new", "1").orElseThrow();
         assertThat(admitted.backend()).isEqualTo("http://a");
         assertThat(admitted.incarnation()).isEqualTo("inc-a");
     }
@@ -40,21 +40,6 @@ class ReplicaEpochFenceTest {
     }
 
     @Test
-    void retiredOrMissingEpochCannotAcquireAfterSameBackendResumes() {
-        var slots = new ReplicaSlots();
-        slots.update(Map.of("http://a", "inc-a"));
-        var first = slots.beginQuiesce();
-        assertThat(slots.resume(first, first.admissionEpoch())).isTrue();
-        assertThat(slots.tryAcquire("old", "1", first.admissionEpoch()).orElseThrow().cancelBeforeDispatch()).isTrue();
-        var token = slots.beginQuiesce();
-        assertThat(slots.resume(token, token.admissionEpoch())).isTrue();
-        assertThat(slots.tryAcquire("late", "1", first.admissionEpoch())).isEmpty();
-        assertThat(slots.tryAcquire("unfenced")).isEmpty();
-        assertThat(slots.tryAcquire("missing", "1", null)).isEmpty();
-        assertThat(slots.tryAcquire("new", "1", token.admissionEpoch())).isPresent();
-    }
-
-    @Test
     void consumedOrForeignQuiesceTokenCannotChangeAdmissionEpoch() {
         var slots = new ReplicaSlots();
         slots.update(Map.of("http://a", "inc-a"));
@@ -64,7 +49,7 @@ class ReplicaEpochFenceTest {
         var foreign = new ReplicaSlots();
         foreign.update(Map.of("http://a", "inc-a"));
         assertThat(slots.resume(foreign.beginQuiesce(), "session:1")).isFalse();
-        assertThat(slots.tryAcquire("valid", "1", token.admissionEpoch())).isPresent();
+        assertThat(slots.tryAcquire("valid", "1")).isPresent();
     }
 
     @Test
@@ -75,7 +60,7 @@ class ReplicaEpochFenceTest {
         slots.update(Map.of());
         slots.update(Map.of("http://a", "inc-a"));
         assertThat(slots.resume(token, token.admissionEpoch())).isFalse();
-        assertThat(slots.tryAcquire("late", "1", "session:1")).isEmpty();
+        assertThat(slots.tryAcquire("late", "1")).isEmpty();
         var fresh = slots.beginQuiesce();
         assertThat(slots.resume(fresh, fresh.admissionEpoch())).isTrue();
     }
@@ -87,7 +72,7 @@ class ReplicaEpochFenceTest {
         slots.beginDrain("http://a");
         var token = slots.beginQuiesce();
         assertThat(slots.resume(token, token.admissionEpoch())).isFalse();
-        assertThat(slots.tryAcquire("late", "1", "session:1")).isEmpty();
+        assertThat(slots.tryAcquire("late", "1")).isEmpty();
     }
 
     @Test
@@ -99,7 +84,7 @@ class ReplicaEpochFenceTest {
         var next = slots.beginQuiesce();
         assertThat(slots.resume(next, old.admissionEpoch())).isFalse();
         assertThat(slots.resume(next, "invented")).isFalse();
-        assertThat(slots.tryAcquire("late", "1", old.admissionEpoch())).isEmpty();
+        assertThat(slots.tryAcquire("late", "1")).isEmpty();
         assertThat(slots.resume(next, next.admissionEpoch())).isTrue();
     }
 

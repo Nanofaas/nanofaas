@@ -49,13 +49,10 @@ public final class ReplicaSlots {
         });
     }
     public Optional<ReplicaLease> tryAcquire(String executionId) { return tryAcquire(executionId,null); }
-    public Optional<ReplicaLease> tryAcquire(String executionId,String attempt) {
-        return tryAcquire(executionId, attempt, null);
-    }
-
-    public synchronized Optional<ReplicaLease> tryAcquire(String executionId, String attempt, String epoch) {
+    /** Accepted local queue entries use whichever allocation is currently open. */
+    public synchronized Optional<ReplicaLease> tryAcquire(String executionId, String attempt) {
         if(executionId==null || executionId.isBlank() || executionId.length()>256) throw new IllegalArgumentException("execution identity required");
-        if (quiescing || !Objects.equals(admissionEpoch, epoch)) return Optional.empty();
+        if (quiescing) return Optional.empty();
         for(var entry: slots.entrySet()) if(!entry.getValue().draining && entry.getValue().lease==null) {
             var slot=entry.getValue(); slot.lease=new ReplicaLease(this,entry.getKey(),slot.incarnation,executionId,attempt);
             return Optional.of(slot.lease);

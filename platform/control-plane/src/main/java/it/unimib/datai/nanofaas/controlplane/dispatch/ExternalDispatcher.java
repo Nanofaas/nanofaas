@@ -61,10 +61,6 @@ public class ExternalDispatcher implements Dispatcher {
                 .header("X-Execution-Id", task.executionId())
                 .header("X-Dispatch-Attempt", String.valueOf(task.attempt()));
 
-        // An empty entry overrides client defaults without sending a permit on legacy dispatch.
-        request.headers(headers -> headers.put("X-NanoFaaS-Replica-Epoch",
-                task.replicaAdmissionEpoch() == null ? List.of() : List.of(task.replicaAdmissionEpoch())));
-
         if (task.traceId() != null) {
             request.header("X-Trace-Id", task.traceId());
         }

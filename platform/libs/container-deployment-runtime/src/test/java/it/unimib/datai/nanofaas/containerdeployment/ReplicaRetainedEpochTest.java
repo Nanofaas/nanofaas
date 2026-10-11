@@ -11,20 +11,19 @@ class ReplicaRetainedEpochTest {
         slots.update(Map.of("a", "inc-a", "b", "inc-b"));
         var first = slots.beginQuiesce();
         assertThat(slots.resume(first, first.admissionEpoch())).isTrue();
-        var old = slots.tryAcquire("old", "1", first.admissionEpoch()).orElseThrow();
+        var old = slots.tryAcquire("old", "1").orElseThrow();
         old.markDispatched();
         var next = slots.beginQuiesce();
         assertThat(slots.resume(next, next.admissionEpoch())).isFalse();
         assertThat(slots.resumeRetained(next, next.admissionEpoch())).isTrue();
         assertThat(slots.occupied()).containsExactly(old);
-        assertThat(slots.tryAcquire("stale", "1", first.admissionEpoch())).isEmpty();
-        var fresh = slots.tryAcquire("fresh", "1", next.admissionEpoch()).orElseThrow();
+        var fresh = slots.tryAcquire("fresh", "1").orElseThrow();
         assertThat(fresh.backend()).isNotEqualTo(old.backend());
-        assertThat(slots.tryAcquire("full", "1", next.admissionEpoch())).isEmpty();
+        assertThat(slots.tryAcquire("full", "1")).isEmpty();
         assertThat(old.markReleased(new ExecutionObservation("RELEASED", old.incarnation(), "old", "2", true))).isFalse();
-        assertThat(slots.tryAcquire("still-full", "1", next.admissionEpoch())).isEmpty();
+        assertThat(slots.tryAcquire("still-full", "1")).isEmpty();
         assertThat(old.markReleased(new ExecutionObservation("RELEASED", old.incarnation(), "old", "1", true))).isTrue();
-        assertThat(slots.tryAcquire("reuse", "1", next.admissionEpoch()).orElseThrow().backend()).isEqualTo(old.backend());
+        assertThat(slots.tryAcquire("reuse", "1").orElseThrow().backend()).isEqualTo(old.backend());
     }
 
     @Test
@@ -51,7 +50,7 @@ class ReplicaRetainedEpochTest {
         assertThat(slots.resumeRetained(token, token.admissionEpoch())).isFalse();
         var fresh = slots.beginQuiesce();
         assertThat(slots.resumeRetained(fresh, fresh.admissionEpoch())).isFalse();
-        assertThat(slots.tryAcquire("closed", "1", fresh.admissionEpoch())).isEmpty();
+        assertThat(slots.tryAcquire("closed", "1")).isEmpty();
     }
 
     @Test
@@ -64,6 +63,6 @@ class ReplicaRetainedEpochTest {
         var token = slots.beginQuiesce();
         assertThat(slots.resumeRetained(token, token.admissionEpoch())).isFalse();
         assertThat(slots.occupied()).containsExactly(old);
-        assertThat(slots.tryAcquire("closed", "1", token.admissionEpoch())).isEmpty();
+        assertThat(slots.tryAcquire("closed", "1")).isEmpty();
     }
 }

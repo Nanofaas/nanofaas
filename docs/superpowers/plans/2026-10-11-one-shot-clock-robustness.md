@@ -10,6 +10,8 @@
 
 **Spec:** [Architecture proposal](../specs/2026-10-11-one-shot-clock-robustness-design-draft.md). This is an extension of [the approved campaign plan](2026-10-10-one-shot-multifunction-multipass.md), whose Tasks6/7 remain outstanding.
 
+**Review correction:** The [remediation plan](2026-10-11-one-shot-review-remediation.md) supersedes request-bound admission epochs and local early termination. Accepted queue entries retain their local destination and execute against the new allocation. The user selected a fixed number of auction rounds, explicitly distinguished from convergence. Historical Task 1 verification is not acceptance of its former queue semantics.
+
 ## Global constraints
 
 - Keep five edge nodes, one terminal cloud, two triangles, five Rust functions, strict64MiB/swap0/c1, nine360s load windows and all planned-original denominators.
@@ -22,7 +24,7 @@
 
 ## Review focus
 
-- A queued route selected before retirement must not dispatch after capacity is reused (Task1).
+- A queued route selected before retirement must execute with the current allocation, without a new routing decision; already executing requests retain their own physical slots (Task1 correction).
 - Late physical completion after a timeout must retain its slot until matching release proof (Task1).
 - Lost READY_ACK and partial preparation must not expose an unreserved route or replenish quotas (Task3).
 - A late/restarted peer must not resurrect a previous session, incarnation or retired grant (Task2/3).

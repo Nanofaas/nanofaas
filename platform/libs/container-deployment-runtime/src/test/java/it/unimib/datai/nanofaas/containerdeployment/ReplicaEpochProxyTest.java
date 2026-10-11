@@ -19,31 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ReplicaEpochProxyTest {
     @Test
-    void oldDispatchCannotReachSameWarmBackendAfterEpochTransition() throws Exception {
-        var calls = new AtomicInteger();
-        var server = backend(calls, new AtomicBoolean(true), 200);
-        try (var client = HttpClient.newHttpClient();
-             var proxy = new RoundRobinFunctionProxy("127.0.0.1", 2, Duration.ofSeconds(2))) {
-            String backend = "http://127.0.0.1:" + server.getAddress().getPort();
-            proxy.enablePhysicalSlots();
-            proxy.updateBackends(List.of(backend));
-            var initial = proxy.beginQuiesce();
-            assertThat(proxy.resume(initial, initial.admissionEpoch())).isTrue();
-            assertThat(invoke(client, proxy.endpointUrl(), "first", initial.admissionEpoch()).statusCode()).isEqualTo(200);
-            var next = proxy.beginQuiesce();
-            assertThat(proxy.awaitQuiesced(Duration.ofSeconds(2))).isTrue();
-            assertThat(proxy.resume(next, next.admissionEpoch())).isTrue();
-            assertThat(invoke(client, proxy.endpointUrl(), "late", initial.admissionEpoch()).statusCode()).isEqualTo(503);
-            assertThat(invoke(client, proxy.endpointUrl(), "unfenced", null).statusCode()).isEqualTo(503);
-            assertThat(calls.get()).isEqualTo(1);
-            assertThat(invoke(client, proxy.endpointUrl(), "second", next.admissionEpoch()).statusCode()).isEqualTo(200);
-            assertThat(calls.get()).isEqualTo(2);
-        } finally {
-            server.stop(0);
-        }
-    }
-
-    @Test
     void earlyErrorCannotAuthorizeResumeUntilPhysicalProofArrives() throws Exception {
         var calls = new AtomicInteger();
         var released = new AtomicBoolean();

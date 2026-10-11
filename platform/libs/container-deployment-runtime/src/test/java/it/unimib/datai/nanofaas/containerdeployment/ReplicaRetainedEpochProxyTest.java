@@ -35,9 +35,8 @@ class ReplicaRetainedEpochProxyTest {
             assertThat(proxy.awaitQuiesced(Duration.ofMillis(100))).isFalse();
             assertThat(proxy.resume(next, next.admissionEpoch())).isFalse();
             assertThat(proxy.resumeRetained(next, next.admissionEpoch())).isTrue();
-            assertThat(invoke(client, proxy.endpointUrl(), "stale", initial.admissionEpoch()).statusCode()).isEqualTo(503);
-            assertThat(calls.get()).isEqualTo(1);
-            assertThat(invoke(client, proxy.endpointUrl(), "new", next.admissionEpoch()).statusCode()).isEqualTo(200);
+            // Work accepted before rotation may use the free replica of the current pool.
+            assertThat(invoke(client, proxy.endpointUrl(), "queued-before-rotation", initial.admissionEpoch()).statusCode()).isEqualTo(200);
             assertThat(calls.get()).isEqualTo(2);
             var retirement = proxy.beginQuiesce();
             assertThat(proxy.awaitQuiesced(Duration.ofMillis(100))).isFalse();

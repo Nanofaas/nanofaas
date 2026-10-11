@@ -63,8 +63,7 @@ final class ExecutionInputResources {
                 physicalTask = new InvocationTask(
                         source.executionId(), source.functionName(), source.functionSpec(),
                         canonical.materializeRequest(), source.idempotencyKey(), source.traceId(),
-                        source.enqueuedAt(), source.attempt(), source.kind(), source.dispatchLease(), null,
-                        source.replicaAdmissionEpoch());
+                        source.enqueuedAt(), source.attempt(), source.kind(), source.dispatchLease());
             }
             return new ExecutionRecord.PhysicalInput(physicalTask, shared, copy);
         } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too

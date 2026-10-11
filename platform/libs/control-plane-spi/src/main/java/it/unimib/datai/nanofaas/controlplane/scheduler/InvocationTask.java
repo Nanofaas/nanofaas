@@ -18,22 +18,8 @@ public record InvocationTask(
         int attempt,
         InvocationKind kind,
         DispatchOwnership dispatchLease,
-        QueuedInputLease queuedInputLease,
-        String replicaAdmissionEpoch
+        QueuedInputLease queuedInputLease
 ) {
-    public InvocationTask {
-        if (replicaAdmissionEpoch != null && (replicaAdmissionEpoch.isBlank() || replicaAdmissionEpoch.length() > 256)) {
-            throw new IllegalArgumentException("bounded replica admission identity required");
-        }
-    }
-
-    public InvocationTask(String executionId, String functionName, FunctionSpec functionSpec,
-                          InvocationRequest request, String idempotencyKey, String traceId,
-                          Instant enqueuedAt, int attempt, InvocationKind kind,
-                          DispatchOwnership dispatchLease, QueuedInputLease queuedInputLease) {
-        this(executionId, functionName, functionSpec, request, idempotencyKey, traceId,
-                enqueuedAt, attempt, kind, dispatchLease, queuedInputLease, null);
-    }
     public InvocationTask(String executionId, String functionName, FunctionSpec functionSpec,
                           InvocationRequest request, String idempotencyKey, String traceId,
                           Instant enqueuedAt, int attempt, InvocationKind kind) {
@@ -51,17 +37,12 @@ public record InvocationTask(
 
     public InvocationTask withDispatchLease(DispatchOwnership lease) {
         return new InvocationTask(executionId, functionName, functionSpec, request,
-                idempotencyKey, traceId, enqueuedAt, attempt, kind, lease, queuedInputLease, replicaAdmissionEpoch);
+                idempotencyKey, traceId, enqueuedAt, attempt, kind, lease, queuedInputLease);
     }
 
     public InvocationTask withQueuedInputLease(QueuedInputLease lease) {
         return new InvocationTask(executionId, functionName, functionSpec, request,
-                idempotencyKey, traceId, enqueuedAt, attempt, kind, dispatchLease, lease, replicaAdmissionEpoch);
-    }
-
-    public InvocationTask withReplicaAdmissionEpoch(String admissionEpoch) {
-        return new InvocationTask(executionId, functionName, functionSpec, request,
-                idempotencyKey, traceId, enqueuedAt, attempt, kind, dispatchLease, queuedInputLease, admissionEpoch);
+                idempotencyKey, traceId, enqueuedAt, attempt, kind, dispatchLease, lease);
     }
 
     public void releaseQueuedInput() {

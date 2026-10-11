@@ -4,6 +4,14 @@ Status: draft for architecture review, not implemented, not qualified, not a
 replacement for the approved campaign. UTC thresholds and frozen v11 artifacts
 have not been changed. No new physical campaign has started.
 
+Review correction: the user specified that accepted local queue entries execute
+against the new allocation, preserving their chosen local destination. An old
+arrival epoch must not invalidate them. Receiver-issued capabilities authorize
+pool management; they are not per-request queue-lifetime tokens. The user also
+selected fixed-count auction rounds rather than distributed global termination.
+These decisions supersede conflicting queued-permit and convergence passages
+below; implementation is tracked in the review-remediation plan.
+
 ## Intent and scope
 
 The user requires robustness to unsynchronized clocks in realistic edge nodes.

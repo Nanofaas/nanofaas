@@ -71,11 +71,7 @@ public class ExecutionRecord {
     private it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute plannedRoute;
     private String executionNode;
     public synchronized void pinPlannedRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute route) {
-        if(plannedRoute!=null && !plannedRoute.equals(route)) throw new IllegalStateException("execution route already pinned");
-        if (route != null && route.kind() == it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL) {
-            task = task.withReplicaAdmissionEpoch(route.replicaAdmissionEpoch());
-        }
-        plannedRoute=route;
+        if(plannedRoute!=null && !plannedRoute.equals(route)) throw new IllegalStateException("execution route already pinned");plannedRoute=route;
     }
     public synchronized it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute plannedRoute() { return plannedRoute; }
     public synchronized String executionNode() { return executionNode; }
@@ -366,8 +362,7 @@ public class ExecutionRecord {
         if (!canTransition(ExecutionState.QUEUED)) {
             return;
         }
-        this.task = plannedRoute != null && plannedRoute.kind() == it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL
-                ? retryTask.withReplicaAdmissionEpoch(plannedRoute.replicaAdmissionEpoch()) : retryTask;
+        this.task = retryTask;
         this.state = ExecutionState.QUEUED;
         this.startedAt = null;
         this.finishedAt = null;

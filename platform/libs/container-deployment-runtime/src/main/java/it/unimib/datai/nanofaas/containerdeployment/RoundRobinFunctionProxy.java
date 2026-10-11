@@ -355,8 +355,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                     if(id==null || id.isBlank() || id.length()>256) { send(exchange,400,"Execution identity required".getBytes(StandardCharsets.UTF_8)); return; }
                     String attempt=exchange.getRequestHeaders().getFirst("X-Dispatch-Attempt");
                     if(attempt==null) { attempt=java.util.UUID.randomUUID().toString(); exchange.getRequestHeaders().set("X-Dispatch-Attempt",attempt); }
-                    String epoch = exchange.getRequestHeaders().getFirst("X-NanoFaaS-Replica-Epoch");
-                    lease=replicaSlots.tryAcquire(id,attempt,epoch).orElse(null);
+                    lease=replicaSlots.tryAcquire(id,attempt).orElse(null);
                     if(lease==null) { send(exchange,503,BUSY); return; }
                     backend=lease.backend();
                 } else backend=selectBackend(currentBackends);

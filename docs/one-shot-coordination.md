@@ -129,15 +129,18 @@ For unchanged allocations, the container proxy also exposes an explicit retained
 admission rotation. It consumes the same receiver-issued one-use capability and
 rejects changed membership/incarnations or permanently draining backends. It
 preserves occupied physical leases: new-epoch invocations can acquire only free
-slots, and old-epoch dispatches are rejected. This operation does not authorize
+slots. Accepted local queue entries use the allocation open at dispatch time,
+including entries admitted in a previous epoch. This operation does not authorize
 container removal or resource reassignment; those still require positive physical
 release and the strict quiesce/resume path. The managed container provider and replica controller now expose the same
 operations through SPI capabilities bound to the exact writer lease and deployment.
 Renewal/replacement makes old wrappers stale; expiry during provider calls leaves
 admission closed and physical ownership retained. Unsupported providers cannot
-issue a capability. LOCAL routes now pin the receiver-issued admission identity into the internal task
-before publication to queues. Dispatch/queue copies, materialized input and
-internal retries preserve that identity; the managed HTTP dispatcher sets the
-private header exclusively from the task, overriding any client default. A
-request queued before retirement therefore cannot acquire the successor epoch
-implicitly. The logical epoch protocol integration remains pending.
+issue a capability. These capabilities authorize pool management only; they are
+not attached to LOCAL routes or queued invocation tasks. Routing happens before
+local admission and is preserved across the allocation change. Queue entries
+are neither rerouted nor rejected merely because their arrival epoch ended.
+Requests already executing retain their physical leases until matching release
+proof. Validation of newly arriving remote assignments remains a separate
+admission decision before they enter the destination's local queue.
+The logical epoch protocol integration remains pending.

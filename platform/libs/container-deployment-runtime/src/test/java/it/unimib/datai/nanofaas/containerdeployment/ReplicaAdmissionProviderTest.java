@@ -25,7 +25,7 @@ class ReplicaAdmissionProviderTest {
         assertThat(fixture.provider.resumeReplicas("f", token, token.admissionEpoch())).isFalse();
         assertThat(fixture.provider.resumeRetainedReplicas("f", token, token.admissionEpoch())).isTrue();
         assertThat(fixture.proxy.slots.occupied()).containsExactly(old);
-        assertThat(fixture.proxy.slots.tryAcquire("full", "1", token.admissionEpoch())).isEmpty();
+        assertThat(fixture.proxy.slots.tryAcquire("full", "1")).isEmpty();
         assertThat(fixture.provider.resumeRetainedReplicas("f", token, token.admissionEpoch())).isFalse();
         verify(fixture.adapter, times(1)).runContainer(any());
         verify(fixture.adapter, never()).removeContainer(anyString());
@@ -53,7 +53,7 @@ class ReplicaAdmissionProviderTest {
         assertThat(fixture.provider.resumeRetainedReplicas("f", token, "invented")).isFalse();
         fixture.provider.setReplicas("f", 2);
         assertThat(fixture.provider.resumeRetainedReplicas("f", token, token.admissionEpoch())).isFalse();
-        assertThat(fixture.proxy.slots.tryAcquire("closed", "1", token.admissionEpoch())).isEmpty();
+        assertThat(fixture.proxy.slots.tryAcquire("closed", "1")).isEmpty();
         var fresh = fixture.provider.pauseReplicaAdmission("f").orElseThrow();
         assertThat(fixture.provider.resumeRetainedReplicas("f", fresh, fresh.admissionEpoch())).isTrue();
     }
