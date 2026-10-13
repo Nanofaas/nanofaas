@@ -1,0 +1,116 @@
+# Copertura della revisione applicata
+
+Inventario aggiornato del perimetro dell’esperimento. `reviewed` indica revisione del sorgente/contratto raggiunto e delle regressioni; il campo `scope` delimita i rami. `not-on-observation-path` identifica percorsi conservati, controllati alla frontiera con l’osservazione, senza applicarne i gate. Non è una certificazione di tutto NanoFaaS o di tutte le librerie di terze parti. SHA-256 per file in `coverage.json`.
+
+Riferimento esterno immutato: `run_faasmadea` (compute_residual_capacity, define_bids, evaluate_bids senza replacement/tentative replicas, start_additional_replicas), `models.local_sp.try_solve_local`, costruttori LSP/LSPr_x e `plasma.core.sbm.minimize_replica_costs`; contratti e test della taratura. Non si modifica né si ricertifica l’intero progetto di riferimento.
+
+Dipendenze di ownership lette: adapter VM Sonata/Multipass, compensation, provider/orchestrator NanoLab, bootstrap e staging ricette. Versioni e byte Python di sonata-engine, sonata-tasks, multipass-vm-sdk e subprocess-toolkit entrano nel freeze. Numpy/Pyomo/httpx/Pydantic restano librerie esterne, verificate tramite i contratti usati.
+
+| Repo/file | Stato | Ambito |
+|---|---|---|
+| NanoLab: `packages/nanolab/src/nanolab/assets/k6/one-shot.js` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/one-shot/contracts/examples/synthetic-profile.json` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/one-shot/contracts/examples/workflow-test-config.json` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/one-shot/contracts/forecast.schema.json` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/one-shot/contracts/provenance.json` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/one-shot/contracts/run-events.schema.json` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/one-shot/contracts/service-profile.schema.json` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/one-shot/probe.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/one-shot/profile-set.schema.json` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/presets/recipes/one-shot-multifunction-jvm.yaml` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/presets/scenarios/one-shot-multifunction-calibration.yaml` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/presets/scenarios/one-shot-multifunction-pilot.yaml` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/assets/presets/scenarios/one-shot-multifunction-qualification.yaml` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/config/one_shot.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/__init__.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/campaign.py` | reviewed | Lettura del denominatore e aggregazione richiamati dal report; pianificazione paired/power non eseguita dall’osservazione. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/capacity.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/client.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/contracts.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/host_cpu.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/infrastructure.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/models.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/profiles.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/report.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/returned_errors.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/supervision.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/topology.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/vm_resources.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/one_shot/vm_sampler.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/plans/one_shot_calibration.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/plans/one_shot_common.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/plans/one_shot_experiment.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/plans/one_shot_observation.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/plans/one_shot_qualification.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/components/bootstrap.py` | reviewed | Ramo raggiunto: pianificazione bootstrap base e retarget Multipass; rami Kubernetes/Azure non eseguiti. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/infra/ansible_assets/playbooks/provision-base.yml` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/__init__.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/artifacts.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/calibration.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/capacity.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/clock.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/conservation.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/experiment.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/images.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/logging.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/observation.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/preflight.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/qualification.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/qualification_load.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/resources.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/statistics.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/timing.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/trace.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/verification.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/one_shot/workload.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/provisioning/bootstrap.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/provisioning/providers.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/provisioning/resources.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/recipes/workflow.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/vm/models.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/tasks/vm/orchestrator.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `packages/nanolab/src/nanolab/workspace/recipe.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `scripts/one-shot-function-memory.py` | reviewed | Script riutilizzabile di configurazione memoria; quote CPU invariate, pool e funzioni verificati offline. |
+| NanoLab: `scripts/one-shot-logging-overhead.py` | not-on-observation-path | Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run. |
+| NanoLab: `scripts/one-shot-observe.py` | reviewed | Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali. |
+| NanoLab: `scripts/one-shot-tune-load.py` | reviewed | Taratura offline: unità rate/quantum, RAM eterogenea, otto round, solver Python originale, conservazione e copertura P2P/cloud; sette test del riferimento. |
+| NanoFaaS: `sdks/rust/src/bounded.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/callback.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/context.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/dispatcher.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/handler.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/invoke.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/lib.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/limits.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/logging.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/metrics.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/occupancy.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/runtime.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/server.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/settings.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `sdks/rust/src/types.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `functions/rust/one-shot-workload/src/lib.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `functions/rust/one-shot-workload/src/main.rs` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `functions/rust/one-shot-arithmetic/function.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `functions/rust/one-shot-matrix/function.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `functions/rust/one-shot-memory/function.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `functions/rust/one-shot-mixed/function.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `functions/rust/one-shot-sort/function.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `functions/rust/one-shot-workload/function.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `functions/rust/one-shot-workload/Dockerfile` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `deploy/observability/README.md` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `deploy/observability/compose.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `deploy/observability/fluent-bit.conf` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `deploy/observability/grafana-datasources.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `deploy/observability/loki.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `deploy/observability/parsers.conf` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ActiveRoutingPlan.java` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/AllocationTransition.java` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotConfigurationStore.java` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotController.java` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotOperations.java` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotSettings.java` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/coordination/EpochSettings.java` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |
+| NanoFaaS: `platform/modules/offload/openapi.yaml` | reviewed | Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni. |

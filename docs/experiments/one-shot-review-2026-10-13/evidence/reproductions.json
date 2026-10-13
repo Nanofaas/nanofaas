@@ -1,0 +1,20 @@
+{
+  "actualConfigureOracleArguments": {
+    "leadSeconds": 8,
+    "preparationSeconds": 10
+  },
+  "supervisorFinalError": "injected status disk failure",
+  "supervisorWriteFailure": {
+    "actionContinued": true,
+    "uncaughtThreadErrors": [
+      "injected status disk failure"
+    ]
+  },
+  "missingControlPlaneWithUnrelatedReadError": "not detected",
+  "sonataWorkflowClass": "<class 'sonata_engine.core.workflow.Workflow'>",
+  "archivedObservationResourceGraphs": {
+    "vmTelemetryField": null,
+    "resourceFigureCalls": 0,
+    "rawFiles": 6
+  }
+}

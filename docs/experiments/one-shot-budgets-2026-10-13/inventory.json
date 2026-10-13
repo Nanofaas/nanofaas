@@ -1,0 +1,1266 @@
+{
+  "atUtc": "2026-10-13T04:19:25.417356+00:00",
+  "scope": "one-shot and NanoLab workflow; broad production code matches are search evidence, not a claim that every match is an enforced budget",
+  "effectiveNextPreparation": {
+    "leadSeconds": 14.0,
+    "maxArrivalLatenessSeconds": 3600,
+    "maxAuctionFraction": 0.2,
+    "maxOperationalFraction": 0.2,
+    "observerPrecheckSeconds": 60,
+    "oracleLifetimeBasis": "warmup + schedule setup + all epochs + existing generator drain",
+    "oracleMaxAgeSeconds": 4110,
+    "performanceAcceptanceGates": false,
+    "periodSeconds": 360,
+    "protocol": {
+      "auctionSeconds": 4.0,
+      "peerSeconds": 0.15,
+      "solverSeconds": 0.15,
+      "preparationSeconds": 10.0,
+      "maxRounds": 8,
+      "parallelism": 4,
+      "maxPeers": 16,
+      "queueCapacity": 64,
+      "maxSolverStates": 2000000,
+      "maxSolverBytes": 67108864
+    },
+    "purpose": "operator-declared-protocol-not-timing-qualification",
+    "qualified": false,
+    "requireNoSwap": false
+  },
+  "nodes": [
+    {
+      "id": "edge-1",
+      "kind": "edge",
+      "cpus": 1,
+      "memoryMiB": 2048,
+      "diskGiB": 20,
+      "memoryCapacityMiB": 832,
+      "functionLimits": {
+        "one-shot-arithmetic-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 64,
+          "maxReplicas": 13
+        },
+        "one-shot-matrix-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 128,
+          "maxReplicas": 6
+        },
+        "one-shot-memory-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 256,
+          "maxReplicas": 3
+        },
+        "one-shot-mixed-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 256,
+          "maxReplicas": 3
+        },
+        "one-shot-sort-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 128,
+          "maxReplicas": 6
+        }
+      }
+    },
+    {
+      "id": "edge-2",
+      "kind": "edge",
+      "cpus": 1,
+      "memoryMiB": 3072,
+      "diskGiB": 20,
+      "memoryCapacityMiB": 832,
+      "functionLimits": {
+        "one-shot-arithmetic-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 64,
+          "maxReplicas": 13
+        },
+        "one-shot-matrix-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 128,
+          "maxReplicas": 6
+        },
+        "one-shot-memory-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 256,
+          "maxReplicas": 3
+        },
+        "one-shot-mixed-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 256,
+          "maxReplicas": 3
+        },
+        "one-shot-sort-rust": {
+          "cpu": 0.1,
+          "memoryMiB": 128,
+          "maxReplicas": 6
+        }
+      }
+    },
+    {
+      "id": "edge-3",
+      "kind": "edge",
+      "cpus": 2,
+      "memoryMiB": 3072,
+      "diskGiB": 20,
+      "memoryCapacityMiB": 1664,
+      "functionLimits": {
+        "one-shot-arithmetic-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 64,
+          "maxReplicas": 26
+        },
+        "one-shot-matrix-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 128,
+          "maxReplicas": 13
+        },
+        "one-shot-memory-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 256,
+          "maxReplicas": 6
+        },
+        "one-shot-mixed-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 256,
+          "maxReplicas": 6
+        },
+        "one-shot-sort-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 128,
+          "maxReplicas": 13
+        }
+      }
+    },
+    {
+      "id": "edge-4",
+      "kind": "edge",
+      "cpus": 2,
+      "memoryMiB": 4096,
+      "diskGiB": 20,
+      "memoryCapacityMiB": 1664,
+      "functionLimits": {
+        "one-shot-arithmetic-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 64,
+          "maxReplicas": 26
+        },
+        "one-shot-matrix-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 128,
+          "maxReplicas": 13
+        },
+        "one-shot-memory-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 256,
+          "maxReplicas": 6
+        },
+        "one-shot-mixed-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 256,
+          "maxReplicas": 6
+        },
+        "one-shot-sort-rust": {
+          "cpu": 0.14,
+          "memoryMiB": 128,
+          "maxReplicas": 13
+        }
+      }
+    },
+    {
+      "id": "edge-5",
+      "kind": "edge",
+      "cpus": 3,
+      "memoryMiB": 6144,
+      "diskGiB": 20,
+      "memoryCapacityMiB": 2496,
+      "functionLimits": {
+        "one-shot-arithmetic-rust": {
+          "cpu": 0.16,
+          "memoryMiB": 64,
+          "maxReplicas": 39
+        },
+        "one-shot-matrix-rust": {
+          "cpu": 0.16,
+          "memoryMiB": 128,
+          "maxReplicas": 19
+        },
+        "one-shot-memory-rust": {
+          "cpu": 0.16,
+          "memoryMiB": 256,
+          "maxReplicas": 9
+        },
+        "one-shot-mixed-rust": {
+          "cpu": 0.16,
+          "memoryMiB": 256,
+          "maxReplicas": 9
+        },
+        "one-shot-sort-rust": {
+          "cpu": 0.16,
+          "memoryMiB": 128,
+          "maxReplicas": 19
+        }
+      }
+    },
+    {
+      "id": "cloud",
+      "kind": "cloud",
+      "cpus": 8,
+      "memoryMiB": 12288,
+      "diskGiB": 20,
+      "memoryCapacityMiB": 5824,
+      "functionLimits": {
+        "one-shot-arithmetic-rust": {
+          "cpu": 0.21,
+          "memoryMiB": 64,
+          "maxReplicas": 91
+        },
+        "one-shot-matrix-rust": {
+          "cpu": 0.21,
+          "memoryMiB": 128,
+          "maxReplicas": 45
+        },
+        "one-shot-memory-rust": {
+          "cpu": 0.21,
+          "memoryMiB": 256,
+          "maxReplicas": 22
+        },
+        "one-shot-mixed-rust": {
+          "cpu": 0.21,
+          "memoryMiB": 256,
+          "maxReplicas": 22
+        },
+        "one-shot-sort-rust": {
+          "cpu": 0.21,
+          "memoryMiB": 128,
+          "maxReplicas": 45
+        }
+      }
+    }
+  ],
+  "functions": {
+    "one-shot-arithmetic-rust": {
+      "input": {
+        "iterations": 100000000,
+        "seed": 7
+      },
+      "cpu": 0.1,
+      "memoryMiB": 64,
+      "maxReplicas": 13,
+      "utilization": 0.8,
+      "alpha": 1,
+      "delta": 0.9,
+      "gamma": 0.1
+    },
+    "one-shot-matrix-rust": {
+      "input": {
+        "dimension": 96,
+        "repetitions": 160,
+        "seed": 17
+      },
+      "cpu": 0.1,
+      "memoryMiB": 128,
+      "maxReplicas": 6,
+      "utilization": 0.8,
+      "alpha": 1,
+      "delta": 0.9,
+      "gamma": 0.1
+    },
+    "one-shot-memory-rust": {
+      "input": {
+        "passes": 16,
+        "seed": 13,
+        "working_set_bytes": 25165824
+      },
+      "cpu": 0.1,
+      "memoryMiB": 256,
+      "maxReplicas": 3,
+      "utilization": 0.8,
+      "alpha": 1,
+      "delta": 0.9,
+      "gamma": 0.1
+    },
+    "one-shot-mixed-rust": {
+      "input": {
+        "arithmetic_iterations": 50000000,
+        "matrix_dimension": 96,
+        "matrix_repetitions": 32,
+        "memory_passes": 8,
+        "seed": 19,
+        "sort_items": 65536,
+        "sort_passes": 16,
+        "working_set_bytes": 12582912
+      },
+      "cpu": 0.1,
+      "memoryMiB": 256,
+      "maxReplicas": 3,
+      "utilization": 0.8,
+      "alpha": 1,
+      "delta": 0.9,
+      "gamma": 0.1
+    },
+    "one-shot-sort-rust": {
+      "input": {
+        "items": 131072,
+        "passes": 64,
+        "seed": 11
+      },
+      "cpu": 0.1,
+      "memoryMiB": 128,
+      "maxReplicas": 6,
+      "utilization": 0.8,
+      "alpha": 1,
+      "delta": 0.9,
+      "gamma": 0.1
+    }
+  },
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "endpoint": "http://10.83.80.1:43100/loki/api/v1/push",
+      "image": "fluent/fluent-bit:5.1.3",
+      "cpu": 0.1,
+      "memoryMiB": 64,
+      "bufferMiB": 256,
+      "campaignId": "multifunction-one-shot",
+      "environment": "local",
+      "backendOwned": true,
+      "backendBind": "10.83.80.1",
+      "exportLimit": 5000
+    },
+    "vmResourceOverhead": null
+  },
+  "calibration": {
+    "minSamples": 50,
+    "maxSamples": 200,
+    "repetitions": 3,
+    "warmupInvocations": 3,
+    "relativeCI": 0.15,
+    "confidence": 0.95,
+    "capacityError": 0.15,
+    "capacitySeconds": 60.0,
+    "timeoutSeconds": 30.0,
+    "quantiles": [
+      0.5,
+      0.95
+    ]
+  },
+  "timing": {
+    "periodCandidatesSeconds": [
+      360.0
+    ],
+    "maxTraceResolutionSeconds": 360.0,
+    "minSamples": 50,
+    "quantile": 0.95,
+    "marginSeconds": 0.2,
+    "readyMarginSeconds": 0.3,
+    "epsilon": 0.05,
+    "measurementLeadSeconds": 8.0,
+    "maxCensoredFraction": 0,
+    "protocol": {
+      "auctionSeconds": 4.0,
+      "peerSeconds": 0.15,
+      "solverSeconds": 0.15,
+      "preparationSeconds": 10.0,
+      "maxRounds": 8,
+      "parallelism": 4,
+      "maxPeers": 16,
+      "queueCapacity": 64,
+      "maxSolverStates": 2000000,
+      "maxSolverBytes": 67108864
+    },
+    "matrix": [
+      {
+        "id": "opening-edge-2",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 2.0,
+            "one-shot-matrix-rust": 0.45,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.6,
+            "one-shot-matrix-rust": 0.7,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.45
+          }
+        },
+        "network": "observed-local"
+      },
+      {
+        "id": "hotspot-edge-5",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 6.0,
+            "one-shot-matrix-rust": 3.3,
+            "one-shot-memory-rust": 1.8,
+            "one-shot-mixed-rust": 6.3,
+            "one-shot-sort-rust": 3.75
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.6,
+            "one-shot-matrix-rust": 0.75,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.5
+          }
+        },
+        "network": "observed-local"
+      },
+      {
+        "id": "hotspot-edge-1",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 7.95,
+            "one-shot-matrix-rust": 1.9,
+            "one-shot-memory-rust": 1.1,
+            "one-shot-mixed-rust": 1.65,
+            "one-shot-sort-rust": 2.25
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.65,
+            "one-shot-matrix-rust": 0.75,
+            "one-shot-memory-rust": 0.3,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.5
+          }
+        },
+        "network": "observed-local"
+      },
+      {
+        "id": "hotspot-edge-2",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 2.3,
+            "one-shot-matrix-rust": 1.25,
+            "one-shot-memory-rust": 0.7,
+            "one-shot-mixed-rust": 1.1,
+            "one-shot-sort-rust": 3.55
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.7,
+            "one-shot-matrix-rust": 0.8,
+            "one-shot-memory-rust": 0.3,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          }
+        },
+        "network": "observed-local"
+      },
+      {
+        "id": "hotspot-edge-3",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 5.0,
+            "one-shot-matrix-rust": 3.0,
+            "one-shot-memory-rust": 3.65,
+            "one-shot-mixed-rust": 2.35,
+            "one-shot-sort-rust": 3.35
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.7,
+            "one-shot-matrix-rust": 0.85,
+            "one-shot-memory-rust": 0.3,
+            "one-shot-mixed-rust": 0.45,
+            "one-shot-sort-rust": 0.55
+          }
+        },
+        "network": "observed-local"
+      },
+      {
+        "id": "hotspot-edge-4",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 6.85,
+            "one-shot-matrix-rust": 8.75,
+            "one-shot-memory-rust": 2.1,
+            "one-shot-mixed-rust": 3.2,
+            "one-shot-sort-rust": 4.45
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.85,
+            "one-shot-memory-rust": 0.35,
+            "one-shot-mixed-rust": 0.45,
+            "one-shot-sort-rust": 0.6
+          }
+        },
+        "network": "observed-local"
+      },
+      {
+        "id": "two-triangles",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 1.75,
+            "one-shot-matrix-rust": 0.95,
+            "one-shot-memory-rust": 0.55,
+            "one-shot-mixed-rust": 0.8,
+            "one-shot-sort-rust": 2.65
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 5.1,
+            "one-shot-matrix-rust": 6.55,
+            "one-shot-memory-rust": 1.55,
+            "one-shot-mixed-rust": 2.4,
+            "one-shot-sort-rust": 3.35
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.35,
+            "one-shot-mixed-rust": 0.5,
+            "one-shot-sort-rust": 0.6
+          }
+        },
+        "network": "observed-local"
+      },
+      {
+        "id": "diffuse-subset",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 1.95,
+            "one-shot-matrix-rust": 0.45,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 2.5,
+            "one-shot-matrix-rust": 1.5,
+            "one-shot-memory-rust": 1.8,
+            "one-shot-mixed-rust": 1.15,
+            "one-shot-sort-rust": 1.65
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 4.5,
+            "one-shot-matrix-rust": 2.45,
+            "one-shot-memory-rust": 1.35,
+            "one-shot-mixed-rust": 4.75,
+            "one-shot-sort-rust": 2.8
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.8,
+            "one-shot-matrix-rust": 0.95,
+            "one-shot-memory-rust": 0.35,
+            "one-shot-mixed-rust": 0.5,
+            "one-shot-sort-rust": 0.65
+          }
+        },
+        "network": "observed-local"
+      },
+      {
+        "id": "closing-edge-5",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 4.5,
+            "one-shot-matrix-rust": 2.45,
+            "one-shot-memory-rust": 1.35,
+            "one-shot-mixed-rust": 2.05,
+            "one-shot-sort-rust": 6.55
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 1.0,
+            "one-shot-memory-rust": 0.35,
+            "one-shot-mixed-rust": 0.5,
+            "one-shot-sort-rust": 0.65
+          }
+        },
+        "network": "observed-local"
+      }
+    ]
+  },
+  "experiment": {
+    "windows": [
+      {
+        "id": "opening-edge-2",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 2.0,
+            "one-shot-matrix-rust": 0.45,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.6,
+            "one-shot-matrix-rust": 0.7,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.45
+          }
+        },
+        "network": "observed-local",
+        "epochs": 1
+      },
+      {
+        "id": "hotspot-edge-5",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 6.0,
+            "one-shot-matrix-rust": 3.3,
+            "one-shot-memory-rust": 1.8,
+            "one-shot-mixed-rust": 6.3,
+            "one-shot-sort-rust": 3.75
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.6,
+            "one-shot-matrix-rust": 0.75,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.5
+          }
+        },
+        "network": "observed-local",
+        "epochs": 1
+      },
+      {
+        "id": "hotspot-edge-1",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 7.95,
+            "one-shot-matrix-rust": 1.9,
+            "one-shot-memory-rust": 1.1,
+            "one-shot-mixed-rust": 1.65,
+            "one-shot-sort-rust": 2.25
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.65,
+            "one-shot-matrix-rust": 0.75,
+            "one-shot-memory-rust": 0.3,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.5
+          }
+        },
+        "network": "observed-local",
+        "epochs": 1
+      },
+      {
+        "id": "hotspot-edge-2",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 2.3,
+            "one-shot-matrix-rust": 1.25,
+            "one-shot-memory-rust": 0.7,
+            "one-shot-mixed-rust": 1.1,
+            "one-shot-sort-rust": 3.55
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.7,
+            "one-shot-matrix-rust": 0.8,
+            "one-shot-memory-rust": 0.3,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          }
+        },
+        "network": "observed-local",
+        "epochs": 1
+      },
+      {
+        "id": "hotspot-edge-3",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 5.0,
+            "one-shot-matrix-rust": 3.0,
+            "one-shot-memory-rust": 3.65,
+            "one-shot-mixed-rust": 2.35,
+            "one-shot-sort-rust": 3.35
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.7,
+            "one-shot-matrix-rust": 0.85,
+            "one-shot-memory-rust": 0.3,
+            "one-shot-mixed-rust": 0.45,
+            "one-shot-sort-rust": 0.55
+          }
+        },
+        "network": "observed-local",
+        "epochs": 1
+      },
+      {
+        "id": "hotspot-edge-4",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 6.85,
+            "one-shot-matrix-rust": 8.75,
+            "one-shot-memory-rust": 2.1,
+            "one-shot-mixed-rust": 3.2,
+            "one-shot-sort-rust": 4.45
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.85,
+            "one-shot-memory-rust": 0.35,
+            "one-shot-mixed-rust": 0.45,
+            "one-shot-sort-rust": 0.6
+          }
+        },
+        "network": "observed-local",
+        "epochs": 1
+      },
+      {
+        "id": "two-triangles",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 1.75,
+            "one-shot-matrix-rust": 0.95,
+            "one-shot-memory-rust": 0.55,
+            "one-shot-mixed-rust": 0.8,
+            "one-shot-sort-rust": 2.65
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 5.1,
+            "one-shot-matrix-rust": 6.55,
+            "one-shot-memory-rust": 1.55,
+            "one-shot-mixed-rust": 2.4,
+            "one-shot-sort-rust": 3.35
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 1.65,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.5,
+            "one-shot-mixed-rust": 0.75,
+            "one-shot-sort-rust": 1.0
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.9,
+            "one-shot-memory-rust": 0.35,
+            "one-shot-mixed-rust": 0.5,
+            "one-shot-sort-rust": 0.6
+          }
+        },
+        "network": "observed-local",
+        "epochs": 1
+      },
+      {
+        "id": "diffuse-subset",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 1.95,
+            "one-shot-matrix-rust": 0.45,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 2.5,
+            "one-shot-matrix-rust": 1.5,
+            "one-shot-memory-rust": 1.8,
+            "one-shot-mixed-rust": 1.15,
+            "one-shot-sort-rust": 1.65
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 4.5,
+            "one-shot-matrix-rust": 2.45,
+            "one-shot-memory-rust": 1.35,
+            "one-shot-mixed-rust": 4.75,
+            "one-shot-sort-rust": 2.8
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.8,
+            "one-shot-matrix-rust": 0.95,
+            "one-shot-memory-rust": 0.35,
+            "one-shot-mixed-rust": 0.5,
+            "one-shot-sort-rust": 0.65
+          }
+        },
+        "network": "observed-local",
+        "epochs": 1
+      },
+      {
+        "id": "closing-edge-5",
+        "rates": {
+          "edge-1": {
+            "one-shot-arithmetic-rust": 0.2,
+            "one-shot-matrix-rust": 0.1,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-2": {
+            "one-shot-arithmetic-rust": 0.25,
+            "one-shot-matrix-rust": 0.15,
+            "one-shot-memory-rust": 0.05,
+            "one-shot-mixed-rust": 0.1,
+            "one-shot-sort-rust": 0.15
+          },
+          "edge-3": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 0.5,
+            "one-shot-memory-rust": 0.25,
+            "one-shot-mixed-rust": 0.4,
+            "one-shot-sort-rust": 0.55
+          },
+          "edge-4": {
+            "one-shot-arithmetic-rust": 0.75,
+            "one-shot-matrix-rust": 0.4,
+            "one-shot-memory-rust": 0.2,
+            "one-shot-mixed-rust": 0.35,
+            "one-shot-sort-rust": 0.5
+          },
+          "edge-5": {
+            "one-shot-arithmetic-rust": 4.5,
+            "one-shot-matrix-rust": 2.45,
+            "one-shot-memory-rust": 1.35,
+            "one-shot-mixed-rust": 2.05,
+            "one-shot-sort-rust": 6.55
+          },
+          "cloud": {
+            "one-shot-arithmetic-rust": 0.85,
+            "one-shot-matrix-rust": 1.0,
+            "one-shot-memory-rust": 0.35,
+            "one-shot-mixed-rust": 0.5,
+            "one-shot-sort-rust": 0.65
+          }
+        },
+        "network": "observed-local",
+        "epochs": 1
+      }
+    ],
+    "repetitions": 1,
+    "warmupSeconds": 720,
+    "warmupRate": 1.0,
+    "generatorVus": 512,
+    "maxArrivalLatenessSeconds": 3600.0,
+    "campaignProtocol": null,
+    "campaignBlock": null,
+    "failLoad": false
+  },
+  "priorFreezeFilesVerified": 451,
+  "priorFreezeSha256": "a143445a7e88c53f28db7fc82de75804f44bdcd9d50b58aa67b44aacdad54a66",
+  "campaignStarted": false,
+  "codeMatches": 6552,
+  "scriptSha256": "3bbb89d6fbccafc44879c1883157cf31cca1d200038a94d043ca2a9998222987"
+}

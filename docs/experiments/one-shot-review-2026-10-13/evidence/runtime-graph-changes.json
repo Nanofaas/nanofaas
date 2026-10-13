@@ -1,0 +1,838 @@
+{
+  "summary": {
+    "changed_count": 94,
+    "affected_count": 14,
+    "changed_files": 17,
+    "risk_level": "high"
+  },
+  "changed_symbols": [
+    {
+      "id": "Section:AGENTS.md:L1:Repository Guidelines",
+      "name": "Repository Guidelines",
+      "type": "Section",
+      "filePath": "AGENTS.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:AGENTS.md:L25:Operational Workflows",
+      "name": "Operational Workflows",
+      "type": "Section",
+      "filePath": "AGENTS.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/one-shot-coordination.md:L1:One-shot epoch coordination",
+      "name": "One-shot epoch coordination",
+      "type": "Section",
+      "filePath": "docs/one-shot-coordination.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/one-shot-coordination.md:L244:Automatic logical session initiation",
+      "name": "Automatic logical session initiation",
+      "type": "Section",
+      "filePath": "docs/one-shot-coordination.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/one-shot-coordination.md:L269:Observation readiness diagnostics",
+      "name": "Observation readiness diagnostics",
+      "type": "Section",
+      "filePath": "docs/one-shot-coordination.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/one-shot.md:L1:One-shot offload in NanoFaaS",
+      "name": "One-shot offload in NanoFaaS",
+      "type": "Section",
+      "filePath": "docs/one-shot.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/one-shot.md:L153:Real local cluster gate",
+      "name": "Real local cluster gate",
+      "type": "Section",
+      "filePath": "docs/one-shot.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/one-shot.md:L198:Automatic schedule grid",
+      "name": "Automatic schedule grid",
+      "type": "Section",
+      "filePath": "docs/one-shot.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/one-shot.md:L206:Incomplete confirmations during observation",
+      "name": "Incomplete confirmations during observation",
+      "type": "Section",
+      "filePath": "docs/one-shot.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md:L1:One-shot multi-funzione con round di sei minuti — Implementation Plan",
+      "name": "One-shot multi-funzione con round di sei minuti — Implementation Plan",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md:L13:Revisione dell'obiettivo concordata il 12 ottobre",
+      "name": "Revisione dell'obiettivo concordata il 12 ottobre",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md:L157:Revisione temporale richiesta l’11 ottobre: progetto in corso",
+      "name": "Revisione temporale richiesta l’11 ottobre: progetto in corso",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md:L164:Observation03 closure and autonomous supervision follow-up (12 October)",
+      "name": "Observation03 closure and autonomous supervision follow-up (12 October)",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-10-one-shot-multifunction-multipass-design.md:L1:Campagna one-shot Multipass con cinque funzioni e round sincronizzati",
+      "name": "Campagna one-shot Multipass con cinque funzioni e round sincronizzati",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-10-one-shot-multifunction-multipass-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-10-one-shot-multifunction-multipass-design.md:L9:Topologia e tempi",
+      "name": "Topologia e tempi",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-10-one-shot-multifunction-multipass-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:PlanActivation.desiredReplicas#0",
+      "name": "desiredReplicas",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:PlanActivation.diagnostics#0",
+      "name": "diagnostics",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:PlanActivation.plan#0",
+      "name": "plan",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:PlanActivation.preparedAt#0",
+      "name": "preparedAt",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:PlanActivation.readyReplicas#0",
+      "name": "readyReplicas",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:PlanActivation.reason#0",
+      "name": "reason",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:PlanActivation.status#0",
+      "name": "status",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Record:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:PlanActivation",
+      "name": "PlanActivation",
+      "type": "Record",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Enum:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:ConfirmationReason",
+      "name": "ConfirmationReason",
+      "type": "Enum",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.monotonicOffsetSeconds#0",
+      "name": "monotonicOffsetSeconds",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.observedAtUtc#0",
+      "name": "observedAtUtc",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.sessionId#0",
+      "name": "sessionId",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Record:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic",
+      "name": "AssignmentDiagnostic",
+      "type": "Record",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.assignmentId#0",
+      "name": "assignmentId",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.epoch#0",
+      "name": "epoch",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.function#0",
+      "name": "function",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.nodeId#0",
+      "name": "nodeId",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.round#0",
+      "name": "round",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.version#0",
+      "name": "version",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.buyerGeneration#0",
+      "name": "buyerGeneration",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.buyerId#0",
+      "name": "buyerId",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.buyerIncarnation#0",
+      "name": "buyerIncarnation",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.sellerGeneration#0",
+      "name": "sellerGeneration",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.confirmedQuantity#0",
+      "name": "confirmedQuantity",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.negotiatedQuantity#0",
+      "name": "negotiatedQuantity",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.sellerId#0",
+      "name": "sellerId",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.sellerIncarnation#0",
+      "name": "sellerIncarnation",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.ackReceived#0",
+      "name": "ackReceived",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.ackResponseReceived#0",
+      "name": "ackResponseReceived",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.ackSent#0",
+      "name": "ackSent",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.readyReceived#0",
+      "name": "readyReceived",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.reason#0",
+      "name": "reason",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:AssignmentDiagnostic.residualCloudRate#0",
+      "name": "residualCloudRate",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Constructor:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java:PlanActivation.PlanActivation#6",
+      "name": "PlanActivation",
+      "type": "Constructor",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator",
+      "name": "ReplicaPlanActuator",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation",
+      "name": "Preparation",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.deadline",
+      "name": "deadline",
+      "type": "Property",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.outcome",
+      "name": "outcome",
+      "type": "Property",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.snapshot",
+      "name": "snapshot",
+      "type": "Property",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.started",
+      "name": "started",
+      "type": "Property",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.lifecycle",
+      "name": "lifecycle",
+      "type": "Property",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.peerTimeout",
+      "name": "peerTimeout",
+      "type": "Property",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.remainingSends",
+      "name": "remainingSends",
+      "type": "Property",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.ackSent",
+      "name": "ackSent",
+      "type": "Property",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.sendResults",
+      "name": "sendResults",
+      "type": "Property",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Constructor:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:Preparation.Preparation#3",
+      "name": "Preparation",
+      "type": "Constructor",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:LogicalEpoch",
+      "name": "LogicalEpoch",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Constructor:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:LogicalEpoch.LogicalEpoch#3",
+      "name": "LogicalEpoch",
+      "type": "Constructor",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator.check#1",
+      "name": "check",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator.checkOwnershipAndWindow#1",
+      "name": "checkOwnershipAndWindow",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator.prepare#2",
+      "name": "prepare",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator.prepare#3",
+      "name": "prepare",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator.stageLogical#3",
+      "name": "stageLogical",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator.apply#1",
+      "name": "apply",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator.diagnostics#2",
+      "name": "diagnostics",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator.send#4",
+      "name": "send",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java:ReplicaPlanActuator.confirmationFailure#1",
+      "name": "confirmationFailure",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotController.java:OneShotController",
+      "name": "OneShotController",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotController.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotOperations.java:OneShotOperations",
+      "name": "OneShotOperations",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotOperations.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotOperations.java:OneShotOperations.prepareLogical#6",
+      "name": "prepareLogical",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotOperations.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotOperations.java:OneShotOperations.prepareFrozen#5",
+      "name": "prepareFrozen",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotOperations.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Record:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotSettings.java:OneShotSettings",
+      "name": "OneShotSettings",
+      "type": "Record",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotSettings.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Record:platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/coordination/EpochSettings.java:EpochSettings",
+      "name": "EpochSettings",
+      "type": "Record",
+      "filePath": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/coordination/EpochSettings.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalReadinessTest.java:LogicalReadinessTest",
+      "name": "LogicalReadinessTest",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalReadinessTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalReadinessTest.java:LogicalReadinessTest.sellerInstallsInboundBeforeAckAndLostReplyDoesNotInvalidateTheGrant#1",
+      "name": "sellerInstallsInboundBeforeAckAndLostReplyDoesNotInvalidateTheGrant",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalReadinessTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalReadinessTest.java:LogicalReadinessTest$1",
+      "name": "LogicalReadinessTest$1",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalReadinessTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalReadinessTest.java:LogicalReadinessTest$1.request#4",
+      "name": "request",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalReadinessTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReadinessObservationTest.java:ReadinessObservationTest",
+      "name": "ReadinessObservationTest",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReadinessObservationTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReadinessObservationTest.java:ReadinessObservationTest.confirmationDeadlineKeepsPublishedSafePlanAndCloudFallback#0",
+      "name": "confirmationDeadlineKeepsPublishedSafePlanAndCloudFallback",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReadinessObservationTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/LogicalOperationsTest.java:LogicalOperationsTest",
+      "name": "LogicalOperationsTest",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/LogicalOperationsTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/LogicalOperationsTest.java:Fixture",
+      "name": "Fixture",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/LogicalOperationsTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Constructor:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/LogicalOperationsTest.java:Fixture.Fixture#0",
+      "name": "Fixture",
+      "type": "Constructor",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/LogicalOperationsTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/ObservationSettingsTest.java:ObservationSettingsTest",
+      "name": "ObservationSettingsTest",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/ObservationSettingsTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/ObservationSettingsTest.java:ObservationSettingsTest.observationBudgetsPreserveResourcesAndRoundCount#0",
+      "name": "observationBudgetsPreserveResourcesAndRoundCount",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/ObservationSettingsTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java:OneShotTimingQualificationTest",
+      "name": "OneShotTimingQualificationTest",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Class:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java:Fixture",
+      "name": "Fixture",
+      "type": "Class",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Constructor:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java:Fixture.Fixture#1",
+      "name": "Fixture",
+      "type": "Constructor",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java:OneShotTimingQualificationTest.cannotEnableSchedulingDuringAnActiveManualPreparation#0",
+      "name": "cannotEnableSchedulingDuringAnActiveManualPreparation",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java:OneShotTimingQualificationTest.degradedAndDeadlineOutcomesRemainCensoredAndDoNotQualify#0",
+      "name": "degradedAndDeadlineOutcomesRemainCensoredAndDoNotQualify",
+      "type": "Method",
+      "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotTimingQualificationTest.java",
+      "change_type": "touched"
+    }
+  ],
+  "affected_processes": [
+    {
+      "id": "proc_43_prepare",
+      "name": "Prepare → AllowSynthetic",
+      "process_type": "cross_community",
+      "step_count": 7,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_44_prepare",
+      "name": "Prepare → EnvironmentFingerprint",
+      "process_type": "cross_community",
+      "step_count": 7,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_45_prepare",
+      "name": "Prepare → ProfileId",
+      "process_type": "cross_community",
+      "step_count": 7,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_46_prepare",
+      "name": "Prepare → Purpose",
+      "process_type": "cross_community",
+      "step_count": 7,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_97_prepare",
+      "name": "Prepare → ListRegistered",
+      "process_type": "cross_community",
+      "step_count": 6,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_98_prepare",
+      "name": "Prepare → Profile",
+      "process_type": "cross_community",
+      "step_count": 6,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_145_prepare",
+      "name": "Prepare → Frozen",
+      "process_type": "cross_community",
+      "step_count": 5,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_261_prepare",
+      "name": "Prepare → EndsAt",
+      "process_type": "cross_community",
+      "step_count": 4,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_262_prepare",
+      "name": "Prepare → StartsAt",
+      "process_type": "cross_community",
+      "step_count": 4,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_263_preparelogical",
+      "name": "PrepareLogical → Scheduled",
+      "process_type": "intra_community",
+      "step_count": 4,
+      "changed_steps": [
+        {
+          "symbol": "prepareLogical",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_264_preparelogical",
+      "name": "PrepareLogical → SchemaVersion",
+      "process_type": "intra_community",
+      "step_count": 4,
+      "changed_steps": [
+        {
+          "symbol": "prepareLogical",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_265_preparelogical",
+      "name": "PrepareLogical → SessionId",
+      "process_type": "intra_community",
+      "step_count": 4,
+      "changed_steps": [
+        {
+          "symbol": "prepareLogical",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_563_preparelogical",
+      "name": "PrepareLogical → Snapshot",
+      "process_type": "intra_community",
+      "step_count": 4,
+      "changed_steps": [
+        {
+          "symbol": "prepareLogical",
+          "step": 3
+        }
+      ]
+    },
+    {
+      "id": "proc_677_prepare",
+      "name": "Prepare → PublicView",
+      "process_type": "cross_community",
+      "step_count": 7,
+      "changed_steps": [
+        {
+          "symbol": "prepareFrozen",
+          "step": 3
+        }
+      ]
+    }
+  ]
+}
