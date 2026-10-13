@@ -196,7 +196,7 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                     meters.timer("nanofaas_oneshot_auction_seconds","status",outcome.status().name()).record(outcome.auctionNanos(),TimeUnit.NANOSECONDS);
                     if(outcome.status()!=EpochOutcome.Status.FIXED_ROUNDS_COMPLETED)
                         return Mono.just(new PlanActivation(PlanActivation.Status.FAILED,null,Map.of(),Map.of(),outcome.reason(),clock.instant()));
-                    return actuator.prepare(outcome,frozen.settings().preparationBudget());
+                    return actuator.prepare(outcome,frozen.settings().preparationBudget(),frozen.settings().negotiation().peerTimeout());
                 }).doOnNext(result-> {
                     long elapsed=nanos.getAsLong()-timing.startedNanos();
                     synchronized(this) {
@@ -261,7 +261,7 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                 meters.timer("nanofaas_oneshot_solver_seconds").record(outcome.solverNanos(),TimeUnit.NANOSECONDS);
                 meters.timer("nanofaas_oneshot_auction_seconds","status",outcome.status().name()).record(outcome.auctionNanos(),TimeUnit.NANOSECONDS);
                 if(outcome.status()!=EpochOutcome.Status.FIXED_ROUNDS_COMPLETED) return Mono.just(new PlanActivation(PlanActivation.Status.FAILED,null,Map.of(),Map.of(),outcome.reason(),Instant.now()));
-                return actuator.prepare(outcome,settings.preparationBudget());
+                return actuator.prepare(outcome,settings.preparationBudget(),settings.negotiation().peerTimeout());
             }).doOnNext(result-> {
                 recorded.set(true);long elapsed=System.nanoTime()-start;boolean censored=result.status()!=PlanActivation.Status.PREPARED;
                 lastState=result.status().name();var local=peers.localEndpoint().orElseThrow();events.record(local.peerId(),local.incarnation(),epoch,0,lastState,censored,elapsed,Instant.now());

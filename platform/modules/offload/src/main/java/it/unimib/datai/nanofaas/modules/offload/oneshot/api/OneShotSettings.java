@@ -27,7 +27,7 @@ public record OneShotSettings(int schemaVersion,String profileId,String environm
             || negotiation==null || maxSolverStates<1 || maxSolverStates>10000000 || maxSolverBytes<1 || maxSolverBytes>256L*1024*1024
             || memoryCapacityMiB<1 || memoryCapacityMiB>Integer.MAX_VALUE || !Double.isFinite(flowQuantum) || flowQuantum<=0 || period==null || period.isNegative() || period.isZero() || period.compareTo(Duration.ofHours(24))>0
             || leadTime==null || leadTime.isNegative() || leadTime.isZero() || leadTime.compareTo(period)>=0 || preparationBudget==null || preparationBudget.isNegative() || preparationBudget.isZero() || preparationBudget.compareTo(leadTime)>=0
-            || !Double.isFinite(maxOperationalFraction) || maxOperationalFraction<=0 || maxOperationalFraction>.2 || anchor==null || burst<1 || burst>1000 || functions==null || functions.isEmpty() || functions.size()>128)
+            || !Double.isFinite(maxOperationalFraction) || maxOperationalFraction<=0 || maxOperationalFraction>1 || anchor==null || burst<1 || burst>1000 || functions==null || functions.isEmpty() || functions.size()>128)
             throw new IllegalArgumentException("invalid one-shot configuration");
         functions=Map.copyOf(functions);
         functions.forEach((id,f)-> { if(id==null || id.isBlank() || id.length()>256 || f==null) throw new IllegalArgumentException("invalid function"); });

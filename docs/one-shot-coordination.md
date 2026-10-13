@@ -265,3 +265,13 @@ Tests cover propagation on a line and two triangles, duplicate/lost messages,
 monotonic wrap, delayed peers, mixed/stale control identities, and explicit HTTP
 arming after timing qualification. These in-process tests do not replace native
 multi-node qualification or the suspended scientific campaign.
+
+### Observation readiness diagnostics
+
+A logical allocation with incomplete handshake confirmations remains usable if
+its safe local plan was installed while ownership and generation were valid.
+Confirmation expiry returns `DEGRADED`; it does not authorize any unconfirmed
+outbound grant. `diagnostics` exposes the local handshake perspective, including
+partial capacity, timeouts, refusals and lost responses. These are observations,
+not evidence of mathematical convergence or of remote packet non-delivery.
+The eight fixed rounds and the allocation/routing mathematics are unchanged.

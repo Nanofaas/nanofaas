@@ -5,7 +5,8 @@ import it.unimib.datai.nanofaas.controlplane.registry.*;
 import it.unimib.datai.nanofaas.modules.offload.oneshot.auction.Assignment;
 import it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.*;
 import it.unimib.datai.nanofaas.p2papi.*;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Mono;
 
 import java.time.*;
@@ -19,8 +20,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 
 class LogicalReadinessTest {
-    @Test
-    void sellerInstallsInboundBeforeAckAndLostReplyDoesNotInvalidateTheGrant() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void sellerInstallsInboundBeforeAckAndLostReplyDoesNotInvalidateTheGrant(boolean permanent) {
         var network = new ConcurrentHashMap<String, ReplicaPlanActuatorTest.Wire>();
         var sellerRef = new AtomicReference<ReplicaPlanActuator>();
         var lostReply = new AtomicBoolean();
@@ -36,7 +38,7 @@ class LogicalReadinessTest {
                         var inbound = sellerRef.get().activePlan().orElseThrow().functions().get("f").inbound();
                         assertThat(inbound).hasSize(1);
                         assertThat(inbound.getFirst().quantity()).isEqualTo(1);
-                        if (lostReply.compareAndSet(false, true)) return Mono.error(new IllegalStateException("lost reply"));
+                        if (lostReply.compareAndSet(false, true) || permanent) return Mono.error(new IllegalStateException("lost reply"));
                     }
                     return Mono.just(reply);
                 });
@@ -55,8 +57,22 @@ class LogicalReadinessTest {
             var results = Mono.zip(buyer.activate("session", 1), seller.activate("session", 1)).block(Duration.ofSeconds(5));
             assertThat(lostReply).isTrue();
             assertThat(results.getT1().status()).isEqualTo(PlanActivation.Status.DEGRADED);
-            assertThat(results.getT1().plan().functions().get("f").outbound()).hasSize(1);
-            assertThat(results.getT1().plan().functions().get("f").outbound().getFirst().quantity()).isEqualTo(1);
+            var diagnostic = results.getT1().diagnostics().getFirst();
+            assertThat(diagnostic.readyReceived()).isTrue();
+            assertThat(diagnostic.ackSent()).isTrue();
+            assertThat(diagnostic.ackResponseReceived()).isEqualTo(!permanent);
+            // No reply is not proof that the seller failed to receive our ACK.
+            assertThat(diagnostic.ackReceived()).isFalse();
+            if (permanent) {
+                assertThat(results.getT1().plan().functions().get("f").outbound()).isEmpty();
+                assertThat(results.getT1().plan().functions().get("f").cloudRate()).isGreaterThan(0);
+                assertThat(diagnostic.reason()).isEqualTo(PlanActivation.ConfirmationReason.TRANSPORT_ERROR);
+                assertThat(diagnostic.confirmedQuantity()).isZero();
+            } else {
+                assertThat(results.getT1().plan().functions().get("f").outbound()).hasSize(1);
+                assertThat(results.getT1().plan().functions().get("f").outbound().getFirst().quantity()).isEqualTo(1);
+                assertThat(diagnostic.reason()).isEqualTo(PlanActivation.ConfirmationReason.PARTIAL_READY);
+            }
             assertThat(buyer.activate("session", 1).block()).isEqualTo(results.getT1());
             assertThat(seller.activePlan()).isPresent();
         }

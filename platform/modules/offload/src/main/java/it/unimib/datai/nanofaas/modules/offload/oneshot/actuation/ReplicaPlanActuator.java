@@ -21,13 +21,15 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
     public static final String READY_TOPIC="nanofaas.oneshot.ready.v1";
     public static final String LOGICAL_READY_TOPIC="nanofaas.oneshot.ready.v2";
     private static final class Preparation {
-        final EpochOutcome outcome; final AuctionSnapshot snapshot; final long deadline;
+        final EpochOutcome outcome; final AuctionSnapshot snapshot; final long deadline,started;
         final Map<String,Assignment> received=new ConcurrentHashMap<>(),acknowledged=new ConcurrentHashMap<>();
         final Map<String,Assignment> committedInbound=new ConcurrentHashMap<>();
         volatile Map<String,Assignment> localReady=Map.of(); volatile boolean closed,failed;
-        long lifecycle;
+        long lifecycle; final Duration peerTimeout; int remainingSends;
         final Set<String> receivedClosures=ConcurrentHashMap.newKeySet();
-        Preparation(EpochOutcome outcome,long deadline) { this.outcome=outcome; snapshot=outcome.snapshot();this.deadline=deadline; }
+        final Set<String> ackSent=ConcurrentHashMap.newKeySet();
+        final Map<String,PlanActivation.ConfirmationReason> sendResults=new ConcurrentHashMap<>();
+        Preparation(EpochOutcome outcome,long deadline,Duration peerTimeout) { this.peerTimeout=peerTimeout; remainingSends=Math.max(1,2*outcome.snapshot().peerIncarnations().size()); this.outcome=outcome; snapshot=outcome.snapshot();this.deadline=deadline; started=outcome.timing()==null?System.nanoTime():outcome.timing().nanos().getAsLong(); }
     }
     private final ManagedReplicaControl control; private final FunctionCatalogView catalog; private final PeerTransport peers;
     private final Supplier<Instant> now; private final BooleanSupplier clockHealthy;
@@ -45,7 +47,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
     private final class LogicalEpoch {
         final EpochOutcome outcome;
         final Mono<PlanActivation> activation;
-        LogicalEpoch(EpochOutcome outcome,Duration budget) {
+        LogicalEpoch(EpochOutcome outcome,Duration budget,Duration peerTimeout) {
             this.outcome=outcome;
             long token=lifecycle;
             activation=Mono.defer(()-> {
@@ -53,7 +55,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
                 if(!running || token!=lifecycle || logicalEpoch.get()!=this || timing.expired(timing.expiryDeadline()))
                     return Mono.just(failed("logical activation retired or expired"));
                 long deadline=timing.nanos().getAsLong()+Math.min(budget.toNanos(),timing.remaining(timing.expiryDeadline()).toNanos());
-                var p=new Preparation(outcome,deadline);p.lifecycle=token;
+                var p=new Preparation(outcome,deadline,peerTimeout);p.lifecycle=token;
                 if(!preparing.compareAndSet(null,p)) return Mono.just(failed("preparation already active"));
                 // Retirement closes old routing before any physical allocation changes.
                 logicalReady.set(null);receiving.set(p);
@@ -108,23 +110,29 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
         try { var gen=control.generationOf(function(name));return gen!=null && gen.id()==id; } catch(IllegalStateException removed) { return false; }
     }
     private void check(Preparation p) {
-        if(!running || p.lifecycle!=lifecycle || Thread.currentThread().isInterrupted() || nanos(p)-p.deadline>=0 || !windowOpen(p)) throw new IllegalStateException("preparation expired or clock unavailable");
+        if(nanos(p)-p.deadline>=0) throw new IllegalStateException("preparation expired or clock unavailable");
+        checkOwnershipAndWindow(p);
+    }
+    private void checkOwnershipAndWindow(Preparation p) {
+        if(!running || p.lifecycle!=lifecycle || Thread.currentThread().isInterrupted() || !windowOpen(p)) throw new IllegalStateException("preparation expired or clock unavailable");
         var local=peers.localEndpoint().orElseThrow();if(!local.peerId().equals(p.snapshot.nodeId()) || !local.incarnation().equals(p.snapshot.incarnation())) throw new IllegalStateException("local incarnation changed");
         p.snapshot.identities().forEach((name,id)-> { if(!generation(name,id.generation())) throw new IllegalStateException("function generation changed"); });
     }
     public Mono<PlanActivation> prepare(EpochOutcome outcome) { return prepare(outcome,preparationBudget); }
-    public Mono<PlanActivation> prepare(EpochOutcome outcome,Duration budget) {
+    public Mono<PlanActivation> prepare(EpochOutcome outcome,Duration budget) { return prepare(outcome,budget,null); }
+    public Mono<PlanActivation> prepare(EpochOutcome outcome,Duration budget,Duration peerTimeout) {
+        if(peerTimeout!=null && (peerTimeout.isZero() || peerTimeout.isNegative() || peerTimeout.compareTo(Duration.ofHours(1))>0)) throw new IllegalArgumentException("invalid peer timeout");
         if(budget==null || budget.isZero() || budget.isNegative() || budget.compareTo(Duration.ofHours(1))>0) throw new IllegalArgumentException("invalid preparation budget");
         return Mono.defer(()-> {
             if(outcome.status()!=EpochOutcome.Status.FIXED_ROUNDS_COMPLETED || outcome.snapshot()==null || outcome.input()==null) return Mono.just(failed("only a completed fixed-round auction with frozen input can prepare"));
-            if(outcome.timing()!=null) return Mono.just(stageLogical(outcome,budget));
+            if(outcome.timing()!=null) return Mono.just(stageLogical(outcome,budget,peerTimeout));
             if(logicalEpoch.get()!=null) return Mono.just(failed("cannot mix logical and legacy preparation"));
             activePlan();
             var current=active.get();
             if((current!=null && outcome.snapshot().validFrom().isBefore(current.endsAt())) || outcome.snapshot().validFrom().isBefore(reservedUntil.get())) return Mono.just(failed("epoch windows overlap reserved commitments"));
             var waiting=pending.get();if(waiting!=null && now.get().isBefore(waiting.endsAt())) return Mono.just(failed("a prepared plan already exists"));
             long until=Duration.between(now.get(),outcome.snapshot().validFrom()).toNanos();
-            var p=new Preparation(outcome,System.nanoTime()+Math.min(budget.toNanos(),Math.max(0,until)));
+            var p=new Preparation(outcome,System.nanoTime()+Math.min(budget.toNanos(),Math.max(0,until)),peerTimeout);
             p.lifecycle=lifecycle;
             if(!preparing.compareAndSet(null,p)) return Mono.just(failed("preparation already active"));
             receiving.set(p);
@@ -133,7 +141,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
                     preparation->preparing.compareAndSet(preparation,null),true);
         });
     }
-    private synchronized PlanActivation stageLogical(EpochOutcome outcome,Duration budget) {
+    private synchronized PlanActivation stageLogical(EpochOutcome outcome,Duration budget,Duration peerTimeout) {
         if(!running || preparing.get()!=null || active.get()!=null || pending.get()!=null)
             return failed("logical staging unavailable or legacy plan retained");
         var prior=logicalEpoch.get();
@@ -142,7 +150,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
         var timing=outcome.timing();
         if(!timing.startsAt().equals(outcome.snapshot().validFrom()) || !timing.endsAt().equals(outcome.snapshot().validUntil())
                 || timing.expired(timing.activationDeadline())) return failed("logical negotiation expired or labels differ");
-        logicalEpoch.set(new LogicalEpoch(outcome,budget));
+        logicalEpoch.set(new LogicalEpoch(outcome,budget,peerTimeout));
         return new PlanActivation(PlanActivation.Status.NEGOTIATED,null,outcome.snapshot().desiredReplicas(),Map.of(),"negotiated; explicit activation required",now.get());
     }
     public Mono<PlanActivation> activate(String sessionId,long epoch) {
@@ -269,7 +277,9 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
                 var confirmations=p.received.values().stream().filter(a->a.sellerId().equals(peer)).toList();
                 if(!confirmations.isEmpty() && send(p,peer,AuctionCodec.Phase.READY_ACK,confirmations)) confirmations.forEach(a->p.acknowledged.put(a.id(),a));
             }
-            check(p);
+            // Confirmation expiry cannot revoke an already published safe local plan.
+            // Ownership, generation, cancellation and epoch expiry remain mandatory.
+            if(p.outcome.timing()==null) check(p); else checkOwnershipAndWindow(p);
             for(var row:rows) {
                 var outbound=p.acknowledged.values().stream().filter(a->a.function().equals(row.id())).toList();
                 if(ready.get(row.id())<p.snapshot.desiredReplicas().get(row.id()) || outbound.stream().mapToLong(Assignment::quantity).sum()<p.snapshot.assignments().values().stream().filter(a->a.buyerId().equals(p.snapshot.nodeId()) && a.function().equals(row.id())).mapToLong(Assignment::quantity).sum()) degraded=true;
@@ -277,8 +287,23 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
             var plan=routingPlan(p,ready,localRates,p.acknowledged.values());
             if(p.outcome.timing()==null) pending.set(plan); else publishLogical(p,plan);
             p.closed=true;
-            return new PlanActivation(degraded?PlanActivation.Status.DEGRADED:PlanActivation.Status.PREPARED,plan,desired,ready,"ready subset; unacknowledged outbound goes to terminal cloud",now.get());
+            return new PlanActivation(degraded?PlanActivation.Status.DEGRADED:PlanActivation.Status.PREPARED,plan,desired,ready,"ready subset; unacknowledged outbound goes to terminal cloud",now.get(),diagnostics(p,plan));
         } catch(InterruptedException | RuntimeException failure) { if(failure instanceof InterruptedException) Thread.currentThread().interrupt(); p.failed=true;p.closed=true;return new PlanActivation(PlanActivation.Status.FAILED,null,desired,ready,failure.getMessage(),now.get()); }
+    }
+    private List<PlanActivation.AssignmentDiagnostic> diagnostics(Preparation p,ActiveRoutingPlan plan) {
+        return p.snapshot.assignments().values().stream().sorted(Comparator.comparing(Assignment::id)).map(a -> {
+            boolean buyer=a.buyerId().equals(p.snapshot.nodeId());
+            var confirmed=buyer?p.acknowledged.get(a.id()):p.committedInbound.get(a.id());
+            var reason=confirmed!=null?(confirmed.quantity()==a.quantity()?PlanActivation.ConfirmationReason.CONFIRMED:PlanActivation.ConfirmationReason.PARTIAL_READY)
+                    :buyer?(p.received.containsKey(a.id())?p.sendResults.getOrDefault(a.sellerId()+":"+AuctionCodec.Phase.READY_ACK,PlanActivation.ConfirmationReason.NOT_ATTEMPTED_TIME_WINDOW):PlanActivation.ConfirmationReason.READY_NOT_RECEIVED)
+                    :PlanActivation.ConfirmationReason.ACK_NOT_RECEIVED;
+            return new PlanActivation.AssignmentDiagnostic(now.get(),Math.max(0,nanos(p)-p.started)/1e9,
+                    p.outcome.timing()==null?null:p.outcome.timing().sessionId(),p.snapshot.nodeId(),p.snapshot.epoch(),p.snapshot.round(),
+                    a.id(),a.function(),a.version(),a.buyerGeneration(),a.sellerGeneration(),a.buyerId(),a.buyerIncarnation(),
+                    a.sellerId(),a.sellerIncarnation(),a.quantity(),confirmed==null?0:confirmed.quantity(),
+                    p.received.containsKey(a.id()),p.ackSent.contains(a.id()),p.committedInbound.containsKey(a.id()),
+                    p.acknowledged.containsKey(a.id()),reason,plan.functions().get(a.function()).cloudRate());
+        }).toList();
     }
     private synchronized void publishLogical(Preparation p,ActiveRoutingPlan plan) {
         var staged=logicalEpoch.get();
@@ -330,18 +355,30 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
         return new byte[]{1};
     }
     private boolean send(Preparation p,String peer,AuctionCodec.Phase phase,List<Assignment> assignments) throws InterruptedException {
+        String key=peer+":"+phase;
+        p.sendResults.put(key,PlanActivation.ConfirmationReason.NOT_ATTEMPTED_TIME_WINDOW);
         var messages=assignments.stream().map(a->new AuctionMessage(new AuctionMessage.Envelope(1,p.snapshot.nodeId(),p.snapshot.incarnation(),p.snapshot.epoch(),p.snapshot.round(),phase+":"+a.id(),p.snapshot.revision(),p.snapshot.validFrom(),p.snapshot.validUntil()),AuctionMessage.Kind.READY_CONFIRM,peer,null,null,a)).toList();
         var batch=new AuctionCodec.Batch(1,p.snapshot.nodeId(),p.snapshot.incarnation(),p.snapshot.epoch(),p.snapshot.round(),phase,p.snapshot.validFrom(),p.snapshot.validUntil(),false,messages,p.outcome.input().flowQuantum());
         byte[] bytes=p.outcome.timing()==null?codec.encode(batch):codec.encodeLogical(p.outcome.timing().sessionId(),p.outcome.rounds(),batch);
         long started=nanos(p);
-        long sendDeadline=started+Math.min(Math.max(0,p.deadline-started-Math.min(Duration.ofMillis(100).toNanos(),preparationBudget.toNanos()/10)),Duration.ofMillis(500).toNanos());
+        long remaining=Math.max(0,p.deadline-started);
+        long allowance=p.peerTimeout==null?Math.min(Math.max(0,remaining-Math.min(Duration.ofMillis(100).toNanos(),preparationBudget.toNanos()/10)),Duration.ofMillis(500).toNanos())
+                :Math.min(p.peerTimeout.toNanos(),remaining/Math.max(1,p.remainingSends));
+        p.remainingSends=Math.max(0,p.remainingSends-1);
+        long sendDeadline=started+allowance;
         while(nanos(p)-sendDeadline<0 && windowOpen(p)) {
-            check(p);var timeout=Duration.ofNanos(Math.max(1,Math.min(Duration.ofMillis(200).toNanos(),sendDeadline-nanos(p))));
-            try { var reply=peers.request(peer,p.outcome.timing()==null?READY_TOPIC:LOGICAL_READY_TOPIC,bytes,timeout).block(timeout);if(reply!=null && reply.length==1 && reply[0]==1) return true; }
-            catch(RuntimeException unavailable) { if(!running) return false; }
+            if(p.outcome.timing()==null) check(p); else checkOwnershipAndWindow(p);
+            var timeout=Duration.ofNanos(Math.max(1,Math.min(p.peerTimeout==null?Duration.ofMillis(200).toNanos():p.peerTimeout.toNanos(),sendDeadline-nanos(p))));
+            if(phase==AuctionCodec.Phase.READY_ACK) assignments.forEach(a->p.ackSent.add(a.id()));
+            try { var reply=peers.request(peer,p.outcome.timing()==null?READY_TOPIC:LOGICAL_READY_TOPIC,bytes,timeout).block(timeout);if(reply!=null && reply.length==1 && reply[0]==1) { p.sendResults.put(key,PlanActivation.ConfirmationReason.CONFIRMED);return true; } p.sendResults.put(key,PlanActivation.ConfirmationReason.PEER_REFUSED); }
+            catch(RuntimeException unavailable) { p.sendResults.put(key,confirmationFailure(unavailable));if(!running) return false; }
             Thread.sleep(20);
         }
         return false;
+    }
+    private static PlanActivation.ConfirmationReason confirmationFailure(Throwable error) {
+        for(Throwable cause=error;cause!=null;cause=cause.getCause()) if(cause instanceof TimeoutException) return PlanActivation.ConfirmationReason.TIMEOUT;
+        return PlanActivation.ConfirmationReason.TRANSPORT_ERROR;
     }
     public Set<String> ownedFunctions() { return Set.copyOf(leases.keySet()); }
     public Mono<Boolean> drainAndRelease() {

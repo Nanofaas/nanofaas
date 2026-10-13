@@ -53,7 +53,7 @@ class LogicalOperationsTest {
                 return Mono.just(new EpochOutcome(a.getArgument(0),EpochOutcome.Status.FIXED_ROUNDS_COMPLETED,
                         null,10,5,10,"bounded",null,timing));
             });
-            when(actuator.prepare(any(),any())).thenReturn(Mono.just(result(PlanActivation.Status.NEGOTIATED)));
+            when(actuator.prepare(any(),any(),any())).thenReturn(Mono.just(result(PlanActivation.Status.NEGOTIATED)));
             when(actuator.activate(anyString(),anyLong())).thenAnswer(a->Mono.fromSupplier(()-> {
                 nano.addAndGet(Duration.ofMillis(300).toNanos());
                 return result(PlanActivation.Status.PREPARED);
