@@ -127,6 +127,13 @@
         <Or><Method name="pinPlannedRoute"/><Method name="plannedRoute"/><Method name="attributeExecutionNode"/><Method name="executionNode"/></Or>
         <Bug pattern="USO_UNSAFE_METHOD_SYNCHRONIZATION"/>
     </Match>
+    <!-- Error transitions must share the instance monitor with other transitions and
+         AttemptCoordinator's compound operations synchronized on the execution record. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord"/>
+        <Method name="markError" params="it.unimib.datai.nanofaas.common.model.ErrorInfo,java.util.Map"/>
+        <Bug pattern="USO_UNSAFE_METHOD_SYNCHRONIZATION"/>
+    </Match>
     <!-- All increments hold the instance monitor; volatile permits fenced callback reads. -->
     <Match>
         <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator"/>

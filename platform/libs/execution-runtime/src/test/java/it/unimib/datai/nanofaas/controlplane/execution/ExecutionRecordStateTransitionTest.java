@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +40,24 @@ class ExecutionRecordStateTransitionTest {
         executionRecord.markError(error);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         assertThat(executionRecord.lastError()).isEqualTo(error);
+    }
+
+    @Test
+    void markError_retainsTerminalHeadersAfterCallerMutatesMap() {
+        ExecutionRecord executionRecord = createRecord("exec-1");
+        Map<String, String> headers = new HashMap<>(Map.of(
+                "X-NanoFaaS-Terminal-Execution-Id", "remote-exec-1"));
+
+        executionRecord.markError(new ErrorInfo("REMOTE_ERROR", "failed"), headers);
+        headers.clear();
+        executionRecord.publishTerminal();
+
+        assertThat(executionRecord.snapshot().headers())
+                .containsExactlyEntriesOf(Map.of("X-NanoFaaS-Terminal-Execution-Id", "remote-exec-1"));
+        assertThat(executionRecord.toOutcome().headers())
+                .containsEntry("X-NanoFaaS-Terminal-Execution-Id", "remote-exec-1");
+        assertThat(executionRecord.completion().join().headers())
+                .containsEntry("X-NanoFaaS-Terminal-Execution-Id", "remote-exec-1");
     }
 
     @Test

@@ -315,7 +315,7 @@ public class ExecutionRecord {
         this.finishedAtNanos = timeSource.nanoTime();
         this.lastError = error;
         this.output = null;
-        this.headers = terminalHeaders;
+        this.headers = terminalHeaders == null ? null : Map.copyOf(terminalHeaders);
     }
 
     /**
