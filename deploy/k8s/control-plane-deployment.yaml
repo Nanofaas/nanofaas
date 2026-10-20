@@ -16,7 +16,7 @@ spec:
       serviceAccountName: nanofaas-control-plane
       containers:
         - name: control-plane
-          image: ghcr.io/miciav/nanofaas/control-plane:v0.22.0
+          image: ghcr.io/miciav/nanofaas/control-plane:v0.23.0
           # One event loop for the 500m CPU limit below, by the chart's rule (the limit
           # rounded up, at least one; see nanofaas.controlPlane.ioWorkerCount in the chart).
           # reactor-netty's own default is four loops regardless of the quota. Passed twice:
