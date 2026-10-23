@@ -38,12 +38,12 @@ class RecipeContainerBuildTest {
     void controlPlaneCarriesModulesIdentityAndRevision() throws IOException {
         JsonNode data = data("""
                 controlPlane: {modules: [build-metadata], build: {mode: native, builder: container, variant: native-os,
-                               native: {optimization: s, gc: G1}}}
+                               native: {optimization: s, gc: G1, maxHeap: 64m}}}
                 """);
 
         assertThat(RecipeContainerBuild.gradleArgs(RECIPE, data, ":control-plane", List.of("build-metadata"),
                 source(true), Map.of("nativeBuildMemory", "6g"), false)).containsExactly(
-                "-PnanofaasBuildType=native", "-PnativeOptimization=s", "-PnativeGc=G1",
+                "-PnanofaasBuildType=native", "-PnativeOptimization=s", "-PnativeGc=G1", "-PnativeMaxHeap=64m",
                 "-PcontrolPlaneModules=build-metadata",
                 "-PnanofaasBuildOptimization=s", "-PnanofaasBuildVariant=native-os",
                 "-PnanofaasBuildRevision=" + REVISION, "-PnanofaasBuildDirty=true",

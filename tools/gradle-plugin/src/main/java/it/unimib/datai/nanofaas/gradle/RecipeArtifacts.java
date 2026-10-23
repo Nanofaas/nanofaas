@@ -575,6 +575,9 @@ final class RecipeArtifacts {
                 if (target.nativeOptions().distribution() != null) {
                     options.put("distribution", target.nativeOptions().distribution());
                 }
+                if (target.nativeOptions().maxHeap() != null) {
+                    options.put("maxHeap", target.nativeOptions().maxHeap());
+                }
             }
             if (target.image() == null) {
                 component.putNull("image");
