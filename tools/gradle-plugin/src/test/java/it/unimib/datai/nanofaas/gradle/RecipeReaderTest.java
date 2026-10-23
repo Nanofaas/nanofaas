@@ -294,6 +294,8 @@ class RecipeReaderTest {
                         + "controlPlane: {modules: [], build: {mode: native, native: {optimization: fast}}}\n", "optimization"),
                 Arguments.of("unknown collector", head
                         + "controlPlane: {modules: [], build: {mode: native, native: {gc: parallel}}}\n", "gc"),
+                Arguments.of("heap without a unit", head
+                        + "controlPlane: {modules: [], build: {mode: native, native: {maxHeap: '64'}}}\n", "maxHeap"),
                 Arguments.of("unknown monitoring", head
                         + "controlPlane: {modules: [], build: {mode: native, native: {monitoring: [perf]}}}\n", "monitoring"),
                 Arguments.of("variant on a function", head + cp

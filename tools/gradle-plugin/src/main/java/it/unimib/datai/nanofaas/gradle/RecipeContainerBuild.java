@@ -24,7 +24,8 @@ final class RecipeContainerBuild {
     static final String CONTAINERD_MODULE = "containerd-deployment-provider";
     /** Builder-sizing flags of the invocation, passed into the container too. */
     static final List<String> PASS_THROUGH = List.of("nativeBuildMemory", "nativeParallelism");
-    private static final List<String> NATIVE_FLAGS = List.of("nativeOptimization", "nativeGc", "nativeMonitoring");
+    private static final List<String> NATIVE_FLAGS = List.of("nativeOptimization", "nativeGc", "nativeMonitoring",
+            "nativeMaxHeap");
 
     private RecipeContainerBuild() {
     }

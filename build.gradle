@@ -125,6 +125,10 @@ subprojects {
                 if (!nativeMonitoring.isEmpty()) {
                     binary.buildArgs.add("--enable-monitoring=${nativeMonitoring.join(',')}")
                 }
+                // -R: bakes the default into the image, so it applies with no run-time arguments.
+                if (project.hasProperty('nativeMaxHeap')) {
+                    binary.buildArgs.add("-R:MaxHeapSize=${project.property('nativeMaxHeap')}")
+                }
                 // nativeBuildMemory caps the builder heap independently of the built image.
                 // Budget it alongside other services to fail fast rather than exhaust the host.
                 if (project.hasProperty('nativeBuildMemory')) {
