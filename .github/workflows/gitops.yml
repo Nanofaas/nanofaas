@@ -236,9 +236,12 @@ jobs:
           cargo clippy --all-targets -- -D warnings
       # The SDK's conformance test runs sdks/runtime-contract/validate_saturation_wire_corpus.py
       # with the runner's python3.
+      # The one-shot-* functions other than one-shot-workload carry only a Dockerfile and
+      # function.yaml: they build the shared one-shot-workload crate, which is tested here.
       - name: Run Rust SDK and function tests
         run: |
           for directory in sdks/rust functions/rust/*/; do
+            [ -f "$directory/Cargo.toml" ] || continue
             (cd "$directory" && cargo test)
           done
 
