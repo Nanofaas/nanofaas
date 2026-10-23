@@ -1,0 +1,308 @@
+.......ss.....ss.....s...ssss.s...sssssssss..ssssssssssssss............. [  1%]
+....s.....sssss...............................................sssss..... [  3%]
+........................................................................ [  5%]
+........................................................................ [  7%]
+........................................................................ [  9%]
+........................................................................ [ 11%]
+.................s...................................................... [ 12%]
+........................................................................ [ 14%]
+.....sssss..s........................................................... [ 16%]
+........................................................................ [ 18%]
+........................................................................ [ 20%]
+.............................................................s.sssss.sss [ 22%]
+s..ssssssssssss...................ssssssssssss....................ss.... [ 23%]
+.....ssssssssss..sssssssssssssssssssss..............s................... [ 25%]
+........sss..........sssssssssssssss.........ss.ssssss.................. [ 27%]
+..ss.ss....ssssss..............ssssssssssssssssssssss...sss.ss.s........ [ 29%]
+................................................................ssssssss [ 31%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss [ 33%]
+ssssssssssssssssssssssssssssssssssssssssssssss....ssssssssssssssssssssss [ 34%]
+ssssssssssssssssssssssssssssssssssss.................................... [ 36%]
+..............................................................sssss..... [ 38%]
+........................................................................ [ 40%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 45%]
+........................................................................ [ 47%]
+........................................................................ [ 49%]
+..........................................................ssssssssss.... [ 51%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+........................................................................ [ 64%]
+........................................................................ [ 66%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 71%]
+........................................................................ [ 73%]
+........................................................................ [ 75%]
+........................................................................ [ 77%]
+........................................................................ [ 78%]
+........................................................................ [ 80%]
+........................................................................ [ 82%]
+........................................................................ [ 84%]
+...........................s......s.s................................... [ 86%]
+........................................................................ [ 88%]
+........................................................................ [ 89%]
+........................................................................ [ 91%]
+...............................sssssss..........s....................... [ 93%]
+..............................................................s......... [ 95%]
+........................................................................ [ 97%]
+........................................................................ [ 99%]
+.................................                                        [100%]
+3527 passed, 408 skipped in 127.17s (0:02:07)
+All checks passed!
+0 errors, 0 warnings, 0 notes
+
+╔══╗─────────▶╔╗ ╔╗      ╔╗◀───┐
+╚╣╠╝◀─────┐  ╔╝╚╗║║────▶╔╝╚╗   │
+ ║║   ╔══╦══╦╩╗╔╝║║  ╔╦═╩╗╔╝╔═╦══╗
+ ║║╔══╣╔╗║╔╗║╔╣║ ║║ ╔╬╣╔╗║║ ║│║╔═╝
+╔╣╠╣║║║╚╝║╚╝║║║╚╗║╚═╝║║║║║╚╗║═╣║
+╚══╩╩╩╣╔═╩══╩╝╚═╝╚═══╩╩╝╚╩═╩╩═╩╝
+  └──▶║║                    ▲ 
+      ╚╝────────────────────┘
+
+
+---------
+Contracts
+---------
+
+Analyzed 376 files, 2906 dependencies.
+--------------------------------------
+
+core must not import product packages KEPT
+runtime packages must not depend on tui KEPT
+runtime and application must not import presentation KEPT
+runtime must not import plan builders KEPT
+sonata_tasks must not depend on nanolab KEPT
+
+Contracts: 5 kept, 0 broken.
+[tester]	WARNING	nosec encountered (B604), but no failed test on file packages/nanolab/src/nanolab/application/execution.py:463
+[manager]	WARNING	Test in comment: result is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: status is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: not is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: a is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: credential is not a test name or id, ignoring
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:20
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:21
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:22
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:26
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:27
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:28
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:25
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:26
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:27
+[tester]	WARNING	nosec encountered (B105), but no failed test on file packages/nanolab/src/nanolab/cli/soak.py:28
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: above is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: above is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: above is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: above is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: statistical is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: bootstrap is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: SafeLoader is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: subclass is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: rejects is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: duplicate is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: keys is not a test name or id, ignoring
+[tester]	WARNING	nosec encountered (B506), but no failed test on file packages/nanolab/src/nanolab/release/recipe.py:253
+[manager]	WARNING	Test in comment: a is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: docker is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: tmpfs is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: mount is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: argument is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: not is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: a is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: host is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: temp is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: path is not a test name or id, ignoring
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:167
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:169
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:170
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:171
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:172
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:174
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:176
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:177
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:178
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:179
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:180
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:181
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:182
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:183
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:184
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:185
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:186
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:187
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:188
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:189
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:191
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:193
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:195
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:197
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:202
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:203
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:204
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:207
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:209
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:214
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:220
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/heap_analysis/mat.py:222
+[manager]	WARNING	Test in comment: prose is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: explaining is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: the is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: PASS is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: status is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: not is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: a is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: credential is not a test name or id, ignoring
+[tester]	WARNING	nosec encountered (B113), but no failed test on file packages/nanolab/src/nanolab/tasks/loadtest/report.py:466
+[manager]	WARNING	Test in comment: reproducible is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: statistical is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: bootstrap is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: resource is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: mapping is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: not is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: HTTP is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: resource is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: mapping is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: not is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: HTTP is not a test name or id, ignoring
+[tester]	WARNING	nosec encountered (B113), but no failed test on file packages/nanolab/src/nanolab/tasks/resources.py:175
+[tester]	WARNING	nosec encountered (B113), but no failed test on file packages/nanolab/src/nanolab/tasks/resources.py:180
+[tester]	WARNING	nosec encountered (B113), but no failed test on file packages/nanolab/src/nanolab/tasks/resources.py:182
+[tester]	WARNING	nosec encountered (B113), but no failed test on file packages/nanolab/src/nanolab/tasks/resources.py:182
+[tester]	WARNING	nosec encountered (B113), but no failed test on file packages/nanolab/src/nanolab/tasks/resources.py:182
+[tester]	WARNING	nosec encountered (B113), but no failed test on file packages/nanolab/src/nanolab/tasks/resources.py:257
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: isolated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: container is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: path is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: isolated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: container is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: path is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: isolated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: container is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: path is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/diagnostic_helper.py:281
+[manager]	WARNING	Test in comment: required is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: by is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: Criterion is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: loader is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: derives is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: from is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: SafeLoader is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: and is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: rejects is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: aliases is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: tags is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: isolated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: container is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: path is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: isolated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: container is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: path is not a test name or id, ignoring
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/retention.py:303
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/retention.py:304
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/retention.py:305
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/retention.py:306
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/retention.py:303
+[manager]	WARNING	Test in comment: validated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: invariant is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: type is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: narrowing is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: isolated is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: container is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: path is not a test name or id, ignoring
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/runtime.py:1221
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/runtime.py:1222
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/runtime.py:1223
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/runtime.py:1224
+[tester]	WARNING	nosec encountered (B108), but no failed test on file packages/nanolab/src/nanolab/tasks/soak/runtime.py:1221
+Task 7: full NanoLab suite, static checks, paired six-VM gate and cleanup PASS

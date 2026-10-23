@@ -48,3 +48,5 @@ include 'functions:java:binary-envelope'
 include('p2p-api'); project(':p2p-api').projectDir = file('platform/libs/p2p-api')
 
 include('forecasting-api'); project(':forecasting-api').projectDir = file('platform/libs/forecasting-api')
+
+include('logging-runtime'); project(':logging-runtime').projectDir = file('platform/libs/logging-runtime')

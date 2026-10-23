@@ -23,8 +23,14 @@ public record ContainerLocalProperties(
         String callbackUrl,
         String networkName,
         String cpuset,
-        String namespace
+        String namespace,
+        boolean strictMemory
 ) {
+    public ContainerLocalProperties(String adapter, String host, Duration timeout, Duration poll,
+                                    String callback, String network, String cpuset, String namespace) {
+        this(adapter, host, timeout, poll, callback, network, cpuset, namespace, false);
+    }
+
     public ContainerLocalProperties(String adapter,String host,Duration timeout,Duration poll,String callback,String network,String cpuset) {
         this(adapter,host,timeout,poll,callback,network,cpuset,null);
     }

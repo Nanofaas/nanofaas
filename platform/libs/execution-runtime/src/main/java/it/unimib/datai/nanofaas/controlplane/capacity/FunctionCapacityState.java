@@ -79,7 +79,7 @@ public final class FunctionCapacityState implements CapacityView {
     }
 
     synchronized void setEffectiveConcurrency(int concurrency) {
-        effectiveConcurrency = Math.clamp(concurrency, 1, configuredConcurrency);
+        effectiveConcurrency = Math.clamp(concurrency, 0, configuredConcurrency);
     }
 
     public int configuredConcurrency() {

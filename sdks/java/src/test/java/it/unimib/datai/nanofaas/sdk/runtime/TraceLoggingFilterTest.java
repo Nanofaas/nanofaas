@@ -127,4 +127,17 @@ class TraceLoggingFilterTest {
         assertEquals("env-trace-id", capturedTrace.get());
         assertNull(MDC.get("traceId"));
     }
+    @Test
+    void restoresParentContextAfterNestedRequestAndFailure() {
+        MDC.put("executionId", "parent"); MDC.put("traceId", "parent-trace");
+        try {
+            var noDefaults = new TraceLoggingFilter(new RuntimeSettings(null, null, null, null));
+            var request = new MockHttpServletRequest(); request.addHeader("X-Execution-Id", "child");
+            assertThrows(ServletException.class, () -> noDefaults.doFilterInternal(request, new MockHttpServletResponse(), (req, res) -> {
+                assertEquals("child", MDC.get("executionId")); assertNull(MDC.get("traceId"));
+                throw new ServletException("failure");
+            }));
+            assertEquals("parent", MDC.get("executionId")); assertEquals("parent-trace", MDC.get("traceId"));
+        } finally { MDC.clear(); }
+    }
 }

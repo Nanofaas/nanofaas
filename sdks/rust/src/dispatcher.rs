@@ -240,6 +240,7 @@ async fn work(
             drops.inc();
             tracing::warn!(
                 execution_id = %job.callback.identity.execution_id,
+                trace_id = job.callback.identity.trace_id.as_deref().unwrap_or(""),
                 "callback delivery exhausted"
             );
         }
@@ -326,6 +327,46 @@ mod tests {
 
     fn soon() -> Instant {
         Instant::now() + Duration::from_secs(2)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn exhausted_callback_retains_its_trace() {
+        use tracing_subscriber::fmt::format::JsonFields;
+        #[derive(Clone)]
+        struct Sink(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Sink {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let sink = Sink(bytes.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .fmt_fields(JsonFields::default())
+            .event_format(crate::logging::LogFormatter::new("function-runtime", true))
+            .with_writer(move || sink.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let server = FakeCallbackServer::start(|_| Reply::Status(500)).await;
+        let dispatcher = dispatcher(&server.url, 2, 2048, 1024);
+        let mut id = identity("callback-logging");
+        id.trace_id = Some("callback-trace".into());
+        dispatcher
+            .submit(dispatcher.try_reserve().unwrap(), &id, &ok_result())
+            .unwrap_or_else(|_| panic!("submit failed"));
+        dispatcher.close(soon()).await;
+        let logs = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+        let event: serde_json::Value = logs
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find(|event| event["message"] == "callback delivery exhausted")
+            .expect("callback warning");
+        assert_eq!(event["executionId"], "callback-logging");
+        assert_eq!(event["traceId"], "callback-trace");
     }
 
     #[tokio::test]

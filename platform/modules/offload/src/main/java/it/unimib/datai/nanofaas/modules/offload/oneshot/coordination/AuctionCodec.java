@@ -24,6 +24,24 @@ public final class AuctionCodec {
             }
         }
     }
+    /** Strict v2 envelope; domain auction mathematics retains the v1 record representation. */
+    public record LogicalBatch(int schemaVersion, String sessionId, int maxRounds, Batch batch) {
+        public LogicalBatch {
+            bounded(sessionId);
+            if(schemaVersion!=2 || maxRounds<1 || maxRounds>1000 || batch==null || batch.round()>=maxRounds)
+                throw new IllegalArgumentException("invalid logical auction batch");
+        }
+    }
+    public byte[] encodeLogical(String sessionId, int maxRounds, Batch batch) {
+        byte[] bytes=mapper.writeValueAsBytes(new LogicalBatch(2,sessionId,maxRounds,batch));
+        if(bytes.length>MAX_BYTES) throw new IllegalArgumentException("auction batch too large");
+        return bytes;
+    }
+    public LogicalBatch decodeLogical(byte[] bytes) {
+        if(bytes==null || bytes.length==0 || bytes.length>MAX_BYTES) throw new IllegalArgumentException("auction batch too large or empty");
+        try { return mapper.readValue(bytes,LogicalBatch.class); }
+        catch(RuntimeException failure) { throw new IllegalArgumentException("invalid logical auction batch",failure); }
+    }
     private static final int MAX_BYTES=1024*1024;
     private final JsonMapper mapper=JsonMapper.builder(JsonFactory.builder().streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(12).maxStringLength(1024).maxNumberLength(64).build()).build())
         .disable(tools.jackson.databind.MapperFeature.ALLOW_COERCION_OF_SCALARS)

@@ -3,7 +3,28 @@ import { test } from "node:test";
 
 import { createRuntime, NanofaasError } from "../src/index.js";
 
+test("callback failure logs retain both identities for concurrent invocations", async () => {
+    process.env.NANOFAAS_LOG_FORMAT = "json";
+    const original = console.log;
+    const events: Record<string, unknown>[] = [];
+    console.log = (line: unknown) => { try { events.push(JSON.parse(String(line))); } catch { /* non-JSON */ } };
+    const runtime = createRuntime({ port: 0, callbackUrl: "http://127.0.0.1:9/callbacks", callbackMaxAttempts: 1 });
+    runtime.register("echo", async (_ctx, req) => req.input);
+    await runtime.start();
+    try {
+        await Promise.all(["one", "two"].map(id => fetch(`${runtime.baseUrl}/invoke`, {
+            method: "POST", headers: {"content-type":"application/json", "x-execution-id":id, "x-trace-id":"trace-"+id}, body: JSON.stringify({input:"ok"}),
+        })));
+        const deadline = Date.now()+2000;
+        while (events.filter(e=>e.message === "callback delivery failed").length < 2 && Date.now() < deadline) await new Promise(resolve=>setTimeout(resolve,10));
+        const failures = events.filter(e=>e.message === "callback delivery failed");
+        assert.equal(failures.length, 2);
+        for (const event of failures) assert.equal(event.traceId, "trace-"+event.executionId);
+    } finally { await runtime.stop(); console.log=original; delete process.env.NANOFAAS_LOG_FORMAT; }
+});
+
 test("handler logger emits structured json with execution and trace ids", async () => {
+    process.env.NANOFAAS_LOG_FORMAT = "json";
     const originalLog = console.log;
     const lines: string[] = [];
     console.log = (line?: unknown) => {
@@ -30,12 +51,13 @@ test("handler logger emits structured json with execution and trace ids", async 
         assert.equal(response.status, 200);
 
         const entry = JSON.parse(lines.find((line) => line.includes("handler called"))!);
-        assert.equal(entry.level, "info");
+        assert.equal(entry.level, "INFO");
         assert.equal(entry.logger, "nanofaas.handler");
         assert.equal(entry.executionId, "exec-log");
         assert.equal(entry.traceId, "trace-log");
-        assert.equal(entry.phase, "invoke");
+        assert.equal(entry.attributes.phase, "invoke");
     } finally {
+        delete process.env.NANOFAAS_LOG_FORMAT;
         console.log = originalLog;
         await runtime.stop();
     }

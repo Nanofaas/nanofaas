@@ -202,6 +202,46 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         } while(System.nanoTime()<deadline);
         return false;
     }
+    @Override
+    public ReplicaSlots.QuiesceToken beginQuiesce() {
+        if (closed.get() || !physicalSlots.get()) {
+            throw new IllegalStateException("Physical replica pool unavailable");
+        }
+        return replicaSlots.beginQuiesce();
+    }
+
+    @Override
+    public boolean awaitQuiesced(Duration timeout) {
+        if (timeout == null || timeout.isNegative() || timeout.isZero()) {
+            throw new IllegalArgumentException("Positive quiesce timeout required");
+        }
+        if (closed.get() || !physicalSlots.get()) return false;
+        long deadline = System.nanoTime() + timeout.toNanos();
+        do {
+            for (var lease : replicaSlots.occupied()) {
+                lease.markReleased(executionProbe.observe(URI.create(lease.backend()), lease.executionId()));
+            }
+            if (replicaSlots.quiesced()) return true;
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        } while (!closed.get() && System.nanoTime() < deadline);
+        return false;
+    }
+
+    @Override
+    public boolean resume(ReplicaSlots.QuiesceToken token, String admissionEpoch) {
+        return !closed.get() && physicalSlots.get() && replicaSlots.resume(token, admissionEpoch);
+    }
+
+    @Override
+    public boolean resumeRetained(ReplicaSlots.QuiesceToken token, String admissionEpoch) {
+        return !closed.get() && physicalSlots.get() && replicaSlots.resumeRetained(token, admissionEpoch);
+    }
+
     private void observeUntilReleased(ReplicaLease lease) {
         long deadline=System.nanoTime()+proxyProperties.executionProbeRetention().toNanos();
         while(!closed.get() && System.nanoTime()<deadline) {
@@ -299,7 +339,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                 return;
             }
             List<String> currentBackends = backends.get();
-            if (currentBackends.isEmpty()) {
+            if (currentBackends.isEmpty() && !physicalSlots.get()) {
                 send(exchange, 503, NO_BACKENDS);
                 return;
             }
@@ -315,7 +355,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                     if(id==null || id.isBlank() || id.length()>256) { send(exchange,400,"Execution identity required".getBytes(StandardCharsets.UTF_8)); return; }
                     String attempt=exchange.getRequestHeaders().getFirst("X-Dispatch-Attempt");
                     if(attempt==null) { attempt=java.util.UUID.randomUUID().toString(); exchange.getRequestHeaders().set("X-Dispatch-Attempt",attempt); }
-                    lease=replicaSlots.tryAcquire(id,attempt).orElse(null);
+                    lease=replicaSlots.acquireWhenResumed(id,attempt,singleHopTimeout.get()).orElse(null);
                     if(lease==null) { send(exchange,503,BUSY); return; }
                     backend=lease.backend();
                 } else backend=selectBackend(currentBackends);
@@ -334,7 +374,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                 send(exchange, 500, INTERRUPTED);
             } catch (HttpConnectTimeoutException e) {
                 send(exchange, 502, proxyError(e));
-            } catch (HttpTimeoutException _) {
+            } catch (HttpTimeoutException | java.util.concurrent.TimeoutException _) {
                 send(exchange, 504, PROXY_TIMEOUT);
             } catch (IOException | RuntimeException e) { // NOSONAR (java:S2147): the connect-timeout catch must precede HttpTimeoutException
                 send(exchange, 502, proxyError(e));

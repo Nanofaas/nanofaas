@@ -1,0 +1,27 @@
+Traceback (most recent call last):
+  File "/tmp/nanolab-edge-logging/scripts/one-shot-logging-overhead.py", line 458, in <module>
+  File "/tmp/nanolab-edge-logging/scripts/one-shot-logging-overhead.py", line 388, in main
+    finally:
+        ^^^^^
+  File "/home/michele/Documenti/nanolab/.venv/lib/python3.12/site-packages/sonata_engine/core/workflow.py", line 256, in run
+    return self._run_compiled(
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/michele/Documenti/nanolab/.venv/lib/python3.12/site-packages/sonata_engine/core/workflow.py", line 358, in _run_compiled
+    self._raise_final(main_error, release_errors)
+  File "/home/michele/Documenti/nanolab/.venv/lib/python3.12/site-packages/sonata_engine/core/workflow.py", line 456, in _raise_final
+    raise main_error
+  File "/home/michele/Documenti/nanolab/.venv/lib/python3.12/site-packages/sonata_engine/core/workflow.py", line 341, in _run_compiled
+    self._run_unit(
+  File "/home/michele/Documenti/nanolab/.venv/lib/python3.12/site-packages/sonata_engine/core/workflow.py", line 513, in _run_unit
+    return _execute_recorded(
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/michele/Documenti/nanolab/.venv/lib/python3.12/site-packages/sonata_engine/core/workflow.py", line 119, in _execute_recorded
+    outcome = task.run(make_inputs())
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/nanolab-edge-logging/scripts/one-shot-logging-overhead.py", line 302, in run
+    if expected is not None:
+               ^^^^^^^^^^^^^^
+  File "/tmp/nanolab-edge-logging/scripts/one-shot-logging-overhead.py", line 57, in response_checksum
+    return str(output)
+        ^^^^^^^^^^^^^^^
+ValueError: workload did not return a successful u64 checksum

@@ -70,7 +70,7 @@ class EpochProtocolTest {
         try {
             var from=Instant.now().plusSeconds(10);var until=from.plusSeconds(300);
             var results=Mono.zip(nodes.stream().map(n->n.prepare(1,from,until)).toList(),objects->Arrays.stream(objects).map(o->(EpochOutcome)o).toList()).block(Duration.ofSeconds(5));
-            assertThat(results).allSatisfy(r->{ assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.CONVERGED);assertThat(r.censored()).isFalse();assertThat(r.auctionNanos()).isGreaterThanOrEqualTo(r.solverNanos()); });
+            assertThat(results).allSatisfy(r->{ assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED);assertThat(r.censored()).isFalse();assertThat(r.auctionNanos()).isGreaterThanOrEqualTo(r.solverNanos()); });
             assertThat(results.getFirst().snapshot().assignments().values().stream().mapToLong(Assignment::quantity).sum()).isEqualTo(4);
             for (var transport : transports) {
                 var calls = transport.attempts.stream().filter(c -> ROUND_PHASES.contains(c.batch().phase())).toList();
@@ -108,7 +108,7 @@ class EpochProtocolTest {
                 var results = Mono.zip(nodes.stream().map(n -> n.prepare(1, from, from.plusSeconds(300))).toList(),
                         objects -> Arrays.stream(objects).map(o -> (EpochOutcome) o).toList()).block(Duration.ofSeconds(5));
                 assertThat(results).allSatisfy(r -> assertThat(r.status()).withFailMessage(r.reason())
-                        .isEqualTo(EpochOutcome.Status.CONVERGED));
+                        .isEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED));
                 var calls = transports.stream().flatMap(t -> t.attempts.stream())
                         .filter(c -> ROUND_PHASES.contains(c.batch().phase())).toList();
                 var grouped = calls.stream().collect(Collectors.groupingBy(Captured::key));
@@ -159,7 +159,7 @@ class EpochProtocolTest {
             try {
                 var from=Instant.now().plusSeconds(10);
                 var results=Mono.zip(nodes.stream().map(n->n.prepare(1,from,from.plusSeconds(300))).toList(),objects->Arrays.stream(objects).map(o->(EpochOutcome)o).toList()).block(Duration.ofSeconds(5));
-                assertThat(results).allSatisfy(r->{assertThat(r.censored()).isTrue();assertThat(r.status()).isEqualTo(lose?EpochOutcome.Status.FAILED:EpochOutcome.Status.ROUND_LIMIT);});
+                assertThat(results).allSatisfy(r->{assertThat(r.censored()).isEqualTo(lose);assertThat(r.status()).isEqualTo(lose?EpochOutcome.Status.FAILED:EpochOutcome.Status.FIXED_ROUNDS_COMPLETED);if(!lose) {assertThat(r.rounds()).isEqualTo(1);assertThat(r.snapshot().status()).isEqualTo("FINALIZED");}});
             } finally { nodes.forEach(EpochCoordinator::close); }
         }
     }    @Test void virtualEpochStartClockFailureAndRejoinInvalidatePreparation() {
@@ -191,7 +191,7 @@ class EpochProtocolTest {
             var old=new AuctionCodec.Batch(1,"missing","missing-run",1,0,AuctionCodec.Phase.HELLO,from,from.plusSeconds(300),false,List.of());
             assertThat(receiver.onMessage("missing",new AuctionCodec().encode(old)).block()).containsExactly((byte)0);
             network.remove("missing"); node.start();
-            assertThat(node.prepare(2,from,from.plusSeconds(300)).block().status()).isEqualTo(EpochOutcome.Status.CONVERGED);
+            assertThat(node.prepare(2,from,from.plusSeconds(300)).block().status()).isEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED);
             assertThat(receiver.onMessage("missing",new AuctionCodec().encode(old)).block()).containsExactly((byte)0);
         }
     }
@@ -210,8 +210,8 @@ class EpochProtocolTest {
                 var from=Instant.now().plusSeconds(10);
                 var results=Mono.zip(nodes.stream().map(n->n.prepare(1,from,from.plusSeconds(300))).toList(),objects->Arrays.stream(objects).map(o->(EpochOutcome)o).toList()).block(Duration.ofSeconds(5));
                 assertThat(results).allSatisfy(r->{
-                    if(mixed) { assertThat(r.status()).isNotEqualTo(EpochOutcome.Status.CONVERGED);assertThat(r.censored()).isTrue(); }
-                    else assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.CONVERGED);
+                    if(mixed) { assertThat(r.status()).isNotEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED);assertThat(r.censored()).isTrue(); }
+                    else assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED);
                 });
             } finally { nodes.forEach(EpochCoordinator::close); }
         }

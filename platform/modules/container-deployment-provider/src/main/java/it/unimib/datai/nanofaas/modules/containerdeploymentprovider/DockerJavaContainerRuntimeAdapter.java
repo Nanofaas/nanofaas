@@ -36,6 +36,7 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
     private final String cpuset;
     private final String bindHost;
     private final PortAllocator portAllocator;
+    private final boolean strictMemory;
 
     DockerJavaContainerRuntimeAdapter(DockerClient client) {
         this(client, null);
@@ -51,11 +52,17 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
 
     DockerJavaContainerRuntimeAdapter(DockerClient client, String networkName, String cpuset,
                                       String bindHost, PortAllocator portAllocator) {
+        this(client, networkName, cpuset, bindHost, portAllocator, false);
+    }
+
+    DockerJavaContainerRuntimeAdapter(DockerClient client, String networkName, String cpuset,
+                                      String bindHost, PortAllocator portAllocator, boolean strictMemory) {
         this.bindHost = bindHost;
         this.portAllocator = portAllocator;
         this.client = client;
         this.networkName = networkName;
         this.cpuset = cpuset;
+        this.strictMemory = strictMemory;
     }
 
     @Override
@@ -84,7 +91,11 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
 
     @Override
     public ManagedContainer runContainer(ContainerInstanceSpec spec) {
-
+        if (strictMemory && (spec.resources() == null || spec.resources().limits() == null
+                || spec.resources().limits().memoryMiB() == null
+                || spec.resources().limits().memoryMiB() <= 0)) {
+            throw new IllegalArgumentException("strict memory requires a positive memory limit");
+        }
         Integer hostPort = networkName == null ? portAllocator.nextPort() : null;
         ExposedPort functionPort = ExposedPort.tcp(8080);
         HostConfig hostConfig = HostConfig.newHostConfig();
@@ -200,7 +211,7 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
                 .toList();
     }
 
-    private static void addResourceLimits(HostConfig hostConfig, ResourceSpec resources) {
+    private void addResourceLimits(HostConfig hostConfig, ResourceSpec resources) {
         if (resources == null) {
             return;
         }
@@ -221,6 +232,9 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
         }
         if (limits != null && limits.memoryMiB() != null) {
             hostConfig.withMemory(mebibytes(limits.memoryMiB()));
+            if (strictMemory) {
+                hostConfig.withMemorySwap(mebibytes(limits.memoryMiB()));
+            }
         }
     }
 

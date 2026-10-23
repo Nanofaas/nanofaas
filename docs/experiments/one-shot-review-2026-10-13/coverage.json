@@ -1,0 +1,850 @@
+[
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/k6/one-shot.js",
+    "sha256": "a8addc6c3d4b607b1d592139d16b27c010215fdf29e1040ef5e0d52660148c51",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/one-shot/contracts/examples/synthetic-profile.json",
+    "sha256": "339eca4235c01f352ee6a6c31950de6658d8a546f702bc69482417022058256e",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/one-shot/contracts/examples/workflow-test-config.json",
+    "sha256": "d3fbaa3bd44928d081f8b98a553adfbd2aec2ae42509f8f067073697fb06a60a",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/one-shot/contracts/forecast.schema.json",
+    "sha256": "59fffb92f1fb0a6bce0535b083b6edbb2ccb8ec74b6bb0720d3d82ee111c7e85",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/one-shot/contracts/provenance.json",
+    "sha256": "ad53913aedd6489449e2d76aa42cd459c55d3ff99339d1107ec980b68bb516bb",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/one-shot/contracts/run-events.schema.json",
+    "sha256": "1e2742474862c62c0a6607b074cbeb5e3b5773cbd22aceed57d3313e97f72613",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/one-shot/contracts/service-profile.schema.json",
+    "sha256": "442751374049c2173438ad1766453216954168c9fe4c41ba66a87ccd78254bfe",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/one-shot/probe.py",
+    "sha256": "f352d9760654711780bdce431c9d95b96ef3ac4fd14f165440984c83ddf526b8",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/one-shot/profile-set.schema.json",
+    "sha256": "e6be7347d1e0066161d1b1c033d48056d21cd2b4b0551bf0334b3843474c1c8d",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/presets/recipes/one-shot-multifunction-jvm.yaml",
+    "sha256": "d0905161a6fb4a0de3240778dbb967932b81e5daef977baf2e3aeff93b46514a",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/presets/scenarios/one-shot-multifunction-calibration.yaml",
+    "sha256": "203b421ad3daa571f44150da9a983c59642b7907879d9a645a263e2abd85f105",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/presets/scenarios/one-shot-multifunction-pilot.yaml",
+    "sha256": "95ab803f510b5d7c3f995b8d28774af767debd69a4292a12efb4be8e6d44ca95",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/assets/presets/scenarios/one-shot-multifunction-qualification.yaml",
+    "sha256": "b5aa6ad370c0c19c16155710d8d812252c2e559ecefb176ba450e5affabc82a1",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/config/one_shot.py",
+    "sha256": "62ff746163f43e188059cd8c05c4a6f490ddb99989cc79ca285dd0ba0ab91809",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/__init__.py",
+    "sha256": "91d45f3ca0161460533fdc851f944ef3102e0f540ff09feef41ae0700c4ddcae",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/campaign.py",
+    "sha256": "e53740316c9fbd2e2c961a0c659fc412f442d1490572d920f50360b6d65a8d34",
+    "status": "reviewed",
+    "scope": "Lettura del denominatore e aggregazione richiamati dal report; pianificazione paired/power non eseguita dall’osservazione.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/capacity.py",
+    "sha256": "b24d6659beea2e2a8eb353d58b7ff68ba8655b8747463eac72e5c36ac445bba9",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/client.py",
+    "sha256": "f234dc66a9cf326c7e1da372cbc4e8fd63fca7d74756f5799d5c0e304659ab82",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/contracts.py",
+    "sha256": "1f88ee972803c54c78ffa400cfc3c9ddece9cb1461f62b153ead550be7dc09dd",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/host_cpu.py",
+    "sha256": "920b4a59b6b3b81a235d4d8c4a131852c7b940e537f6a2fda643732fc8b989fc",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/infrastructure.py",
+    "sha256": "b3e4812886f9cca616d95063c61daf9b9884b96a8716a2f75211c452388de16e",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/models.py",
+    "sha256": "0df3c8e54d92219e0c9bf88f1f68187943e498c39dc0f7f059c035352a69a99a",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/profiles.py",
+    "sha256": "8c2621095ba210288aeb0b87b984ef06abbf52e4efc186c4d32857135503c3c8",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/report.py",
+    "sha256": "34705fb5f44ded007dc3f307b799e4105af68f4a376994567496ddb9c0bdb7b6",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/returned_errors.py",
+    "sha256": "766a85e6d2f72d7b51ae85fc9f3b28b9bab57e7dc8995c4327d7048bb0f48d2f",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/supervision.py",
+    "sha256": "9adfdea62a022d4ca1ac975ab2f6fa27b802f84dd5fa6ac8d173b7a5b4060d95",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/topology.py",
+    "sha256": "b4a130b52d4ea5b88cc321b587881c8ebb9c934f8e595152f2c740c38f2bd23f",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/vm_resources.py",
+    "sha256": "f0d67b990445f651e9c715f7c9982a3217285099894e4a6cc498aee9c54a77dd",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/one_shot/vm_sampler.py",
+    "sha256": "5517e0e1ff41853627da76f539b5c98131a16baf3d1795b1e2379fe2ab539b87",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/plans/one_shot_calibration.py",
+    "sha256": "562839b909ac41a1a66e618dfe085e158738b0f4e3993eb447d566d6ecab6b5b",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/plans/one_shot_common.py",
+    "sha256": "fc8c8023b804a650195342e813dd30a52b72f0c0a65b41b07d0797658becabd5",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/plans/one_shot_experiment.py",
+    "sha256": "f297612e6a4abe2a8c223dc43221c1a1ee2a72ec9b71147543cc3b62dd34cd17",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/plans/one_shot_observation.py",
+    "sha256": "48fab0a3460b7a9b99a7e39715319481a9c82228f4b26ba9fa22da2db59a3412",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/plans/one_shot_qualification.py",
+    "sha256": "b678beb25038e76dbc7803be344d3c350ec2c1f556229b1426f13b647fe0635c",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/components/bootstrap.py",
+    "sha256": "688a793cd599bf87a625baf80e385b8aefec6b60edf868daca800c9b0097be8d",
+    "status": "reviewed",
+    "scope": "Ramo raggiunto: pianificazione bootstrap base e retarget Multipass; rami Kubernetes/Azure non eseguiti.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/infra/ansible_assets/playbooks/provision-base.yml",
+    "sha256": "8c9e3e5766b8ca6c409cda17de3b3503aadfb78a664bc248a19003a02f75f07d",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/__init__.py",
+    "sha256": "e6f5eb55033c646e388e7c6cfc99c98465d61fba8592329433efcc8001817cb0",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/artifacts.py",
+    "sha256": "a551e844775c08a16d23c5a2c0734b9ed0358c141b6f2cb7d76346d56166bbad",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/calibration.py",
+    "sha256": "5ad242c3785b55e1e95e13a12480d3b5a66a9f280ba8a5cfab7e9de977785ddf",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/capacity.py",
+    "sha256": "314e9e7e21affcc4d6087f9f81b071b48b0fc5777373bc254379c4b10b5522a2",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/clock.py",
+    "sha256": "75336287b02d269bc6e79559fa0181fceecd3cf23cf609fe59186009e0f919d3",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/conservation.py",
+    "sha256": "ce30de432740a7e0c215a29b64bcf51557f061707645f7202b86963b99adbd6b",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/experiment.py",
+    "sha256": "82f367faf62b3bcd89d06c0e638985fde3f9f19f6c6f40a86f2bae3bc6a1503e",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/images.py",
+    "sha256": "bb5413aa859b293eee621fc1d441b7deb3577a713340e75fca24937eb3f6c25b",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/logging.py",
+    "sha256": "a92e29f40b6ff5563e19c94ab45471b6aed330cb9b3c282b1dad74a1dbb03287",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/observation.py",
+    "sha256": "df746f2221ca07de5eb3df76e59d86e5c7037a033af9195538e12d440ee8d2ea",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/preflight.py",
+    "sha256": "beb874054424e3bd7c9e4062cde2b9ec99599a053dff5dcfe1ac20f35851a496",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/qualification.py",
+    "sha256": "912ed48ea2e67536147c499a0ea37e42eb7b232f386e1e68e2fa21280f04766e",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/qualification_load.py",
+    "sha256": "6cbc4ed8e6d18903d09737f1e79aca61c04fe6b94d729866e8356d63c4d51aa2",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/resources.py",
+    "sha256": "d79b621231afad6921e8bcfd81201eb17334db31afd20cf42082045f41ff5113",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/statistics.py",
+    "sha256": "24dfeaa53c2d3db15494780f31cd68c0d599609aa3bef150849cda133f203c26",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/timing.py",
+    "sha256": "a6e2ec4c1acd70178d9e076c95ad8d5652a9dfe8193ae5118f286eac0d395882",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/trace.py",
+    "sha256": "a93c63674b4142d50b09016a3046e15bc65d6150ab4ef6166422682af500e084",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/verification.py",
+    "sha256": "a62037632fe96733fe880e3e59e8baa36c41b33fcc8da2cbee177876040c02a9",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/one_shot/workload.py",
+    "sha256": "4a484319b6a242bd9b354d9c5f048d1380a06fe23deba0eef7bd889c46bb7f2b",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/provisioning/bootstrap.py",
+    "sha256": "906c9258cbc023d231c22671239c8f0079e3837db80a76d89a4bb4f093502d59",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/provisioning/providers.py",
+    "sha256": "dd48ec9a5a7d7055839c8e323c1268778ebfee283479edfb75cfd9b84b8e167a",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/provisioning/resources.py",
+    "sha256": "f67cb88be3e38d32d34ee59caedcbaeb9b6fd334f35c4c1cb16e274be6c07635",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/recipes/workflow.py",
+    "sha256": "58c62cd0d4a8788e6962090b96a9d44e099aadd1b090c5c2af1e71bc62e6c272",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/vm/models.py",
+    "sha256": "1d8a9bbb59fe267f54fe79e864289ffa309bccefbdb70a6e2c379d642dba39ac",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/tasks/vm/orchestrator.py",
+    "sha256": "75d36fb81bbb37ee9441782e4feb21ab12cefee5d3a94e58982194bad2493411",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "packages/nanolab/src/nanolab/workspace/recipe.py",
+    "sha256": "0f9c5920f8f0ac986134e0ff0f69a6b3a33f7c7b0116d1481a19d0f64bb72a48",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "scripts/one-shot-function-memory.py",
+    "sha256": "a0d54e045d8fb8934bad905e750745b2218f04cd32d1a844226aa583841e2077",
+    "status": "reviewed",
+    "scope": "Script riutilizzabile di configurazione memoria; quote CPU invariate, pool e funzioni verificati offline.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "scripts/one-shot-logging-overhead.py",
+    "sha256": "6ea346a9d081635bd955fd1dd9115bf8f8e71031b7bfd0a830bf1e4d78cf66c7",
+    "status": "not-on-observation-path",
+    "scope": "Percorso qualificato/pilot separato: controllati contratti e separazione dal builder osservazionale; gate non importati nel run.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "scripts/one-shot-observe.py",
+    "sha256": "de6194f3083b27662bc4af4f22d95724ef6672db91dfbd88f4e32989edd066da",
+    "status": "reviewed",
+    "scope": "Sorgente/contratto del percorso e regressioni one-shot; non equivale a prova su VM reali.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoLab",
+    "path": "scripts/one-shot-tune-load.py",
+    "sha256": "27b4e0e7be15fb72ba93585bbe3e8b104bf5db956fb98aaa5932588aa600e3e5",
+    "status": "reviewed",
+    "scope": "Taratura offline: unità rate/quantum, RAM eterogenea, otto round, solver Python originale, conservazione e copertura P2P/cloud; sette test del riferimento.",
+    "evidence": "packages/nanolab/tests/one_shot + suite NanoLab"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/bounded.rs",
+    "sha256": "277bf680c8ba4ccd49e63e56c34b02b30d142defa6dccd0537297f11fc1ea539",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/callback.rs",
+    "sha256": "ec9eb6239dfcc46ddf213e2fad2199fb6803d939f47ff8fa624d18c78c5b6969",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/context.rs",
+    "sha256": "020e85e4f3cf4731526f6596ff1920f6e712be43b90b41f136848463a2e86c51",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/dispatcher.rs",
+    "sha256": "2bd33bac068fbab125c7d464c23b896c8ac1abf03755cbf4f22f0a9ff0bb4c0a",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/handler.rs",
+    "sha256": "4a73d89f9968d39dd8ecc8a9da140c827ef7d403912eb3346351103c8545bbc2",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/invoke.rs",
+    "sha256": "1eedd05bc62749ecaf25992ea489f3d6a7ec31d6e28bfb6bedd6c15a24edf323",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/lib.rs",
+    "sha256": "a9b4c975b5e593682dd9d189c0bcdf1a62937a773952562b1e3c22ced133484d",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/limits.rs",
+    "sha256": "5312b9f5e4e3c3e821015637a3ef9d584a7b8cc514bbf4abe900959883cf65b6",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/logging.rs",
+    "sha256": "ab4169747acd626a1d243b487c5c6fbea5ac61cdbfdb4131c962aa9febfb566f",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/metrics.rs",
+    "sha256": "9416d64fccee5acba6734d9528095b432d7e71c64b4d2e853e7d408d3d1af819",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/occupancy.rs",
+    "sha256": "e26c54f00a5d8c87a57184a327f055b1ee4b7081102bc997d7dcd136c78cc019",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/runtime.rs",
+    "sha256": "04f6a68f061d199c5ce36a2cd95a60e5ea01b41f25b2f318392dfe5fdc3b79c3",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/server.rs",
+    "sha256": "33b72d275cec67c78abb1a0e78158a0d64923b886582af2a74efbda709d7a275",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/settings.rs",
+    "sha256": "5400236645e322152df0f376108c46443f988c4c1d57ce4b4928bf6f23a924a4",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "sdks/rust/src/types.rs",
+    "sha256": "c188e39d87fb80d980892f2f0517890aa340a0a3db579ea39a537bb473bd0663",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "functions/rust/one-shot-workload/src/lib.rs",
+    "sha256": "fa193860245abe39c28632d5a9b414c2ead8199327b3b73d71ca6046f386892f",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "functions/rust/one-shot-workload/src/main.rs",
+    "sha256": "37220943abbc1bea22d02008a22b7ac880ca7b9545b105f5bb2d4694bca62fa1",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "functions/rust/one-shot-arithmetic/function.yaml",
+    "sha256": "2f751f2a43e6745f2d32b0da94f7d70d5be8771a1c9104c446ba633d6616a5c7",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "functions/rust/one-shot-matrix/function.yaml",
+    "sha256": "4680792bcaba3458d925daa055025e3fc63860630e4e330aa07e8b532a468f06",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "functions/rust/one-shot-memory/function.yaml",
+    "sha256": "afb0facb5dbe513b39f71ec880527ffbece88b1d5ca46fe5d5fdd3290e65940b",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "functions/rust/one-shot-mixed/function.yaml",
+    "sha256": "e4124fb03de8024fae445198b4c8f629e2a908b073dc54b6516be90874fe5b63",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "functions/rust/one-shot-sort/function.yaml",
+    "sha256": "e2186cd24425377688fdd45cdfa091cf95f6966a46cb24b68719fb02fd2cd2a8",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "functions/rust/one-shot-workload/function.yaml",
+    "sha256": "ec1873d30c26eeef69e5b22ace6653425977b16add861cffeccf08cedd72fe8a",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "functions/rust/one-shot-workload/Dockerfile",
+    "sha256": "160e25fdc7177a3d14a24cf41c475115caa8a6fcc0805b8a44fd96e27c47de74",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "deploy/observability/README.md",
+    "sha256": "177e31c678048934e5899590137b25f3374f75b172d269d68e31b84e3e06ffea",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "deploy/observability/compose.yaml",
+    "sha256": "2f3ae743ee27154bd484b8d02c5b073dd58490791886cb97a3c6aac71b823592",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "deploy/observability/fluent-bit.conf",
+    "sha256": "2bdf227668f577fba709fc18fc3e9c1ad3b9c4e5e85910285e2a84c7eb93f36c",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "deploy/observability/grafana-datasources.yaml",
+    "sha256": "1d2bb3364247f9e6e84bbed6ed4166cddf18be9cbbc102cb33d23f19c89164c4",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "deploy/observability/loki.yaml",
+    "sha256": "9463fe44d28b410b30777ed97b62c923e22b9c0ade1a2b27c2fe63c43df21dd2",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "deploy/observability/parsers.conf",
+    "sha256": "07b8bca1b6c853dfa6526aada2745185ac65a6f7a2af798f85ebbe277bcbab4a",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ActiveRoutingPlan.java",
+    "sha256": "0e54c2bca61a0baaf09a4dfc6802dc1a786bb7e4502b0c6fa7d010baf842d78d",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/AllocationTransition.java",
+    "sha256": "7fb2db5c8c4cd8abb02b9c6402236a67ae498d2befa5872a064f1d41299b9b33",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/PlanActivation.java",
+    "sha256": "60be3e0ba5a30a2b5dbec15f7feaa26e27cc6791871bfda7c7a905592ef062ed",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/ReplicaPlanActuator.java",
+    "sha256": "cf3307e05bd1ced0d787cd9898f624fa46d249035efe6bb9cb5fb70535614037",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotConfigurationStore.java",
+    "sha256": "556fadc04e9cbf65ef62e10a703a7255965e3bb0218092a8d43ff5dbfbca1ec1",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotController.java",
+    "sha256": "3fa0a3a9a6117730e36c596d4835039e872eef74f1a18b4acd88c7a62a175326",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotOperations.java",
+    "sha256": "f52cbd3907f96990cfa243924a95360e896a64a02b37e7dec92e821216295ecf",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/api/OneShotSettings.java",
+    "sha256": "feacd61412413c09c7bbd2f35ecf8f69548dc12ed2bc9b99009342e9ffbbea31",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/src/main/java/it/unimib/datai/nanofaas/modules/offload/oneshot/coordination/EpochSettings.java",
+    "sha256": "1a55e7b4ea78abb8201380d34f42a92c8f0d202e63f4c17f024fd069cbbb403a",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  },
+  {
+    "repository": "NanoFaaS",
+    "path": "platform/modules/offload/openapi.yaml",
+    "sha256": "589dff07314e552725266dca35e2da1e57f3b485b5634c4902174b0ce6355559",
+    "status": "reviewed",
+    "scope": "Contratti e implementazione raggiunti: attuazione/readiness/API oppure SDK/workload/logging; test e build offline. Nessuna qualificazione delle prestazioni.",
+    "evidence": "offload:158 test; SDK Rust:110 test seriali; workload:4 test; assembleRecipe"
+  }
+]

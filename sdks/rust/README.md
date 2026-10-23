@@ -141,3 +141,7 @@ cargo test                                   # unit, conformance corpus (needs p
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
+
+## Structured logging
+
+Call `nanofaas::logging::init_logging()?` explicitly from the executable entrypoint. `NANOFAAS_LOG_FORMAT=json` selects the shared JSON contract; the default is text and `NANOFAAS_LOG_SERVICE` selects the service. Existing host subscribers are preserved: initialization returns an error instead of replacing one. A host-owned subscriber may use `LogFormatter` with `JsonFields` directly. Invocation span IDs take precedence over event attributes; arbitrary application fields remain under `attributes`. `Context::spawn_blocking` propagates the caller's subscriber and span while preserving reservation ownership.

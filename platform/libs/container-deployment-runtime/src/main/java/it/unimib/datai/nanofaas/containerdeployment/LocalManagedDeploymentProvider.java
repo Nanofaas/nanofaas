@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvide
 import it.unimib.datai.nanofaas.controlplane.deployment.PartialDeprovisionException;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaAdmissionToken;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -337,6 +338,66 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     }
 
     @Override
+    public boolean supportsEpochReplicaControl(String functionName) {
+        return supportsPhysicalReplicaControl(functionName);
+    }
+
+    @Override
+    public java.util.Optional<ReplicaAdmissionToken> pauseReplicaAdmission(String functionName) {
+        return closeReplicaAdmission(functionName, null);
+    }
+
+    @Override
+    public java.util.Optional<ReplicaAdmissionToken> quiesceReplicas(String functionName, Duration timeout) {
+        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException("positive quiesce timeout required");
+        }
+        return closeReplicaAdmission(functionName, timeout);
+    }
+
+    private java.util.Optional<ReplicaAdmissionToken> closeReplicaAdmission(String functionName, Duration drainTimeout) {
+        var lock = locks.get(functionName);
+        if (lock == null) return java.util.Optional.empty();
+        lock.lock();
+        try {
+            var state = states.get(functionName);
+            if (state == null || state.pendingRemoval || !isOneShot(state.spec)) return java.util.Optional.empty();
+            state.quiesceToken = state.proxy.beginQuiesce();
+            if (drainTimeout != null && !state.proxy.awaitQuiesced(drainTimeout)) return java.util.Optional.empty();
+            return java.util.Optional.of(new ReplicaAdmissionToken(state.quiesceToken.admissionEpoch()));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public boolean resumeReplicas(String functionName, ReplicaAdmissionToken token, String admissionEpoch) {
+        return reopenReplicaAdmission(functionName, token, admissionEpoch, false);
+    }
+
+    @Override
+    public boolean resumeRetainedReplicas(String functionName, ReplicaAdmissionToken token, String admissionEpoch) {
+        return reopenReplicaAdmission(functionName, token, admissionEpoch, true);
+    }
+
+    private boolean reopenReplicaAdmission(String functionName, ReplicaAdmissionToken token, String admissionEpoch, boolean retained) {
+        var lock = locks.get(functionName);
+        if (lock == null) return false;
+        lock.lock();
+        try {
+            var state = states.get(functionName);
+            if (state == null || state.pendingRemoval || !isOneShot(state.spec) || token == null
+                    || state.quiesceToken == null || !state.quiesceToken.admissionEpoch().equals(token.admissionEpoch())) return false;
+            boolean resumed = retained ? state.proxy.resumeRetained(state.quiesceToken, admissionEpoch)
+                    : state.proxy.resume(state.quiesceToken, admissionEpoch);
+            if (resumed) state.quiesceToken = null;
+            return resumed;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
     public void setReplicas(String functionName, int replicas) {
         ReentrantLock lock = locks.get(functionName);
         if (lock == null) {
@@ -641,6 +702,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         // so a snapshot frozen at provisioning time would outlive every later PATCH.
         private volatile FunctionSpec spec; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
         private final ManagedFunctionProxy proxy;
+        private ReplicaSlots.QuiesceToken quiesceToken;
         private final String prefix;
         private final LinkedHashMap<Integer, ReplicaState> replicas = new LinkedHashMap<>();
         /**

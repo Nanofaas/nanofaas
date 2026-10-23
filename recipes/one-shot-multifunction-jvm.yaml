@@ -1,0 +1,68 @@
+schemaVersion: 2
+name: one-shot-multifunction-multipass-jvm
+controlPlane:
+  modules:
+  - offload
+  - sync-queue
+  - forecasting
+  - p2p-discovery
+  - container-deployment-provider
+  - build-metadata
+  build:
+    mode: jvm
+  jvm:
+    args:
+    - -XX:+UseSerialGC
+    - -Xmx256m
+  container:
+    image: control-plane-one-shot-jvm
+  config:
+    nanofaas:
+      deployment:
+        default-backend: container-local
+      container-local:
+        runtime-adapter: docker-java
+        strict-memory: true
+      forecasting:
+        enabled: true
+        node-id: configure-per-node
+        provider: ORACLE
+        window: 1s
+        max-age: 5m
+      p2p:
+        enabled: true
+        admin:
+          enabled: true
+      offload:
+        one-shot:
+          enabled: true
+          auction-budget: 600ms
+          peer-timeout: 150ms
+          solver-budget: 150ms
+          preparation-budget: 1s
+          clock-threshold: 100ms
+          clock-max-age: 5m
+functions:
+- name: one-shot-arithmetic
+  sdk: rust
+  container:
+    image: nanofaas-one-shot-arithmetic
+- name: one-shot-sort
+  sdk: rust
+  container:
+    image: nanofaas-one-shot-sort
+- name: one-shot-memory
+  sdk: rust
+  container:
+    image: nanofaas-one-shot-memory
+- name: one-shot-matrix
+  sdk: rust
+  container:
+    image: nanofaas-one-shot-matrix
+- name: one-shot-mixed
+  sdk: rust
+  container:
+    image: nanofaas-one-shot-mixed
+registry:
+  repository: 127.0.0.1:5000/nanofaas/one-shot-multifunction
+  tag: local

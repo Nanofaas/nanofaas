@@ -20,5 +20,6 @@ class ArchitectureTest {
                     .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider.class))
                     .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.PartialDeprovisionException.class))
                     .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult.class))
-                    .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus.class)));
+                    .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus.class))
+                    .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ReplicaAdmissionToken.class)));
 }

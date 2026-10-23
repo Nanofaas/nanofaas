@@ -1,0 +1,44 @@
+[
+  {
+    "binary": "control-plane",
+    "format": "json",
+    "jsonEvents": 19,
+    "invocationVerified": false
+  },
+  {
+    "binary": "control-plane",
+    "format": "text",
+    "jsonEvents": 0,
+    "invocationVerified": false
+  },
+  {
+    "binary": "warm-echo",
+    "format": "json",
+    "jsonEvents": 19,
+    "invocationVerified": true
+  },
+  {
+    "binary": "warm-echo",
+    "format": "text",
+    "jsonEvents": 0,
+    "invocationVerified": true
+  },
+  {
+    "binary": "word-stats-lite",
+    "format": "json",
+    "jsonEvents": 4,
+    "invocationVerified": true
+  },
+  {
+    "binary": "word-stats-lite",
+    "format": "text",
+    "jsonEvents": 0,
+    "invocationVerified": true
+  },
+  {
+    "correlatedExecutionId": "e112ffd3-772d-475a-b9c9-421d6c502e8e",
+    "traceId": "gateway-trace",
+    "originEvents": 2,
+    "destinationEvents": 2
+  }
+]

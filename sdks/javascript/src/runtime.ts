@@ -516,9 +516,10 @@ function recordCallbackFailure(
     state: RuntimeState,
     executionId: string,
     details: Record<string, JsonValue>,
+    traceId?: string,
 ): void {
     state.metrics.callbackFailures.inc();
-    state.logger.warn("callback delivery failed", { executionId, ...details });
+    runWithContext({executionId, ...(traceId ? {traceId} : {})}, () => state.logger.warn("callback delivery failed", details));
 }
 
 async function sleepWithAbort(signal: AbortSignal, delayMs: number): Promise<boolean> {
@@ -568,13 +569,13 @@ async function deliverCallbackOnce(
         }
         if (response.ok) return false;
         if (isPermanentStatus(response.status) || attempt === state.options.callbackMaxAttempts - 1) {
-            recordCallbackFailure(state, executionId, { statusCode: response.status });
+            recordCallbackFailure(state, executionId, { statusCode: response.status }, headers["x-trace-id"]);
             return false;
         }
     } catch (error) {
         if (signal.aborted) return false;
         if (attempt === state.options.callbackMaxAttempts - 1) {
-            recordCallbackFailure(state, executionId, { error: toErrorInfo(error).message });
+            recordCallbackFailure(state, executionId, { error: toErrorInfo(error).message }, headers["x-trace-id"]);
             return false;
         }
     } finally {
@@ -676,7 +677,7 @@ function dispatchCallback(
         state.serializedCallbackBytes -= bodyBytes;
         state.metrics.serializedCallbackBytes.dec(bodyBytes);
         releaseCallback(state, reservation);
-        recordCallbackFailure(state, target.executionId, { error: toErrorInfo(error).message });
+        recordCallbackFailure(state, target.executionId, { error: toErrorInfo(error).message }, target.traceId);
     });
     return true;
 }
@@ -855,9 +856,11 @@ async function handleInvoke(
         const running = startHandler(state, handler, context, payload, inputReservation.bytes);
         handlerStarted = running.started;
         const outcome = await running.wait;
-        writeOutcome(state, scope, outcome, coldStart);
+        runWithContext({executionId, ...(traceId ? {traceId} : {})}, () =>
+            writeOutcome(state, scope, outcome, coldStart));
     } catch (error) {
-        writeInvocationError(state, scope, error);
+        runWithContext({executionId, ...(traceId ? {traceId} : {})}, () =>
+            writeInvocationError(state, scope, error));
     } finally {
         req.off("aborted", cancelRequest);
         res.off("close", cancelRequest);

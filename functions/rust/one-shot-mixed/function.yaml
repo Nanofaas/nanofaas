@@ -1,0 +1,21 @@
+name: one-shot-mixed-rust
+image: nanofaas/rust-one-shot-mixed:local
+timeoutMs: 30000
+concurrency: 1
+executionMode: DEPLOYMENT
+runtimeMode: HTTP
+maxRetries: 0
+env:
+  FUNCTION_HANDLER: one-shot-mixed
+  NANOFAAS_MAX_CONCURRENT_HANDLERS: '1'
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/rust/one-shot-mixed/Dockerfile
+    push: false
+catalog:
+  family: one-shot-mixed
+  runtime: rust
+  description: Composition of arithmetic, sorting, memory and matrix work using the
+    Rust SDK.
+  defaultImage: 127.0.0.1:5000/nanofaas/rust-one-shot-mixed:local

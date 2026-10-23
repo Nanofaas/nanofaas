@@ -1,0 +1,19 @@
+{
+  "window": 4,
+  "logging": false,
+  "planned": 900,
+  "sent": 905,
+  "completed": 905,
+  "dropped": 0,
+  "generatorDeficit": 0,
+  "goodput": 15.083333333333334,
+  "p95Ms": 297.61963819999994,
+  "perNodeP95Ms": {
+    "edge-1": 310.4790304,
+    "edge-2": 206.912188,
+    "edge-3": 157.89428,
+    "edge-4": 144.167657,
+    "edge-5": 128.645956,
+    "cloud": 115.646434
+  }
+}

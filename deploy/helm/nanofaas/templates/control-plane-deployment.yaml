@@ -45,6 +45,10 @@ spec:
             - containerPort: {{ .Values.controlPlane.service.ports.http }}
             - containerPort: {{ .Values.controlPlane.service.ports.actuator }}
           env:
+            {{- if .Values.observability.logs.enabled }}
+            - name: NANOFAAS_LOG_FORMAT
+              value: json
+            {{- end }}
             - name: NANOFAAS_P2P_SHAREFUNCTIONS
               value: {{ .Values.controlPlane.p2p.shareFunctions | quote }}
             - name: NANOFAAS_P2P_SHAREIMAGES

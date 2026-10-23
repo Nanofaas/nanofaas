@@ -80,8 +80,9 @@ class OneShotHopGuardE2eTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(booleans={true,false})
-    void handlerErrorAndItsRemoteReplayCarryOnlyPhysicalExecutionAttribution(boolean executed) throws Exception {
+    @org.junit.jupiter.params.provider.CsvSource({"true,500,HANDLER_ERROR,502", "false,500,RUNTIME_HANDLER_BUSY,502",
+            "false,429,RUNTIME_HANDLER_SATURATED,429", "false,503,RUNTIME_STOPPING,503"})
+    void handlerErrorAndItsRemoteReplayCarryOnlyPhysicalExecutionAttribution(boolean executed, int backendStatus, String code, int publicStatus) throws Exception {
         var calls=new java.util.concurrent.atomic.AtomicInteger();
         var execution=new java.util.concurrent.atomic.AtomicReference<String>();
         var attempt=new java.util.concurrent.atomic.AtomicReference<String>();
@@ -95,9 +96,9 @@ class OneShotHopGuardE2eTest {
                         return new MockResponse().setBody(proof);
                     }
                     calls.incrementAndGet();execution.set(request.getHeader("X-Execution-Id"));attempt.set(request.getHeader("X-Dispatch-Attempt"));
-                    return new MockResponse().setResponseCode(500).setHeader("Content-Type","application/json")
+                    return new MockResponse().setResponseCode(backendStatus).setHeader("Content-Type","application/json")
                             .setHeader("X-NanoFaaS-Handler-Executed","true").setHeader("X-NanoFaaS-Execution-Node","spoof")
-                            .setBody("{\"error\":{\"code\":\""+(executed?"HANDLER_ERROR":"RUNTIME_HANDLER_BUSY")+"\",\"message\":\"failed\"}}");
+                            .setBody("{\"error\":{\"code\":\""+code+"\",\"message\":\"failed\"}}");
                 }
             });
             backend.start();cloud.start();
@@ -120,7 +121,11 @@ class OneShotHopGuardE2eTest {
                     ((DefaultOffloadGateway)b.getBean(OffloadGateway.class)).plannedRouting(new PlanRouter(()->Optional.of(bp),()->Optional.of(bc),rev->Optional.of(bc),peers("b",bUrl,"a",aUrl),()->0));
                     String payload="{\"input\":{\"payload\":\"value\",\"nested\":[1,2]}}";
                     var response=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of("Idempotency-Key","error-replay"));
-                    assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+                    assertThat(response.statusCode()).as(response.body()).isEqualTo(publicStatus);
+                    assertThat(response.headers().firstValue("X-NanoFaaS-Function-Status")).isEmpty();
+                    if (backendStatus == 429 || backendStatus == 503) {
+                        assertThat(JsonMapper.shared().readTree(response.body()).path("error").path("code").asText()).isEqualTo(code);
+                    }
                     assertThat(JsonMapper.shared().readTree(response.body()).path("status").asText()).isEqualTo("error");
                     assertThat(response.headers().firstValue("X-NanoFaaS-Execution-Node")).isEqualTo(executed?Optional.of("b"):Optional.empty());
                     var replay=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of("Idempotency-Key","error-replay"));

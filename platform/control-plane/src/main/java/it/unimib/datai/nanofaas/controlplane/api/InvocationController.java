@@ -196,12 +196,13 @@ public class InvocationController {
         // 100-999 value, so this isn't about preventing a crash — it enforces the
         // project's [200,599] contract and stops a genuinely malformed value
         // (negative, >999) from reaching the HTTP layer as a real status.
-        boolean functionDecided = statusCode != null && ResponseHeaderPolicy.isStatusCodeValid(statusCode);
-        if (statusCode != null && !functionDecided) {
+        boolean validStatus = statusCode != null && ResponseHeaderPolicy.isStatusCodeValid(statusCode);
+        boolean functionDecided = validStatus && "success".equals(response.status());
+        if (statusCode != null && !validStatus) {
             log.warn("Execution {} returned out-of-range status code {} (expected [200,599]); "
                     + "falling back to 200", response.executionId(), statusCode);
         }
-        int status = invocation.waiterTimedOut() ? 408 : functionDecided ? statusCode : 200;
+        int status = invocation.waiterTimedOut() ? 408 : validStatus ? statusCode : 200;
         ResponseEntity.BodyBuilder builder = ResponseEntity.status(status)
                 .header("X-Execution-Id", response.executionId());
         if (functionDecided) {
@@ -322,8 +323,10 @@ public class InvocationController {
     }
 
     private static ResponseEntity<Object> offloadFailed(OffloadFailedException ex) {
-        HttpStatus status = ex.gatewayTimeout() ? HttpStatus.GATEWAY_TIMEOUT : HttpStatus.BAD_GATEWAY;
-        ResponseEntity.BodyBuilder builder = ResponseEntity.status(status);
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(ex.statusCode());
+        if (ex.retryAfter() != null) {
+            builder.header("Retry-After", ex.retryAfter());
+        }
         if (ex.targetUrl() != null) {
             builder.header("X-NanoFaaS-Offloaded", ex.targetUrl());
         }

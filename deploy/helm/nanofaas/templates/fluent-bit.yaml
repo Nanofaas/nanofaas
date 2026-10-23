@@ -1,0 +1,127 @@
+{{- if .Values.observability.logs.enabled }}
+{{- $logs := .Values.observability.logs }}
+{{- $endpoint := urlParse $logs.loki.url }}
+{{- $host := get $endpoint "host" }}
+{{- $scheme := get $endpoint "scheme" }}
+{{- if or (not $host) (not (has $scheme (list "http" "https"))) }}
+{{- fail "observability.logs.loki.url must be an http(s) Loki push URL" }}
+{{- end }}
+{{- $port := ternary "443" "80" (eq $scheme "https") }}
+{{- if contains ":" $host }}
+{{- $port = regexFind "[0-9]+$" $host }}
+{{- $host = regexReplaceAll ":[0-9]+$" $host "" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanofaas-fluent-bit
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+data:
+  parsers.conf: |
+    [PARSER]
+        Name nanofaas_json
+        Format json
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush 1
+        Grace 10
+        Log_Level info
+        Parsers_File /fluent-bit/etc/parsers.conf
+        HTTP_Server On
+        HTTP_Listen 0.0.0.0
+        HTTP_Port 2020
+        storage.path /var/lib/fluent-bit/chunks
+        storage.sync full
+        storage.checksum On
+        storage.max_chunks_up 8
+        storage.backlog.mem_limit 8M
+        storage.metrics On
+    [INPUT]
+        Name tail
+        Tag nanofaas.cri
+        Path {{ range $i, $namespace := ($logs.namespaces | default (list (include "nanofaas.namespace" .))) }}{{ if $i }},{{ end }}/var/log/containers/*_{{ $namespace }}_*.log{{ end }}
+        Exclude_Path /var/log/containers/*fluent-bit*.log
+        multiline.parser cri
+        DB /var/lib/fluent-bit/tail.db
+        DB.Sync Full
+        Read_from_Head On
+        Refresh_Interval 1
+        Rotate_Wait 10
+        Buffer_Chunk_Size 32k
+        Buffer_Max_Size 1M
+        Skip_Long_Lines On
+        storage.type filesystem
+    [FILTER]
+        Name parser
+        Match nanofaas.*
+        Key_Name log
+        Parser nanofaas_json
+        Reserve_Data On
+        Preserve_Key Off
+    [FILTER]
+        Name modify
+        Match nanofaas.*
+        Set nodeId ${NANOFAAS_NODE_ID}
+        Set environment {{ $logs.environment }}
+        Add service unstructured
+        Hard_copy service lokiService
+        Hard_copy nodeId lokiNode
+        Hard_copy environment lokiEnvironment
+    [OUTPUT]
+        Name loki
+        Match nanofaas.*
+        Host {{ $host }}
+        Port {{ $port }}
+        URI {{ get $endpoint "path" }}
+        tls {{ ternary "On" "Off" (eq $scheme "https") }}
+        tls.verify On
+        Labels job=nanofaas,node=$lokiNode,environment=$lokiEnvironment,service=$lokiService
+        Line_Format json
+        Retry_Limit False
+        storage.total_limit_size {{ $logs.bufferSize }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nanofaas-fluent-bit
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+spec:
+  selector:
+    matchLabels: {app: nanofaas-fluent-bit}
+  template:
+    metadata:
+      labels: {app: nanofaas-fluent-bit}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2020"
+        prometheus.io/path: /api/v1/metrics/prometheus
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: fluent-bit
+          image: {{ $logs.image | quote }}
+          env:
+            - name: NANOFAAS_NODE_ID
+              valueFrom:
+                fieldRef: {fieldPath: spec.nodeName}
+          ports: [{name: metrics, containerPort: 2020}]
+          resources:
+            {{- toYaml $logs.resources | nindent 12 }}
+          securityContext:
+            runAsUser: 0
+            privileged: false
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: logs, mountPath: /var/log, readOnly: true}
+            - {name: state, mountPath: /var/lib/fluent-bit}
+            - {name: config, mountPath: /fluent-bit/etc, readOnly: true}
+      volumes:
+        - name: logs
+          hostPath: {path: /var/log, type: Directory}
+        - name: state
+          hostPath: {path: {{ $logs.statePath | quote }}, type: DirectoryOrCreate}
+        - name: config
+          configMap: {name: nanofaas-fluent-bit}
+{{- end }}

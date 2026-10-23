@@ -1,0 +1,304 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 877B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/rust:1.97-alpine
+#2 DONE 0.7s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 180B done
+#3 DONE 0.0s
+
+#4 [build 1/6] FROM docker.io/library/rust:1.97-alpine@sha256:3c38f3f82c2f3d73da3b38e18d279393a04cb43ddded0e35088a8c3324d40900
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 67.31kB done
+#5 DONE 0.0s
+
+#6 [build 2/6] RUN apk add --no-cache musl-dev ca-certificates
+#6 CACHED
+
+#7 [build 3/6] COPY sdks/rust /src/sdks/rust
+#7 DONE 0.1s
+
+#8 [build 4/6] COPY functions/rust/one-shot-workload /src/functions/rust/one-shot-workload
+#8 DONE 0.0s
+
+#9 [build 5/6] WORKDIR /src/functions/rust/one-shot-workload
+#9 DONE 0.0s
+
+#10 [build 6/6] RUN RUST_TARGET="$(uname -m)-unknown-linux-musl" &&     RUSTFLAGS='-C target-feature=+crt-static' cargo build --locked --release --target "$RUST_TARGET" &&     cp "target/${RUST_TARGET}/release/one-shot-workload" /out
+#10 0.181     Updating crates.io index
+#10 1.681  Downloading crates ...
+#10 1.713   Downloaded errno v0.3.14
+#10 1.714   Downloaded atomic-waker v1.1.2
+#10 1.714   Downloaded axum-core v0.5.6
+#10 1.716   Downloaded openssl-probe v0.2.1
+#10 1.718   Downloaded rustls-native-certs v0.8.4
+#10 1.722   Downloaded cmake v0.1.58
+#10 1.722   Downloaded bitflags v2.13.1
+#10 1.724   Downloaded http-body-util v0.1.4
+#10 1.725   Downloaded tracing-serde v0.2.0
+#10 1.726   Downloaded dunce v1.0.5
+#10 1.726   Downloaded form_urlencoded v1.2.2
+#10 1.727   Downloaded http-body v1.1.0
+#10 1.727   Downloaded cfg-if v1.0.4
+#10 1.728   Downloaded futures-task v0.3.33
+#10 1.728   Downloaded axum v0.8.9
+#10 1.732   Downloaded displaydoc v0.2.7
+#10 1.733   Downloaded futures-core v0.3.33
+#10 1.734   Downloaded httpdate v1.0.3
+#10 1.735   Downloaded hyper-rustls v0.27.9
+#10 1.735   Downloaded unicode-ident v1.0.24
+#10 1.737   Downloaded thiserror v2.0.20
+#10 1.740   Downloaded cfg_aliases v0.2.2
+#10 1.740   Downloaded percent-encoding v2.3.2
+#10 1.740   Downloaded dtoa v1.0.11
+#10 1.741   Downloaded fs_extra v1.3.0
+#10 1.742   Downloaded sync_wrapper v1.0.2
+#10 1.742   Downloaded try-lock v0.2.5
+#10 1.743   Downloaded tinyvec_macros v0.1.1
+#10 1.743   Downloaded tower-layer v0.3.3
+#10 1.744   Downloaded tower-service v0.3.3
+#10 1.744   Downloaded utf8_iter v1.0.4
+#10 1.744   Downloaded zerovec-derive v0.11.3
+#10 1.745   Downloaded find-msvc-tools v0.1.10
+#10 1.746   Downloaded tinystr v0.8.3
+#10 1.747   Downloaded tracing-attributes v0.1.31
+#10 1.749   Downloaded want v0.3.1
+#10 1.749   Downloaded zerofrom-derive v0.1.7
+#10 1.750   Downloaded lru-slab v0.1.2
+#10 1.750   Downloaded yoke-derive v0.8.2
+#10 1.751   Downloaded chacha20 v0.10.1
+#10 1.752   Downloaded nu-ansi-term v0.50.3
+#10 1.753   Downloaded thread_local v1.1.10
+#10 1.754   Downloaded tokio-macros v2.7.2
+#10 1.755   Downloaded zerofrom v0.1.8
+#10 1.755   Downloaded subtle v2.6.1
+#10 1.755   Downloaded untrusted v0.9.0
+#10 1.756   Downloaded writeable v0.6.3
+#10 1.757   Downloaded zeroize v1.9.0
+#10 1.758   Downloaded tracing-core v0.1.36
+#10 1.759   Downloaded tracing-log v0.2.0
+#10 1.760   Downloaded getrandom v0.2.17
+#10 1.761   Downloaded httparse v1.10.1
+#10 1.763   Downloaded yoke v0.8.3
+#10 1.764   Downloaded tokio-rustls v0.26.4
+#10 1.765   Downloaded quinn-udp v0.5.15
+#10 1.766   Downloaded zmij v1.0.23
+#10 1.766   Downloaded rustc-hash v2.1.3
+#10 1.767   Downloaded lazy_static v1.5.0
+#10 1.768   Downloaded scopeguard v1.2.0
+#10 1.768   Downloaded zerotrie v0.2.4
+#10 1.770   Downloaded url v2.5.8
+#10 1.772   Downloaded rand_pcg v0.10.2
+#10 1.773   Downloaded tracing-subscriber v0.3.23
+#10 1.777   Downloaded zerovec v0.11.6
+#10 1.780   Downloaded tower-http v0.6.11
+#10 1.784   Downloaded mime v0.3.17
+#10 1.785   Downloaded pin-project-lite v0.2.17
+#10 1.787   Downloaded rand_core v0.10.1
+#10 1.788   Downloaded stable_deref_trait v1.2.1
+#10 1.789   Downloaded idna_adapter v1.2.2
+#10 1.789   Downloaded futures-channel v0.3.33
+#10 1.790   Downloaded itoa v1.0.18
+#10 1.790   Downloaded quote v1.0.47
+#10 1.792   Downloaded shlex v2.0.1
+#10 1.792   Downloaded potential_utf v0.1.5
+#10 1.793   Downloaded tokio v1.53.1
+#10 1.814   Downloaded signal-hook-registry v1.4.8
+#10 1.815   Downloaded bytes v1.12.1
+#10 1.817   Downloaded getrandom v0.4.3
+#10 1.818   Downloaded synstructure v0.13.2
+#10 1.819   Downloaded base64 v0.22.1
+#10 1.821   Downloaded icu_normalizer v2.2.0
+#10 1.822   Downloaded prometheus-client-derive-encode v0.5.0
+#10 1.823   Downloaded aws-lc-rs v1.18.0
+#10 1.828   Downloaded parking_lot_core v0.9.12
+#10 1.829   Downloaded ipnet v2.12.1
+#10 1.830   Downloaded thiserror-impl v2.0.20
+#10 1.830   Downloaded lock_api v0.4.14
+#10 1.831   Downloaded jobserver v0.1.35
+#10 1.832   Downloaded pkg-config v0.3.33
+#10 1.832   Downloaded slab v0.4.12
+#10 1.833   Downloaded rustls-pki-types v1.15.1
+#10 1.834   Downloaded litemap v0.8.2
+#10 1.835   Downloaded once_cell v1.21.4
+#10 1.836   Downloaded parking_lot v0.12.5
+#10 1.838   Downloaded smallvec v1.15.2
+#10 1.838   Downloaded serde_derive v1.0.229
+#10 1.840   Downloaded sharded-slab v0.1.7
+#10 1.841   Downloaded socket2 v0.6.5
+#10 1.842   Downloaded cc v1.4.2
+#10 1.844   Downloaded icu_locale_core v2.2.0
+#10 1.847   Downloaded proc-macro2 v1.0.107
+#10 1.848   Downloaded icu_properties v2.2.0
+#10 1.849   Downloaded matchit v0.8.4
+#10 1.850   Downloaded rustls-platform-verifier v0.7.0
+#10 1.852   Downloaded icu_collections v2.2.0
+#10 1.855   Downloaded log v0.4.33
+#10 1.856   Downloaded icu_provider v2.2.0
+#10 1.857   Downloaded serde_core v1.0.229
+#10 1.859   Downloaded icu_normalizer_data v2.2.0
+#10 1.860   Downloaded tinyvec v1.12.0
+#10 1.861   Downloaded http v1.5.0
+#10 1.863   Downloaded rustls-webpki v0.103.13
+#10 1.864   Downloaded serde v1.0.229
+#10 1.866   Downloaded quinn v0.11.11
+#10 1.868   Downloaded hyper-util v0.1.20
+#10 1.871   Downloaded memchr v2.8.3
+#10 1.873   Downloaded prometheus-client v0.25.0
+#10 1.875   Downloaded rand v0.10.2
+#10 1.877   Downloaded mio v1.2.2
+#10 1.880   Downloaded tower v0.5.3
+#10 1.884   Downloaded futures-util v0.3.33
+#10 1.890   Downloaded hyper v1.11.0
+#10 1.894   Downloaded idna v1.1.0
+#10 1.896   Downloaded serde_json v1.0.151
+#10 1.899   Downloaded reqwest v0.13.4
+#10 1.902   Downloaded icu_properties_data v2.2.0
+#10 1.907   Downloaded quinn-proto v0.11.16
+#10 1.911   Downloaded syn v2.0.119
+#10 1.916   Downloaded syn v3.0.3
+#10 1.922   Downloaded rustls v0.23.43
+#10 1.928   Downloaded tracing v0.1.44
+#10 1.936   Downloaded libc v0.2.189
+#10 1.956   Downloaded ring v0.17.14
+#10 1.977   Downloaded aws-lc-sys v0.44.0
+#10 2.143    Compiling proc-macro2 v1.0.107
+#10 2.143    Compiling unicode-ident v1.0.24
+#10 2.143    Compiling quote v1.0.47
+#10 2.143    Compiling libc v0.2.189
+#10 2.143    Compiling stable_deref_trait v1.2.1
+#10 2.143    Compiling smallvec v1.15.2
+#10 2.144    Compiling find-msvc-tools v0.1.10
+#10 2.144    Compiling shlex v2.0.1
+#10 2.144    Compiling bytes v1.12.1
+#10 2.144    Compiling pin-project-lite v0.2.17
+#10 2.144    Compiling itoa v1.0.18
+#10 2.144    Compiling futures-core v0.3.33
+#10 2.144    Compiling once_cell v1.21.4
+#10 2.144    Compiling pkg-config v0.3.33
+#10 2.147    Compiling fs_extra v1.3.0
+#10 2.150    Compiling dunce v1.0.5
+#10 2.150    Compiling writeable v0.6.3
+#10 2.150    Compiling aws-lc-rs v1.18.0
+#10 2.151    Compiling zeroize v1.9.0
+#10 2.152    Compiling litemap v0.8.2
+#10 2.220    Compiling utf8_iter v1.0.4
+#10 2.223    Compiling icu_properties_data v2.2.0
+#10 2.237    Compiling icu_normalizer_data v2.2.0
+#10 2.256    Compiling percent-encoding v2.3.2
+#10 2.306    Compiling tracing-core v0.1.36
+#10 2.332    Compiling rustls-pki-types v1.15.1
+#10 2.332    Compiling tower-service v0.3.3
+#10 2.342    Compiling slab v0.4.12
+#10 2.350    Compiling serde_core v1.0.229
+#10 2.358    Compiling futures-task v0.3.33
+#10 2.388    Compiling httparse v1.10.1
+#10 2.393    Compiling rustls v0.23.43
+#10 2.400    Compiling untrusted v0.9.0
+#10 2.434    Compiling try-lock v0.2.5
+#10 2.449    Compiling sync_wrapper v1.0.2
+#10 2.457    Compiling futures-util v0.3.33
+#10 2.462    Compiling futures-channel v0.3.33
+#10 2.471    Compiling httpdate v1.0.3
+#10 2.471    Compiling want v0.3.1
+#10 2.483    Compiling tower-layer v0.3.3
+#10 2.490    Compiling atomic-waker v1.1.2
+#10 2.490    Compiling cfg-if v1.0.4
+#10 2.503    Compiling subtle v2.6.1
+#10 2.515    Compiling serde v1.0.229
+#10 2.561    Compiling zmij v1.0.23
+#10 2.563    Compiling parking_lot_core v0.9.12
+#10 2.576    Compiling log v0.4.33
+#10 2.577    Compiling base64 v0.22.1
+#10 2.612    Compiling ipnet v2.12.1
+#10 2.613    Compiling form_urlencoded v1.2.2
+#10 2.637    Compiling memchr v2.8.3
+#10 2.681    Compiling http v1.5.0
+#10 2.788    Compiling scopeguard v1.2.0
+#10 2.797    Compiling serde_json v1.0.151
+#10 2.803    Compiling openssl-probe v0.2.1
+#10 2.816    Compiling lazy_static v1.5.0
+#10 2.822    Compiling bitflags v2.13.1
+#10 2.851    Compiling lock_api v0.4.14
+#10 2.859    Compiling mime v0.3.17
+#10 2.967    Compiling rustls-native-certs v0.8.4
+#10 2.967    Compiling prometheus-client v0.25.0
+#10 2.977    Compiling sharded-slab v0.1.7
+#10 2.977    Compiling thread_local v1.1.10
+#10 3.095    Compiling syn v2.0.119
+#10 3.105    Compiling syn v3.0.3
+#10 3.129    Compiling tracing-log v0.2.0
+#10 3.137    Compiling nu-ansi-term v0.50.3
+#10 3.148    Compiling matchit v0.8.4
+#10 3.156    Compiling dtoa v1.0.11
+#10 3.433    Compiling jobserver v0.1.35
+#10 3.511    Compiling errno v0.3.14
+#10 3.511    Compiling socket2 v0.6.5
+#10 3.511    Compiling mio v1.2.2
+#10 3.571    Compiling cc v1.4.2
+#10 3.578    Compiling signal-hook-registry v1.4.8
+#10 3.673    Compiling parking_lot v0.12.5
+#10 3.707    Compiling http-body v1.1.0
+#10 3.832    Compiling http-body-util v0.1.4
+#10 4.017    Compiling axum-core v0.5.6
+#10 4.194    Compiling cmake v0.1.58
+#10 4.666    Compiling aws-lc-sys v0.44.0
+#10 5.467    Compiling synstructure v0.13.2
+#10 5.544    Compiling displaydoc v0.2.7
+#10 5.544    Compiling tokio-macros v2.7.2
+#10 5.544    Compiling serde_derive v1.0.229
+#10 6.023    Compiling tokio v1.53.1
+#10 6.609    Compiling zerofrom-derive v0.1.7
+#10 6.649    Compiling yoke-derive v0.8.2
+#10 6.649    Compiling zerovec-derive v0.11.3
+#10 6.649    Compiling tracing-attributes v0.1.31
+#10 6.649    Compiling prometheus-client-derive-encode v0.5.0
+#10 7.599    Compiling zerofrom v0.1.8
+#10 7.654    Compiling tracing v0.1.44
+#10 7.708    Compiling yoke v0.8.3
+#10 7.954    Compiling zerovec v0.11.6
+#10 7.967    Compiling zerotrie v0.2.4
+#10 8.220    Compiling tracing-serde v0.2.0
+#10 8.351    Compiling tracing-subscriber v0.3.23
+#10 8.584    Compiling tinystr v0.8.3
+#10 8.665    Compiling potential_utf v0.1.5
+#10 8.735    Compiling icu_locale_core v2.2.0
+#10 8.836    Compiling icu_collections v2.2.0
+#10 9.263    Compiling hyper v1.11.0
+#10 9.263    Compiling tower v0.5.3
+#10 9.629    Compiling icu_provider v2.2.0
+#10 9.890    Compiling icu_properties v2.2.0
+#10 9.897    Compiling icu_normalizer v2.2.0
+#10 10.14    Compiling hyper-util v0.1.20
+#10 11.02    Compiling idna_adapter v1.2.2
+#10 11.11    Compiling idna v1.1.0
+#10 11.17    Compiling axum v0.8.9
+#10 11.36    Compiling url v2.5.8
+#10 11.73    Compiling tower-http v0.6.11
+#10 21.33    Compiling rustls-webpki v0.103.13
+#10 24.31    Compiling tokio-rustls v0.26.4
+#10 24.31    Compiling rustls-platform-verifier v0.7.0
+#10 24.47    Compiling hyper-rustls v0.27.9
+#10 24.59    Compiling reqwest v0.13.4
+#10 25.45    Compiling nanofaas-sdk v0.1.0 (/src/sdks/rust)
+#10 30.32    Compiling one-shot-workload v0.1.0 (/src/functions/rust/one-shot-workload)
+#10 52.50     Finished `release` profile [optimized] target(s) in 52.39s
+#10 DONE 52.6s
+
+#11 [stage-1 1/2] COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+#11 CACHED
+
+#12 [stage-1 2/2] COPY --from=build /out /app/one-shot-workload
+#12 DONE 0.0s
+
+#13 exporting to image
+#13 exporting layers 0.0s done
+#13 writing image sha256:45f2f4570bd3f7b5031b84a1f2b7bf7882bc79575772fa338b0f1ea217ac4d6c done
+#13 naming to docker.io/nanofaas/edge-logging-workload:20261010-final done
+#13 DONE 0.0s

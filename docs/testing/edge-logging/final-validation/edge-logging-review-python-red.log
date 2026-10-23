@@ -1,0 +1,130 @@
+FFFF                                                                     [100%]
+=================================== FAILURES ===================================
+______________ test_non_finite_attributes_cannot_break_json[nan] _______________
+
+sample = nan
+
+    @pytest.mark.parametrize('sample', [float('nan'), float('inf'), -float('inf')])
+    def test_non_finite_attributes_cannot_break_json(sample):
+        record = logging.LogRecord('probe', logging.INFO, '', 1, 'numeric sample', (), None)
+        record.attributes = {'sample': sample}
+        def reject(value):
+            raise ValueError('not JSON: ' + value)
+>       event = json.loads(JsonFormatter().format(record), parse_constant=reject)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+sdks/python/tests/test_logging_contract.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../../.local/share/uv/python/cpython-3.14.7-linux-aarch64-gnu/lib/python3.14/json/__init__.py:365: in loads
+    return cls(**kw).decode(s)
+           ^^^^^^^^^^^^^^^^^^^
+../../../../.local/share/uv/python/cpython-3.14.7-linux-aarch64-gnu/lib/python3.14/json/decoder.py:345: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../../.local/share/uv/python/cpython-3.14.7-linux-aarch64-gnu/lib/python3.14/json/decoder.py:361: in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 'NaN'
+
+    def reject(value):
+>       raise ValueError('not JSON: ' + value)
+E       ValueError: not JSON: NaN
+
+sdks/python/tests/test_logging_contract.py:64: ValueError
+______________ test_non_finite_attributes_cannot_break_json[inf] _______________
+
+sample = inf
+
+    @pytest.mark.parametrize('sample', [float('nan'), float('inf'), -float('inf')])
+    def test_non_finite_attributes_cannot_break_json(sample):
+        record = logging.LogRecord('probe', logging.INFO, '', 1, 'numeric sample', (), None)
+        record.attributes = {'sample': sample}
+        def reject(value):
+            raise ValueError('not JSON: ' + value)
+>       event = json.loads(JsonFormatter().format(record), parse_constant=reject)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+sdks/python/tests/test_logging_contract.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../../.local/share/uv/python/cpython-3.14.7-linux-aarch64-gnu/lib/python3.14/json/__init__.py:365: in loads
+    return cls(**kw).decode(s)
+           ^^^^^^^^^^^^^^^^^^^
+../../../../.local/share/uv/python/cpython-3.14.7-linux-aarch64-gnu/lib/python3.14/json/decoder.py:345: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../../.local/share/uv/python/cpython-3.14.7-linux-aarch64-gnu/lib/python3.14/json/decoder.py:361: in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 'Infinity'
+
+    def reject(value):
+>       raise ValueError('not JSON: ' + value)
+E       ValueError: not JSON: Infinity
+
+sdks/python/tests/test_logging_contract.py:64: ValueError
+______________ test_non_finite_attributes_cannot_break_json[-inf] ______________
+
+sample = -inf
+
+    @pytest.mark.parametrize('sample', [float('nan'), float('inf'), -float('inf')])
+    def test_non_finite_attributes_cannot_break_json(sample):
+        record = logging.LogRecord('probe', logging.INFO, '', 1, 'numeric sample', (), None)
+        record.attributes = {'sample': sample}
+        def reject(value):
+            raise ValueError('not JSON: ' + value)
+>       event = json.loads(JsonFormatter().format(record), parse_constant=reject)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+sdks/python/tests/test_logging_contract.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../../.local/share/uv/python/cpython-3.14.7-linux-aarch64-gnu/lib/python3.14/json/__init__.py:365: in loads
+    return cls(**kw).decode(s)
+           ^^^^^^^^^^^^^^^^^^^
+../../../../.local/share/uv/python/cpython-3.14.7-linux-aarch64-gnu/lib/python3.14/json/decoder.py:345: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../../.local/share/uv/python/cpython-3.14.7-linux-aarch64-gnu/lib/python3.14/json/decoder.py:361: in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = '-Infinity'
+
+    def reject(value):
+>       raise ValueError('not JSON: ' + value)
+E       ValueError: not JSON: -Infinity
+
+sdks/python/tests/test_logging_contract.py:64: ValueError
+___________ test_successful_invocation_callback_has_no_routine_info ____________
+
+client = <sdks.python.tests.asgi_test_client.ASGITestClient object at 0xf5d29387e3c0>
+caplog = <_pytest.logging.LogCaptureFixture object at 0xf5d29387ea50>
+
+    def test_successful_invocation_callback_has_no_routine_info(client, caplog):
+        @decorator.nanofaas_function
+        def quiet_handler(input_data):
+            return {"ok": True}
+        with patch.object(_app, "CALLBACK_URL", "http://callback.test"), patch.object(
+            _app.callback_transport, "post_callback", return_value=200
+        ), caplog.at_level("INFO"):
+            response = client.post("/invoke", json={"input": None}, headers={"X-Execution-Id": "quiet"})
+        assert response.status_code == 200
+>       assert not [r for r in caplog.records if r.name == _app.logger.name and r.levelno == 20]
+E       assert not [<LogRecord: nanofaas.runtime.app, 20, /home/michele/Documenti/nanofaas/.worktrees/edge-logging/sdks/python/tests/../s.../nanofaas/.worktrees/edge-logging/sdks/python/tests/../src/nanofaas/runtime/app.py, 945, "Callback sent successfully">]
+
+sdks/python/tests/test_runtime.py:78: AssertionError
+------------------------------ Captured log call -------------------------------
+INFO     nanofaas.runtime.app:app.py:1138 Invoking handler for execution quiet
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/invoke "HTTP/1.1 200 OK"
+INFO     nanofaas.runtime.app:app.py:905 Sending callback to http://callback.test/quiet:complete
+INFO     nanofaas.runtime.app:app.py:945 Callback sent successfully
+=========================== short test summary info ============================
+FAILED sdks/python/tests/test_logging_contract.py::test_non_finite_attributes_cannot_break_json[nan]
+FAILED sdks/python/tests/test_logging_contract.py::test_non_finite_attributes_cannot_break_json[inf]
+FAILED sdks/python/tests/test_logging_contract.py::test_non_finite_attributes_cannot_break_json[-inf]
+FAILED sdks/python/tests/test_runtime.py::test_successful_invocation_callback_has_no_routine_info
+4 failed, 88 deselected in 0.22s

@@ -207,3 +207,6 @@ sync-queue:
   retry-after-seconds: 2
   throughput-window: 30s
   per-function-min-samples: 50
+
+logging:
+  config: ${LOGGING_CONFIG:classpath:logback-spring.xml}

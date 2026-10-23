@@ -1,0 +1,35 @@
+Warning: Permanently added '10.83.80.65' (ED25519) to the list of known hosts.
+Fluent Bit v5.1.3
+* Copyright (C) 2015-2026 The Fluent Bit Authors
+* Fluent Bit is a CNCF graduated project under the Fluent organization
+* https://fluentbit.io
+
+______ _                  _    ______ _ _           _____  __  
+|  ___| |                | |   | ___ (_) |         |  ___|/  | 
+| |_  | |_   _  ___ _ __ | |_  | |_/ /_| |_  __   _|___ \ `| | 
+|  _| | | | | |/ _ \ '_ \| __| | ___ \ | __| \ \ / /   \ \ | | 
+| |   | | |_| |  __/ | | | |_  | |_/ / | |_   \ V //\__/ /_| |_
+\_|   |_|\__,_|\___|_| |_|\__| \____/|_|\__|   \_/ \____(_)___/
+
+
+[2026/10/10 09:10:30.510] [ info] [fluent bit] version=5.1.3, commit=d1be1ba389, pid=1
+[2026/10/10 09:10:30.510] [ info] [storage] created root path /var/lib/fluent-bit/chunks
+[2026/10/10 09:10:30.510] [ info] [storage] ver=1.5.4, type=memory+filesystem, sync=full, checksum=on, max_chunks_up=8
+[2026/10/10 09:10:30.510] [ info] [storage] backlog input plugin: storage_backlog.1
+[2026/10/10 09:10:30.510] [ info] [simd    ] NEON
+[2026/10/10 09:10:30.510] [ info] [cmetrics] version=2.2.5
+[2026/10/10 09:10:30.510] [ info] [ctraces ] version=0.7.3
+[2026/10/10 09:10:30.510] [ info] [input:tail:tail.0] initializing
+[2026/10/10 09:10:30.510] [ info] [input:tail:tail.0] storage_strategy='filesystem' (memory + filesystem)
+[2026/10/10 09:10:30.612] [ info] [input:tail:tail.0] db: delete unmonitored stale inodes from the database: count=0
+[2026/10/10 09:10:30.612] [ info] [input:storage_backlog:storage_backlog.1] initializing
+[2026/10/10 09:10:30.612] [ info] [input:storage_backlog:storage_backlog.1] storage_strategy='memory' (memory only)
+[2026/10/10 09:10:30.612] [ info] [input:storage_backlog:storage_backlog.1] queue memory limit: 7.6M
+[2026/10/10 09:10:30.613] [ info] [output:loki:loki.0] configured, hostname=10.83.80.1:43100
+[2026/10/10 09:10:30.613] [ info] [http_server] listen iface=0.0.0.0 tcp_port=2020
+[2026/10/10 09:10:30.613] [ info] [sp] stream processor started
+[2026/10/10 09:10:30.613] [ info] [engine] Shutdown Grace Period=10, Shutdown Input Grace Period=5
+[2026/10/10 09:10:51.441] [ info] [input:tail:tail.0] inotify_fs_add(): inode=787276 watch_fd=1 name=/var/log/containers/4a07363c6c7d16cdb4f2f8c3839f65b99b40ef2d4558a435d5ee082bf1f21a4b/4a07363c6c7d16cdb4f2f8c3839f65b99b40ef2d4558a435d5ee082bf1f21a4b-json.log
+[2026/10/10 09:10:52.446] [ info] [input:tail:tail.0] inotify_fs_add(): inode=787312 watch_fd=2 name=/var/log/containers/1d6918015a4010932c5986b3f35b3f0eec28c22e65091c9f62da1222a703b533/1d6918015a4010932c5986b3f35b3f0eec28c22e65091c9f62da1222a703b533-json.log
+[2026/10/10 09:12:19.293] [ info] [input:tail:tail.0] inotify_fs_remove(): inode=787276 watch_fd=1
+[2026/10/10 09:12:20.421] [ info] [input:tail:tail.0] inotify_fs_remove(): inode=787312 watch_fd=2

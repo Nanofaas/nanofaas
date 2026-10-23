@@ -36,8 +36,8 @@ def test_json_logging(capsys):
     log_data = json.loads(output)
     
     assert log_data["message"] == "Test message"
-    assert log_data["execution_id"] == "exec-789"
-    assert log_data["trace_id"] == "trace-000"
+    assert log_data["executionId"] == "exec-789"
+    assert log_data["traceId"] == "trace-000"
     assert "timestamp" in log_data
     assert log_data["level"] == "INFO"
 

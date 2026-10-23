@@ -1,0 +1,15 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____ test_resource_cost_uses_cumulative_counters_not_post_load_cpu_percent _____
+
+    def test_resource_cost_uses_cumulative_counters_not_post_load_cpu_percent():
+        before = {"workload": {"cpuNs": 100, "readBytes": 10, "writeBytes": 20, "memoryBytes": 40}}
+        after = {"workload": {"cpuNs": 900, "readBytes": 14, "writeBytes": 30, "memoryBytes": 80}}
+>       delta = pilot.resource_delta(before, after, elapsed_seconds=2)
+                ^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'pilot' has no attribute 'resource_delta'
+
+packages/nanolab/tests/one_shot/test_logging_pilot.py:59: AttributeError
+=========================== short test summary info ============================
+FAILED packages/nanolab/tests/one_shot/test_logging_pilot.py::test_resource_cost_uses_cumulative_counters_not_post_load_cpu_percent
+1 failed, 5 deselected in 0.30s

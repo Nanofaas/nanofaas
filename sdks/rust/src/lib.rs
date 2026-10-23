@@ -9,6 +9,7 @@ mod dispatcher;
 mod handler;
 mod invoke;
 mod limits;
+pub mod logging;
 mod metrics;
 mod occupancy;
 

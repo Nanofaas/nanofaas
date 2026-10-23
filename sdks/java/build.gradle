@@ -12,6 +12,7 @@ dependencyManagement {
 
 dependencies {
     api project(':common')
+    implementation project(':logging-runtime')
     api 'org.springframework.boot:spring-boot-starter-web'
     // Not spring-boot-starter-actuator: this SDK deliberately serves its own /health and /metrics
     // (see HealthController/MetricsController) instead of Actuator's management endpoints. This
