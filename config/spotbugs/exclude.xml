@@ -131,8 +131,27 @@
          AttemptCoordinator's compound operations synchronized on the execution record. -->
     <Match>
         <Class name="it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord"/>
-        <Method name="markError" params="it.unimib.datai.nanofaas.common.model.ErrorInfo,java.util.Map"/>
+        <Or>
+            <Method name="markError" params="it.unimib.datai.nanofaas.common.model.ErrorInfo,java.util.Map"/>
+            <Method name="markError" params="it.unimib.datai.nanofaas.common.model.ErrorInfo,java.lang.Integer,java.util.Map"/>
+            <Method name="markFailure" params="it.unimib.datai.nanofaas.common.model.ErrorInfo,java.lang.Throwable,java.lang.Integer,java.util.Map"/>
+        </Or>
         <Bug pattern="USO_UNSAFE_METHOD_SYNCHRONIZATION"/>
+    </Match>
+    <!-- The terminal failure is the caller's own exception, kept to be rethrown as the
+         offload answer; copying a Throwable would lose its identity and stack. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord"/>
+        <Method name="markFailure"/>
+        <Field name="terminalFailure"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Pausing again after a lost race is for its side effect on the provider; the
+         returned token is not needed because the physical leases are retained. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator"/>
+        <Method name="~lambda\$reopenReplicaAdmission\$.*"/>
+        <Bug pattern="RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT"/>
     </Match>
     <!-- All increments hold the instance monitor; volatile permits fenced callback reads. -->
     <Match>

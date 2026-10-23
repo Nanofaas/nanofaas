@@ -157,8 +157,9 @@ public class ExternalDispatcher implements Dispatcher {
         } catch (JacksonException | IllegalArgumentException ignored) {
             // Non-JSON upstream errors retain their original diagnostic body.
         }
-        Map<String, String> retryHeaders = retryAt == null ? null
-                : Map.of("Retry-After", headers.getFirst("Retry-After").trim());
+        String retryAfter = headers.getFirst("Retry-After");
+        Map<String, String> retryHeaders = retryAt == null || retryAfter == null ? null
+                : Map.of("Retry-After", retryAfter.trim());
         return platformFailure(status, code, message, retryHeaders);
     }
 
