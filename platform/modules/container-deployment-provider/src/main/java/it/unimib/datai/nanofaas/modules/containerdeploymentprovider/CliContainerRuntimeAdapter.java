@@ -22,14 +22,21 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
     private final String cpuset;
     private final String bindHost;
     private final PortAllocator portAllocator;
+    private final boolean strictMemory;
 
     CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor, String cpuset,
                                String bindHost, PortAllocator portAllocator) {
+        this(runtimeAdapter, executor, cpuset, bindHost, portAllocator, false);
+    }
+
+    CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor, String cpuset,
+                               String bindHost, PortAllocator portAllocator, boolean strictMemory) {
         this.bindHost = bindHost;
         this.portAllocator = portAllocator;
         this.runtimeAdapter = runtimeAdapter == null || runtimeAdapter.isBlank() ? "docker" : runtimeAdapter.trim();
         this.executor = executor;
         this.cpuset = cpuset == null || cpuset.isBlank() ? null : cpuset.trim();
+        this.strictMemory = strictMemory;
     }
 
     @Override
@@ -52,6 +59,11 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
 
     @Override
     public ManagedContainer runContainer(ContainerInstanceSpec spec) {
+        if (strictMemory && (spec.resources() == null || spec.resources().limits() == null
+                || spec.resources().limits().memoryMiB() == null
+                || spec.resources().limits().memoryMiB() <= 0)) {
+            throw new IllegalArgumentException("strict memory requires a positive memory limit");
+        }
         int hostPort = portAllocator.nextPort();
 
         List<String> command = new ArrayList<>();
@@ -97,7 +109,7 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
                 LocalManagedDeploymentProvider.replicaIndex(spec.containerName()), baseUrl(hostPort), true);
     }
 
-    private static void addResourceFlags(List<String> command, ResourceSpec resources) {
+    private void addResourceFlags(List<String> command, ResourceSpec resources) {
         if (resources == null) {
             return;
         }
@@ -121,6 +133,10 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         if (limits != null && limits.memoryMiB() != null) {
             command.add("--memory");
             command.add(limits.memoryMiB() + "m");
+            if (strictMemory) {
+                command.add("--memory-swap");
+                command.add(limits.memoryMiB() + "m");
+            }
         }
     }
 

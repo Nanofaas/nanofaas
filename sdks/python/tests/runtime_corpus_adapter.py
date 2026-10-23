@@ -698,8 +698,8 @@ class ScenarioHarness:
             assert any(
                 entry["level"] == "ERROR"
                 and entry["message"] == "Callback failed after all retries"
-                and entry["execution_id"] == execution_id
-                and entry["trace_id"] == trace_id
+                and entry["executionId"] == execution_id
+                and entry["traceId"] == trace_id
                 for entry in self.log_capture.entries
             )
             self.observations.add("structured-log")

@@ -30,8 +30,8 @@ class OneShotTimingQualificationTest {
             when(peers.activeNeighbors()).thenReturn(List.of());
             when(peers.localEndpoint()).thenReturn(Optional.of(new PeerEndpoint("edge","inc",URI.create("http://edge:8080"))));
             when(actuator.ownedFunctions()).thenReturn(Set.of());
-            when(coordinator.prepare(anyLong(),any(),any())).thenAnswer(inv->Mono.just(new EpochOutcome(inv.getArgument(0),EpochOutcome.Status.CONVERGED,null,10,5,1,"ok")));
-            when(actuator.prepare(any(),any())).thenReturn(Mono.just(activation(PlanActivation.Status.PREPARED)));
+            when(coordinator.prepare(anyLong(),any(),any())).thenAnswer(inv->Mono.just(new EpochOutcome(inv.getArgument(0),EpochOutcome.Status.FIXED_ROUNDS_COMPLETED,null,10,5,1,"ok")));
+            when(actuator.prepare(any(),any(),any())).thenReturn(Mono.just(activation(PlanActivation.Status.PREPARED)));
             operations=new OneShotOperations(store,profiles,inputs,coordinator,actuator,events,peers,new SimpleMeterRegistry(),true,clock);
             operations.configure(0,config);operations.start();
         }
@@ -181,7 +181,7 @@ class OneShotTimingQualificationTest {
     }
     @Test void cannotEnableSchedulingDuringAnActiveManualPreparation() {
         try(var f=new Fixture(new MutableClock())) {
-            f.qualify();when(f.actuator.prepare(any(),any())).thenReturn(Mono.never());
+            f.qualify();when(f.actuator.prepare(any(),any(),any())).thenReturn(Mono.never());
             var start=Instant.EPOCH.plusSeconds(300);
             var preparation=f.operations.prepare(20,new OneShotOperations.Window(start,start.plusSeconds(300)),false).subscribe();
             try {
@@ -316,7 +316,7 @@ class OneShotTimingQualificationTest {
     @Test void degradedAndDeadlineOutcomesRemainCensoredAndDoNotQualify() {
         try(var f=new Fixture()) {
             for(int i=0;i<19;i++) f.sample(i);
-            when(f.actuator.prepare(any(),any())).thenReturn(Mono.just(activation(PlanActivation.Status.DEGRADED)));
+            when(f.actuator.prepare(any(),any(),any())).thenReturn(Mono.just(activation(PlanActivation.Status.DEGRADED)));
             f.sample(19);
             when(f.coordinator.prepare(anyLong(),any(),any())).thenReturn(Mono.just(new EpochOutcome(20,EpochOutcome.Status.DEADLINE,null,10,5,1,"deadline")));
             f.sample(20);

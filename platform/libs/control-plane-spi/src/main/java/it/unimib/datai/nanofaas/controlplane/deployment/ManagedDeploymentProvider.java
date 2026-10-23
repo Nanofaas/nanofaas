@@ -57,6 +57,27 @@ public interface ManagedDeploymentProvider {
     /** True only for deployments enforcing one physical handler per replica with positive release proof. */
     default boolean supportsPhysicalReplicaControl(String functionName) { return false; }
 
+    default boolean supportsEpochReplicaControl(String functionName) { return false; }
+
+    /** Closes future admission without releasing occupied physical execution. */
+    default java.util.Optional<ReplicaAdmissionToken> pauseReplicaAdmission(String functionName) {
+        return java.util.Optional.empty();
+    }
+
+    /** Returns a capability only after positive drain; failure must leave admission closed. */
+    default java.util.Optional<ReplicaAdmissionToken> quiesceReplicas(String functionName, java.time.Duration timeout) {
+        return java.util.Optional.empty();
+    }
+
+    default boolean resumeReplicas(String functionName, ReplicaAdmissionToken token, String admissionEpoch) {
+        return false;
+    }
+
+    /** Admission-only rotation for unchanged allocations; occupied slots remain owned. */
+    default boolean resumeRetainedReplicas(String functionName, ReplicaAdmissionToken token, String admissionEpoch) {
+        return false;
+    }
+
     void setReplicas(String functionName, int replicas);
 
     int getReadyReplicas(String functionName);

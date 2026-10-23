@@ -43,6 +43,45 @@ import org.junit.jupiter.api.Test;
 class AttemptCoordinatorTest {
 
     @Test
+    void archivedRemoteAdmissionFailureRetainsStatusAndRetryHint() {
+        var spec = new FunctionSpec("fn", "image", null, null, null,
+                30000, 1, 10, 0, null, ExecutionMode.LOCAL, null, null, null);
+        var task = new InvocationTask("remote-reject", "fn", spec, new InvocationRequest("input", null),
+                null, null, Instant.now(), 1, InvocationKind.ASYNC);
+        var record = new ExecutionRecord("remote-reject", task);
+        var store = new ExecutionStore(); store.put(record);
+        var coordinator = new AttemptCoordinator(store, new FunctionCapacityRegistry(),
+                RetryScheduler.unavailable(), mock(AttemptTransport.class), mock(AttemptObserver.class));
+        var failure = new it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException(
+                "http://peer", 429, "1", "admission rejected");
+        coordinator.failOffloadedExecution("remote-reject", failure);
+        assertThat(record.completion().isCompletedExceptionally()).isTrue();
+        assertThat(record.toOutcome().statusCodeOrNull()).isEqualTo(429);
+        assertThat(record.toOutcome().headers()).containsEntry("Retry-After", "1");
+    }
+
+    @Test
+    void terminalRuntimeRejectionRetainsHttpMetadataInCompletionAndArchive() {
+        var spec = new FunctionSpec("fn", "image", null, null, null,
+                30000, 1, 10, 0, null, ExecutionMode.LOCAL, null, null, null);
+        var task = new InvocationTask("reject", "fn", spec, new InvocationRequest("input", null),
+                null, null, Instant.now(), 1, InvocationKind.ASYNC);
+        var record = new ExecutionRecord("reject", task);
+        record.markRunning();
+        var store = new ExecutionStore(); store.put(record);
+        var coordinator = new AttemptCoordinator(store, new FunctionCapacityRegistry(),
+                RetryScheduler.unavailable(), mock(AttemptTransport.class), mock(AttemptObserver.class));
+        var result = new InvocationResult(false, null,
+                new it.unimib.datai.nanofaas.common.model.ErrorInfo("RUNTIME_HANDLER_SATURATED", "busy"),
+                429, java.util.Map.of("Retry-After", "1"), null);
+        coordinator.completeExecution("reject", DispatchResult.warm(result), 1);
+        assertThat(record.completion().join().statusCode()).isEqualTo(429);
+        assertThat(record.completion().join().headers()).containsEntry("Retry-After", "1");
+        assertThat(record.toOutcome().statusCodeOrNull()).isEqualTo(429);
+        assertThat(record.toOutcome().headers()).containsEntry("Retry-After", "1");
+    }
+
+    @Test
     void executedHandlerErrorRetainsNodeButAdmissionFailureAndStaleProofDoNot() {
         for(boolean executed:List.of(true,false)) {
             var spec=new FunctionSpec("fn","image",null,null,null,30000,1,10,0,null,ExecutionMode.LOCAL,null,null,null);

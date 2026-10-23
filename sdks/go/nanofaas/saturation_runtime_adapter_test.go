@@ -667,7 +667,7 @@ func (h *runtimeCorpusHarness) observeStructuredLog(observed map[string]bool) {
 		} else if err != nil {
 			h.t.Fatal(err)
 		}
-		if record["msg"] == "callback delivery exhausted" && record["execution_id"] != nil {
+		if record["msg"] == "callback delivery exhausted" && record["executionId"] != nil {
 			observed["structured-log"] = true
 		}
 	}

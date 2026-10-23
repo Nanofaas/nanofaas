@@ -1,0 +1,15 @@
+{
+  "status": "complete",
+  "exportStatus": "complete",
+  "nodeId": "edge-3",
+  "issues": [],
+  "truncated": false,
+  "collection": {
+    "status": "drained",
+    "received": 7.0,
+    "delivered": 7.0,
+    "dropped": 0.0,
+    "pending": 0
+  },
+  "stateArchive": "verified"
+}

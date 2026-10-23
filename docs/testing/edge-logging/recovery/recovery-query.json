@@ -1,0 +1,505 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "streams",
+    "result": [
+      {
+        "stream": {
+          "detected_level": "debug",
+          "environment": "local",
+          "job": "nanofaas",
+          "node": "nf-logs-378e897480",
+          "service": "control-plane",
+          "service_name": "control-plane"
+        },
+        "values": [
+          [
+            "1791617905311029000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:36:16.081Z\",\"level\":\"DEBUG\",\"service\":\"control-plane\",\"logger\":\"it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcher\",\"message\":\"dispatch-external-completed\",\"executionId\":\"e112ffd3-772d-475a-b9c9-421d6c502e8e\",\"traceId\":\"gateway-trace\",\"functionName\":\"logging-fixture\",\"event\":\"dispatch-external-completed\",\"attempt\":1,\"time\":\"2026-10-10T07:38:25.311029Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905311012000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:36:16.075Z\",\"level\":\"DEBUG\",\"service\":\"control-plane\",\"logger\":\"it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcher\",\"message\":\"dispatch-external-started\",\"executionId\":\"e112ffd3-772d-475a-b9c9-421d6c502e8e\",\"traceId\":\"gateway-trace\",\"functionName\":\"logging-fixture\",\"event\":\"dispatch-external-started\",\"attempt\":1,\"time\":\"2026-10-10T07:38:25.311012Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "detected_level": "info",
+          "environment": "local",
+          "job": "nanofaas",
+          "node": "nf-logs-378e897480",
+          "service": "fixture",
+          "service_name": "fixture"
+        },
+        "values": [
+          [
+            "1791617907042462000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042462Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-39\",\"traceId\":\"trace-offline-39\",\"time\":\"2026-10-10T07:38:27.042462Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042455000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042455Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-38\",\"traceId\":\"trace-offline-38\",\"time\":\"2026-10-10T07:38:27.042455Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042448000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042448Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-37\",\"traceId\":\"trace-offline-37\",\"time\":\"2026-10-10T07:38:27.042448Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042441000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042441Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-36\",\"traceId\":\"trace-offline-36\",\"time\":\"2026-10-10T07:38:27.042441Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042434000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042434Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-35\",\"traceId\":\"trace-offline-35\",\"time\":\"2026-10-10T07:38:27.042434Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042427000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042427Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-34\",\"traceId\":\"trace-offline-34\",\"time\":\"2026-10-10T07:38:27.042427Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042420000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042420Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-33\",\"traceId\":\"trace-offline-33\",\"time\":\"2026-10-10T07:38:27.042420Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042413000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042413Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-32\",\"traceId\":\"trace-offline-32\",\"time\":\"2026-10-10T07:38:27.042413Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042406000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042406Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-31\",\"traceId\":\"trace-offline-31\",\"time\":\"2026-10-10T07:38:27.042406Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042399000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042399Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-30\",\"traceId\":\"trace-offline-30\",\"time\":\"2026-10-10T07:38:27.042399Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042392000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042392Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-29\",\"traceId\":\"trace-offline-29\",\"time\":\"2026-10-10T07:38:27.042392Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042385000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042385Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-28\",\"traceId\":\"trace-offline-28\",\"time\":\"2026-10-10T07:38:27.042385Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042378000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042378Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-27\",\"traceId\":\"trace-offline-27\",\"time\":\"2026-10-10T07:38:27.042378Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042370000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042370Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-26\",\"traceId\":\"trace-offline-26\",\"time\":\"2026-10-10T07:38:27.042370Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042358000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042358Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-25\",\"traceId\":\"trace-offline-25\",\"time\":\"2026-10-10T07:38:27.042358Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042301000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042301Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-24\",\"traceId\":\"trace-offline-24\",\"time\":\"2026-10-10T07:38:27.042301Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042294000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042294Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-23\",\"traceId\":\"trace-offline-23\",\"time\":\"2026-10-10T07:38:27.042294Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042287000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042287Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-22\",\"traceId\":\"trace-offline-22\",\"time\":\"2026-10-10T07:38:27.042287Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042280000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042280Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-21\",\"traceId\":\"trace-offline-21\",\"time\":\"2026-10-10T07:38:27.042280Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042273000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042273Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-20\",\"traceId\":\"trace-offline-20\",\"time\":\"2026-10-10T07:38:27.042273Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042265000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042265Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-19\",\"traceId\":\"trace-offline-19\",\"time\":\"2026-10-10T07:38:27.042265Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042258000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042258Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-18\",\"traceId\":\"trace-offline-18\",\"time\":\"2026-10-10T07:38:27.042258Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042250000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042250Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-17\",\"traceId\":\"trace-offline-17\",\"time\":\"2026-10-10T07:38:27.042250Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042241000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042241Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-16\",\"traceId\":\"trace-offline-16\",\"time\":\"2026-10-10T07:38:27.042241Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042234000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042234Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-15\",\"traceId\":\"trace-offline-15\",\"time\":\"2026-10-10T07:38:27.042234Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042227000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042227Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-14\",\"traceId\":\"trace-offline-14\",\"time\":\"2026-10-10T07:38:27.042227Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042219000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042219Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-13\",\"traceId\":\"trace-offline-13\",\"time\":\"2026-10-10T07:38:27.042219Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042212000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042212Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-12\",\"traceId\":\"trace-offline-12\",\"time\":\"2026-10-10T07:38:27.042212Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042204000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042204Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-11\",\"traceId\":\"trace-offline-11\",\"time\":\"2026-10-10T07:38:27.042204Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042196000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042196Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-10\",\"traceId\":\"trace-offline-10\",\"time\":\"2026-10-10T07:38:27.042196Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042189000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042189Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-9\",\"traceId\":\"trace-offline-9\",\"time\":\"2026-10-10T07:38:27.042189Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042181000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042181Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-8\",\"traceId\":\"trace-offline-8\",\"time\":\"2026-10-10T07:38:27.042181Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042173000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042173Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-7\",\"traceId\":\"trace-offline-7\",\"time\":\"2026-10-10T07:38:27.042173Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042165000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042165Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-6\",\"traceId\":\"trace-offline-6\",\"time\":\"2026-10-10T07:38:27.042165Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042147000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042147Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-5\",\"traceId\":\"trace-offline-5\",\"time\":\"2026-10-10T07:38:27.042147Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042140000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042140Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-4\",\"traceId\":\"trace-offline-4\",\"time\":\"2026-10-10T07:38:27.042140Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042131000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042131Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-3\",\"traceId\":\"trace-offline-3\",\"time\":\"2026-10-10T07:38:27.042131Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042121000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042121Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-2\",\"traceId\":\"trace-offline-2\",\"time\":\"2026-10-10T07:38:27.042121Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042107000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042107Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-1\",\"traceId\":\"trace-offline-1\",\"time\":\"2026-10-10T07:38:27.042107Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617907042068000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:27.042068Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"offline-0\",\"traceId\":\"trace-offline-0\",\"time\":\"2026-10-10T07:38:27.042068Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617902779878000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:38:22.779878Z\",\"level\":\"INFO\",\"service\":\"fixture\",\"logger\":\"contract\",\"message\":\"caff\\u00e8 \\u2615\\n\\\"next\\\"\",\"executionId\":\"initial\",\"traceId\":\"trace-initial\",\"time\":\"2026-10-10T07:38:22.779878Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "detected_level": "info",
+          "environment": "local",
+          "job": "nanofaas",
+          "node": "nf-logs-378e897480",
+          "service": "function-runtime",
+          "service_name": "function-runtime"
+        },
+        "values": [
+          [
+            "1791617905310839000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:36:15.238Z\",\"level\":\"INFO\",\"service\":\"function-runtime\",\"logger\":\"it.unimib.datai.nanofaas.examples.wordstatslite.WordStatsLite\",\"message\":\"Processing word stats for execution native-exec\",\"executionId\":\"native-exec\",\"traceId\":\"native-trace\",\"functionName\":\"word-stats-lite\",\"time\":\"2026-10-10T07:38:25.310839Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310778000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:36:16.079Z\",\"level\":\"INFO\",\"service\":\"function-runtime\",\"logger\":\"it.unimib.datai.nanofaas.examples.wordstatslite.WordStatsLite\",\"message\":\"Processing word stats for execution e112ffd3-772d-475a-b9c9-421d6c502e8e\",\"executionId\":\"e112ffd3-772d-475a-b9c9-421d6c502e8e\",\"traceId\":\"gateway-trace\",\"functionName\":\"word-stats-lite\",\"attempt\":1,\"time\":\"2026-10-10T07:38:25.310778Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310660000",
+            "{\"executionId\":\"go-two\",\"level\":\"INFO\",\"logger\":\"nanofaas\",\"message\":\"SDK handler caff\\u00e8\\nnext\",\"schemaVersion\":1,\"service\":\"function-runtime\",\"timestamp\":\"2026-10-10T07:37:23.052245124Z\",\"traceId\":\"trace-two\",\"time\":\"2026-10-10T07:38:25.310660Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310641000",
+            "{\"executionId\":\"go-one\",\"level\":\"INFO\",\"logger\":\"nanofaas\",\"message\":\"SDK handler caff\\u00e8\\nnext\",\"schemaVersion\":1,\"service\":\"function-runtime\",\"timestamp\":\"2026-10-10T07:37:23.051467831Z\",\"traceId\":\"trace-one\",\"time\":\"2026-10-10T07:38:25.310641Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310602000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:37:22.067741Z\",\"level\":\"INFO\",\"service\":\"function-runtime\",\"logger\":\"fixture\",\"message\":\"SDK handler caff\\u00e8\\nnext\",\"executionId\":\"python-two\",\"traceId\":\"trace-two\",\"time\":\"2026-10-10T07:38:25.310602Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310593000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:37:22.067575Z\",\"level\":\"INFO\",\"service\":\"function-runtime\",\"logger\":\"nanofaas.runtime.app\",\"message\":\"Invoking handler for execution python-two\",\"executionId\":\"python-two\",\"traceId\":\"trace-two\",\"time\":\"2026-10-10T07:38:25.310593Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310584000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:37:22.066214Z\",\"level\":\"INFO\",\"service\":\"function-runtime\",\"logger\":\"fixture\",\"message\":\"SDK handler caff\\u00e8\\nnext\",\"executionId\":\"python-one\",\"traceId\":\"trace-one\",\"time\":\"2026-10-10T07:38:25.310584Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310572000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:37:22.065907Z\",\"level\":\"INFO\",\"service\":\"function-runtime\",\"logger\":\"nanofaas.runtime.app\",\"message\":\"Invoking handler for execution python-one\",\"executionId\":\"python-one\",\"traceId\":\"trace-one\",\"time\":\"2026-10-10T07:38:25.310572Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310520000",
+            "{\"executionId\":\"rust-two\",\"level\":\"INFO\",\"logger\":\"logging_fixture\",\"message\":\"SDK handler caff\\u00e8\\nnext\",\"schemaVersion\":1,\"service\":\"function-runtime\",\"timestamp\":\"2026-10-10T07:37:23.456387Z\",\"traceId\":\"trace-two\",\"time\":\"2026-10-10T07:38:25.310520Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310489000",
+            "{\"executionId\":\"rust-one\",\"level\":\"INFO\",\"logger\":\"logging_fixture\",\"message\":\"SDK handler caff\\u00e8\\nnext\",\"schemaVersion\":1,\"service\":\"function-runtime\",\"timestamp\":\"2026-10-10T07:37:23.455988Z\",\"traceId\":\"trace-one\",\"time\":\"2026-10-10T07:38:25.310489Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310437000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:37:22.641Z\",\"level\":\"INFO\",\"service\":\"function-runtime\",\"logger\":\"nanofaas.handler\",\"message\":\"SDK handler caff\\u00e8\\nnext\",\"executionId\":\"javascript-two\",\"traceId\":\"trace-two\",\"time\":\"2026-10-10T07:38:25.310437Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310405000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:37:22.640Z\",\"level\":\"INFO\",\"service\":\"function-runtime\",\"logger\":\"nanofaas.handler\",\"message\":\"SDK handler caff\\u00e8\\nnext\",\"executionId\":\"javascript-one\",\"traceId\":\"trace-one\",\"time\":\"2026-10-10T07:38:25.310405Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "detected_level": "unknown",
+          "environment": "local",
+          "job": "nanofaas",
+          "node": "nf-logs-378e897480",
+          "service": "unstructured",
+          "service_name": "unstructured"
+        },
+        "values": [
+          [
+            "1791617904300682000",
+            "{\"log\":\"plain-text-fixture\\n\",\"time\":\"2026-10-10T07:38:24.300682Z\",\"stream\":\"stderr\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\",\"service\":\"unstructured\"}"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "detected_level": "warn",
+          "environment": "local",
+          "job": "nanofaas",
+          "node": "nf-logs-378e897480",
+          "service": "function-runtime",
+          "service_name": "function-runtime"
+        },
+        "values": [
+          [
+            "1791617905310849000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:36:15.238Z\",\"level\":\"WARN\",\"service\":\"function-runtime\",\"logger\":\"it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClient\",\"message\":\"CALLBACK_URL not configured, skipping callback for execution native-exec\",\"executionId\":\"native-exec\",\"traceId\":\"native-trace\",\"functionName\":\"word-stats-lite\",\"time\":\"2026-10-10T07:38:25.310849Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310796000",
+            "{\"schemaVersion\":1,\"timestamp\":\"2026-10-10T07:36:16.080Z\",\"level\":\"WARN\",\"service\":\"function-runtime\",\"logger\":\"it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClient\",\"message\":\"CALLBACK_URL not configured, skipping callback for execution e112ffd3-772d-475a-b9c9-421d6c502e8e\",\"executionId\":\"e112ffd3-772d-475a-b9c9-421d6c502e8e\",\"traceId\":\"gateway-trace\",\"functionName\":\"word-stats-lite\",\"attempt\":1,\"time\":\"2026-10-10T07:38:25.310796Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310667000",
+            "{\"executionId\":\"go-two\",\"level\":\"WARN\",\"logger\":\"nanofaas\",\"message\":\"callback delivery exhausted\",\"schemaVersion\":1,\"service\":\"function-runtime\",\"timestamp\":\"2026-10-10T07:37:23.052388211Z\",\"traceId\":\"trace-two\",\"time\":\"2026-10-10T07:38:25.310667Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310651000",
+            "{\"executionId\":\"go-one\",\"level\":\"WARN\",\"logger\":\"nanofaas\",\"message\":\"callback delivery exhausted\",\"schemaVersion\":1,\"service\":\"function-runtime\",\"timestamp\":\"2026-10-10T07:37:23.051625654Z\",\"traceId\":\"trace-one\",\"time\":\"2026-10-10T07:38:25.310651Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310529000",
+            "{\"executionId\":\"rust-two\",\"level\":\"WARN\",\"logger\":\"nanofaas::dispatcher\",\"message\":\"callback delivery exhausted\",\"schemaVersion\":1,\"service\":\"function-runtime\",\"timestamp\":\"2026-10-10T07:37:23.456438Z\",\"traceId\":\"trace-two\",\"time\":\"2026-10-10T07:38:25.310529Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ],
+          [
+            "1791617905310502000",
+            "{\"executionId\":\"rust-one\",\"level\":\"WARN\",\"logger\":\"nanofaas::dispatcher\",\"message\":\"callback delivery exhausted\",\"schemaVersion\":1,\"service\":\"function-runtime\",\"timestamp\":\"2026-10-10T07:37:23.456120Z\",\"traceId\":\"trace-one\",\"time\":\"2026-10-10T07:38:25.310502Z\",\"stream\":\"stdout\",\"nodeId\":\"nf-logs-378e897480\",\"environment\":\"local\",\"campaignId\":\"none\",\"runId\":\"none\",\"mode\":\"none\",\"nodeRole\":\"edge\"}"
+          ]
+        ]
+      }
+    ],
+    "stats": {
+      "summary": {
+        "bytesProcessedPerSecond": 3894263,
+        "linesProcessedPerSecond": 9539,
+        "totalBytesProcessed": 25309,
+        "totalLinesProcessed": 62,
+        "execTime": 0.006499,
+        "queueTime": 0.000217,
+        "subqueries": 0,
+        "totalEntriesReturned": 62,
+        "splits": 0,
+        "shards": 1,
+        "totalPostFilterLines": 62,
+        "totalStructuredMetadataBytesProcessed": 496
+      },
+      "querier": {
+        "store": {
+          "totalChunksRef": 0,
+          "totalChunksDownloaded": 0,
+          "chunksDownloadTime": 0,
+          "queryReferencedStructuredMetadata": false,
+          "queryUsedV2Engine": false,
+          "chunk": {
+            "headChunkBytes": 0,
+            "headChunkLines": 0,
+            "decompressedBytes": 0,
+            "decompressedLines": 0,
+            "compressedBytes": 0,
+            "totalDuplicates": 0,
+            "postFilterLines": 0,
+            "headChunkStructuredMetadataBytes": 0,
+            "decompressedStructuredMetadataBytes": 0
+          },
+          "chunkRefsFetchTime": 0,
+          "congestionControlLatency": 0,
+          "pipelineWrapperFilteredLines": 0,
+          "dataobj": {
+            "prePredicateDecompressedRows": 0,
+            "prePredicateDecompressedBytes": 0,
+            "prePredicateDecompressedStructuredMetadataBytes": 0,
+            "postPredicateRows": 0,
+            "postPredicateDecompressedBytes": 0,
+            "postPredicateStructuredMetadataBytes": 0,
+            "postFilterRows": 0,
+            "pagesScanned": 0,
+            "pagesDownloaded": 0,
+            "pagesDownloadedBytes": 0,
+            "pageBatches": 0,
+            "totalRowsAvailable": 0,
+            "totalPageDownloadTime": 0
+          }
+        },
+        "querierExecTime": 0.005384
+      },
+      "ingester": {
+        "totalReached": 1,
+        "totalChunksMatched": 4,
+        "totalBatches": 2,
+        "totalLinesSent": 62,
+        "store": {
+          "totalChunksRef": 0,
+          "totalChunksDownloaded": 0,
+          "chunksDownloadTime": 0,
+          "queryReferencedStructuredMetadata": false,
+          "queryUsedV2Engine": false,
+          "chunk": {
+            "headChunkBytes": 25309,
+            "headChunkLines": 62,
+            "decompressedBytes": 0,
+            "decompressedLines": 0,
+            "compressedBytes": 0,
+            "totalDuplicates": 0,
+            "postFilterLines": 62,
+            "headChunkStructuredMetadataBytes": 496,
+            "decompressedStructuredMetadataBytes": 0
+          },
+          "chunkRefsFetchTime": 44272,
+          "congestionControlLatency": 0,
+          "pipelineWrapperFilteredLines": 0,
+          "dataobj": {
+            "prePredicateDecompressedRows": 0,
+            "prePredicateDecompressedBytes": 0,
+            "prePredicateDecompressedStructuredMetadataBytes": 0,
+            "postPredicateRows": 0,
+            "postPredicateDecompressedBytes": 0,
+            "postPredicateStructuredMetadataBytes": 0,
+            "postFilterRows": 0,
+            "pagesScanned": 0,
+            "pagesDownloaded": 0,
+            "pagesDownloadedBytes": 0,
+            "pageBatches": 0,
+            "totalRowsAvailable": 0,
+            "totalPageDownloadTime": 0
+          }
+        },
+        "recvWaitTime": 0.000504
+      },
+      "cache": {
+        "chunk": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "index": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "result": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "statsResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "volumeResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "seriesResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "labelResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        },
+        "instantMetricResult": {
+          "entriesFound": 0,
+          "entriesRequested": 0,
+          "entriesStored": 0,
+          "bytesReceived": 0,
+          "bytesSent": 0,
+          "requests": 0,
+          "downloadTime": 0,
+          "queryLengthServed": 0
+        }
+      },
+      "index": {
+        "totalChunks": 0,
+        "postFilterChunks": 0,
+        "shardsDuration": 0,
+        "usedBloomFilters": false,
+        "totalStreams": 0,
+        "chunkRefsLookupTime": 0,
+        "bloomFilterTime": 0
+      }
+    }
+  }
+}

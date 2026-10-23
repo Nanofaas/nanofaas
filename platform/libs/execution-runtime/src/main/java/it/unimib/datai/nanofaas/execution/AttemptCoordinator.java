@@ -380,7 +380,7 @@ public final class AttemptCoordinator {
             executionRecord.markSuccess(result.output(), result.statusCode(),
                     result.headers(), result.encoding());
         } else {
-            executionRecord.markError(result.error());
+            executionRecord.markError(result.error(), result.statusCode(), result.headers());
         }
         if (dispatchResult.coldStart()) {
             executionRecord.markColdStart(dispatchResult.initDurationMs() != null ? dispatchResult.initDurationMs() : 0);
@@ -490,7 +490,7 @@ public final class AttemptCoordinator {
                                                            String functionName,
                                                            InvocationResult result,
                                                            FunctionGeneration generation) {
-        executionRecord.markError(result.error());
+        executionRecord.markError(result.error(), result.statusCode(), result.headers());
         return FinalCompletion.retryExhausted(functionName, result, generation);
     }
 
@@ -589,7 +589,7 @@ public final class AttemptCoordinator {
                     executionRecord.markSuccess(result.output(), result.statusCode(),
                             result.headers(), result.encoding());
                 } else {
-                    executionRecord.markError(result.error(), result.headers());
+                    executionRecord.markError(result.error(), result.statusCode(), result.headers());
                 }
             }
         }
@@ -606,7 +606,8 @@ public final class AttemptCoordinator {
     /**
      * Infrastructure failure of an offloaded call: final by design (no local
      * fallback). The record stores the error; the shared future completes
-     * exceptionally so every idempotent waiter surfaces the same 502/504.
+     * exceptionally so every live idempotent waiter surfaces the same HTTP failure.
+     * Archived replays retain its status and retry hint in the outcome.
      *
      * <p>Finalization is unconditional (finding R4), exactly as in
      * {@link #completeOffloadedExecution}: a terminal record does not make this an
@@ -624,7 +625,8 @@ public final class AttemptCoordinator {
         synchronized (executionRecord) {
             concluded = !executionRecord.isTerminal();
             if (concluded) {
-                executionRecord.markFailure(error, failure);
+                executionRecord.markFailure(error, failure, failure.statusCode(),
+                        failure.retryAfter() == null ? null : java.util.Map.of("Retry-After", failure.retryAfter()));
             }
         }
         executionStore.settle(executionRecord);

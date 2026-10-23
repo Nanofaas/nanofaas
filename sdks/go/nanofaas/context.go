@@ -37,12 +37,18 @@ func Logger(ctx context.Context, base *slog.Logger) *slog.Logger {
 		base = slog.Default()
 	}
 
+	if handler, ok := base.Handler().(*jsonLogHandler); ok {
+		copy := *handler
+		copy.executionID, _ = ExecutionIDFromContext(ctx)
+		copy.traceID, _ = TraceIDFromContext(ctx)
+		return slog.New(&copy)
+	}
 	attrs := make([]any, 0, 4)
 	if executionID, ok := ExecutionIDFromContext(ctx); ok {
-		attrs = append(attrs, "execution_id", executionID)
+		attrs = append(attrs, "executionId", executionID)
 	}
 	if traceID, ok := TraceIDFromContext(ctx); ok {
-		attrs = append(attrs, "trace_id", traceID)
+		attrs = append(attrs, "traceId", traceID)
 	}
 	if len(attrs) == 0 {
 		return base

@@ -1,0 +1,101 @@
+FFFF.                                                                    [100%]
+=================================== FAILURES ===================================
+_________ test_successful_query_is_not_proof_of_complete_collection[] __________
+
+tmp_path = PosixPath('/tmp/pytest-of-michele/pytest-794/test_successful_query_is_not_p0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe212225d3740>
+metrics = ''
+
+    @pytest.mark.parametrize("metrics", ["", 'fluentbit_input_records_total{name="tail.0"} 3\nfluentbit_output_proc_records_total{name="loki.0"} 1\nfluentbit_output_dropped_records_total{name="loki.0"} 1\n'])
+    def test_successful_query_is_not_proof_of_complete_collection(tmp_path, monkeypatch, metrics):
+        import json
+        resource, inputs, commands = fake_collector(tmp_path, monkeypatch, metrics=metrics)
+        successful_query(monkeypatch)
+        value = resource.acquire(inputs)
+        resource.release(inputs, value)
+        directory = tmp_path / "run/logging/edge-0"
+        status = json.loads((directory / "status.json").read_text())
+>       assert status["status"] == "partial"
+E       AssertionError: assert 'complete' == 'partial'
+E         
+E         - partial
+E         + complete
+
+packages/nanolab/tests/one_shot/test_logging.py:228: AssertionError
+_ test_successful_query_is_not_proof_of_complete_collection[fluentbit_input_records_total{name="tail.0"} 3\nfluentbit_output_proc_records_total{name="loki.0"} 1\nfluentbit_output_dropped_records_total{name="loki.0"} 1\n] _
+
+tmp_path = PosixPath('/tmp/pytest-of-michele/pytest-794/test_successful_query_is_not_p1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe212203a7620>
+metrics = 'fluentbit_input_records_total{name="tail.0"} 3\nfluentbit_output_proc_records_total{name="loki.0"} 1\nfluentbit_output_dropped_records_total{name="loki.0"} 1\n'
+
+    @pytest.mark.parametrize("metrics", ["", 'fluentbit_input_records_total{name="tail.0"} 3\nfluentbit_output_proc_records_total{name="loki.0"} 1\nfluentbit_output_dropped_records_total{name="loki.0"} 1\n'])
+    def test_successful_query_is_not_proof_of_complete_collection(tmp_path, monkeypatch, metrics):
+        import json
+        resource, inputs, commands = fake_collector(tmp_path, monkeypatch, metrics=metrics)
+        successful_query(monkeypatch)
+        value = resource.acquire(inputs)
+        resource.release(inputs, value)
+        directory = tmp_path / "run/logging/edge-0"
+        status = json.loads((directory / "status.json").read_text())
+>       assert status["status"] == "partial"
+E       AssertionError: assert 'complete' == 'partial'
+E         
+E         - partial
+E         + complete
+
+packages/nanolab/tests/one_shot/test_logging.py:228: AssertionError
+_________ test_export_failure_is_partial_and_owned_cleanup_still_runs __________
+
+tmp_path = PosixPath('/tmp/pytest-of-michele/pytest-794/test_export_failure_is_partial0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe212203a7fe0>
+
+    def test_export_failure_is_partial_and_owned_cleanup_still_runs(tmp_path, monkeypatch):
+        import json
+    
+        import httpx
+    
+        resource, inputs, commands = fake_collector(
+            tmp_path, monkeypatch, export_error=True
+        )
+    
+        def fail(*args, **kwargs):
+            raise httpx.ConnectError("backend down")
+    
+        monkeypatch.setattr("nanolab.tasks.one_shot.logging.httpx.Client.get", fail)
+        value = resource.acquire(inputs)
+        resource.release(inputs, value)
+        status = json.loads((tmp_path / "run/logging/edge-0/status.json").read_text())
+        assert status["status"] == "partial"
+>       assert (tmp_path / "run/logging/edge-0/collector-state.tar.gz").exists()
+E       AssertionError: assert False
+E        +  where False = exists()
+E        +    where exists = (PosixPath('/tmp/pytest-of-michele/pytest-794/test_export_failure_is_partial0') / 'run/logging/edge-0/collector-state.tar.gz').exists
+
+packages/nanolab/tests/one_shot/test_logging.py:260: AssertionError
+______________ test_export_disk_error_does_not_skip_owned_cleanup ______________
+
+tmp_path = PosixPath('/tmp/pytest-of-michele/pytest-794/test_export_disk_error_does_no0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe2122023e630>
+
+    def test_export_disk_error_does_not_skip_owned_cleanup(tmp_path, monkeypatch):
+        from pathlib import Path
+    
+        resource, inputs, commands = fake_collector(tmp_path, monkeypatch)
+        value = resource.acquire(inputs)
+    
+        def disk_full(*args, **kwargs):
+            raise OSError("export disk full")
+    
+        monkeypatch.setattr(Path, "write_text", disk_full)
+>       with pytest.raises(RuntimeError, match="state archive"):
+E       Failed: DID NOT RAISE RuntimeError
+
+packages/nanolab/tests/one_shot/test_logging.py:337: Failed
+------------------------------ Captured log call -------------------------------
+WARNING  nanolab.tasks.one_shot.logging:logging.py:245 Log export failed for edge-0: export disk full
+=========================== short test summary info ============================
+FAILED packages/nanolab/tests/one_shot/test_logging.py::test_successful_query_is_not_proof_of_complete_collection[]
+FAILED packages/nanolab/tests/one_shot/test_logging.py::test_successful_query_is_not_proof_of_complete_collection[fluentbit_input_records_total{name="tail.0"} 3\nfluentbit_output_proc_records_total{name="loki.0"} 1\nfluentbit_output_dropped_records_total{name="loki.0"} 1\n]
+FAILED packages/nanolab/tests/one_shot/test_logging.py::test_export_failure_is_partial_and_owned_cleanup_still_runs
+FAILED packages/nanolab/tests/one_shot/test_logging.py::test_export_disk_error_does_not_skip_owned_cleanup
+4 failed, 1 passed, 14 deselected in 0.36s

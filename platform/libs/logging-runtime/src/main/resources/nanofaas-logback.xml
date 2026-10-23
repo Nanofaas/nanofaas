@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="it.unimib.datai.nanofaas.logging.LogEncoder">
+            <format>${NANOFAAS_LOG_FORMAT:-text}</format>
+            <service>${NANOFAAS_LOG_SERVICE:-function-runtime}</service>
+        </encoder>
+    </appender>
+    <root level="${NANOFAAS_LOG_LEVEL:-INFO}"><appender-ref ref="STDOUT"/></root>
+</configuration>

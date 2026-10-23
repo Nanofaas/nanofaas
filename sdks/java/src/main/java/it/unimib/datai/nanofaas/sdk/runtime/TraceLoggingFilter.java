@@ -37,6 +37,8 @@ public class TraceLoggingFilter extends OncePerRequestFilter {
         if (executionId == null || executionId.isBlank()) {
             executionId = runtimeSettings.executionId();
         }
+        var previous = MDC.getCopyOfContextMap();
+        MDC.clear();
         if (traceId != null && !traceId.isBlank()) {
             MDC.put("traceId", traceId);
         }
@@ -46,8 +48,7 @@ public class TraceLoggingFilter extends OncePerRequestFilter {
         try {
             filterChain.doFilter(request, response);
         } finally {
-            MDC.remove("traceId");
-            MDC.remove("executionId");
+            if (previous == null) MDC.clear(); else MDC.setContextMap(previous);
         }
     }
 }

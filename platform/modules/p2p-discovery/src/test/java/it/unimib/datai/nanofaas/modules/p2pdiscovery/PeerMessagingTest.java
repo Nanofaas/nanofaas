@@ -96,4 +96,12 @@ class PeerMessagingTest {
         assertThat(broadcast.block()).isEqualTo(1);
         assertThat(wire.sent).containsExactly("l:1|t");
     }
+    @Test void exclusionIsRecheckedWhenAnOperationalRequestIsSubscribed() {
+        table.upsert("a", "a:1");
+        Mono<byte[]> request = messaging.request("a", "one-shot", new byte[0], Duration.ofSeconds(1));
+        table.setApiMode("a", PeerMode.EXCLUDED);
+        assertThatThrownBy(request::block).isInstanceOf(PeerNotActiveException.class);
+        assertThat(wire.sent).isEmpty();
+    }
+
 }

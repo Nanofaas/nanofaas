@@ -1,3 +1,4 @@
+process.env.NANOFAAS_LOG_FORMAT = "json";
 import assert from "node:assert/strict";
 import {
     createServer, request, type ClientRequest, type IncomingHttpHeaders, type Server,

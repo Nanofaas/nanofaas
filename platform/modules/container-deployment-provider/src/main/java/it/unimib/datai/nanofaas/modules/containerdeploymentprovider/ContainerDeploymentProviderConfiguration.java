@@ -44,13 +44,14 @@ public class ContainerDeploymentProviderConfiguration {
         if ("docker-java".equalsIgnoreCase(properties.runtimeAdapter())) {
             return new DockerJavaContainerRuntimeAdapter(
                     createDockerClient(), properties.networkName(), properties.cpuset(),
-                    properties.bindHost(), portAllocator);
+                    properties.bindHost(), portAllocator, properties.strictMemory());
         }
         if (properties.networkName() != null) {
             throw new IllegalArgumentException("nanofaas.container-local.network-name requires the docker-java runtime adapter");
         }
         return new CliContainerRuntimeAdapter(
-                properties.runtimeAdapter(), executor, properties.cpuset(), properties.bindHost(), portAllocator);
+                properties.runtimeAdapter(), executor, properties.cpuset(), properties.bindHost(), portAllocator,
+                properties.strictMemory());
     }
 
     // An empty backend means the only provider in this build (the provider modules conflict), which is this one.

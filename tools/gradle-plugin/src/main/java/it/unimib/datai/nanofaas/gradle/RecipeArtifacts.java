@@ -485,8 +485,16 @@ final class RecipeArtifacts {
     }
 
     private static Path dockerfile(Path rootDir, RecipeTasks.Target target) {
-        return target.dockerfile() != null ? rootDir.resolve(target.dockerfile())
+        Path dockerfile = target.dockerfile() != null ? rootDir.resolve(target.dockerfile())
                 : rootDir.resolve("tools/gradle-plugin/dockerfiles/Dockerfile." + target.mode());
+        if (!Files.isSymbolicLink(dockerfile)) {
+            return dockerfile;
+        }
+        try {
+            return dockerfile.toRealPath();
+        } catch (IOException failure) {
+            throw new GradleException("Cannot resolve shared Dockerfile " + dockerfile, failure);
+        }
     }
 
     private static Path context(Path rootDir, Path output, RecipeTasks.Target target) {

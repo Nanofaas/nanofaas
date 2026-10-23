@@ -85,8 +85,11 @@ accepts `after` cursor and `limit` (1..1000); retention is 10000 node-global eve
 The envelope includes schema version and content hash. Each event follows the
 version 1 event schema; page entries add cursor and full operational duration.
 Solver, auction, qualified full operational durations and bounded status counters
-are separate metrics. Deadline, round-limit, failure, cancellation and degraded
-readiness never count as complete qualified duration samples. Node/epoch IDs
+are separate metrics. Auctions execute exactly `negotiation.maxRounds` rounds
+on every peer and report `FIXED_ROUNDS_COMPLETED`; local stability does not stop
+the protocol early. Timing qualification measures this bounded algorithm, not
+time to convergence. Deadline, failure, cancellation, legacy round-limit and
+degraded readiness never count as complete qualified duration samples. Node/epoch IDs
 belong in events, never metric labels.
 
 Ownership persists across lease expiry and uncertain preparation. After every
@@ -199,3 +202,26 @@ The first automatic epoch claim freezes `(anchor, period)` for the lifetime of t
 To change the grid, disable scheduling and drain commitments and physical executions on all peers, then perform a coordinated restart with the same new anchor and period and collect 20 complete timing samples again before enabling automatic scheduling. Before the first automatic claim, grid changes remain possible only when every scheduled configuration selects an epoch above the coordinator’s last prepared manual epoch; this includes scheduled-to-scheduled updates. Stale candidates return 409 without consuming a revision. Enabling scheduling must also wait for any active manual preparation.
 
 Each automatic claim registers its cancellation ownership before input pinning. Stopping the lifecycle cancels that claim even when subscription initialization has not finished; a later start cannot resume the cancelled preparation. Pinned input and the busy flag remain owned until cleanup completes.
+
+### Incomplete confirmations during observation
+
+Logical activation publishes the safe local allocation before READY/ACK exchange.
+If confirmation time expires afterwards, activation returns `DEGRADED` with that
+usable plan; unconfirmed outbound quantity retains terminal cloud fallback. A
+failed physical transition or lost ownership still returns `FAILED`.
+
+`PlanActivation.diagnostics` reports each assignment's negotiated and confirmed
+quantity, node/session/epoch/round and function identities, UTC observation time,
+monotonic offset, local READY/ACK observations and reason. `ackSent=true` with
+`ackResponseReceived=false` does **not** establish whether the seller received
+the ACK. An unused seller reservation can coexist with buyer cloud fallback.
+Quantities are flow quanta and `residualCloudRate` is requests/second, not actual
+executed requests. Older results without diagnostics remain readable in NanoLab.
+
+Configured confirmation RPCs use `negotiation.peerTimeout`, capped by remaining
+preparation time and remaining sends. The observation profile uses 5 seconds;
+physical preparation remains 10 seconds. Configuration fractions accept finite
+values in `(0, 1]`; auction plus preparation must still fit lead time and period.
+Full readiness remains required for timing qualification. The explicitly
+observational NanoLab workflow records partial readiness without treating it as
+a failed experiment procedure.

@@ -5,6 +5,7 @@ plugins {
 
 dependencies {
     api project(':common')
+    implementation project(':logging-runtime')
     api 'com.fasterxml.jackson.core:jackson-databind:2.22.3'
 
     api 'io.prometheus:prometheus-metrics-core:1.9.0'

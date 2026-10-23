@@ -1,0 +1,6 @@
+[env]
+# Tests capture logs with a thread-scoped tracing subscriber (`set_default`). While other tests
+# hit the same callsite on parallel threads with no subscriber, tracing can cache that callsite
+# as uninteresting and drop the captured event, so the suite runs on one thread. It takes a few
+# seconds more (about twelve in all).
+RUST_TEST_THREADS = "1"

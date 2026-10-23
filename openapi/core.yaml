@@ -313,7 +313,10 @@ paths:
           description: |
             Too many requests. Returned for rate limiting, waiter or new-execution
             admission backpressure, queue backpressure, and an exhausted idempotency-key
-            budget. Retry-After is present for retryable overload. Body validation runs
+            budget, and runtime handler/callback saturation (including remote refusals).
+            Runtime errors return an InvocationResponse with status error, typed error.code
+            and statusCode 429, without X-NanoFaaS-Function-Status.
+            Retry-After is present for retryable overload. Body validation runs
             before replay. A new execution reserves and publishes execution/input ownership
             before waiter admission; waiter refusal rolls it back. Replay skips those new
             owners and reserves only its waiter. Invocation quota failures return Retry-After
@@ -326,12 +329,17 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvocationQuotaError'
+                oneOf:
+                  - $ref: '#/components/schemas/InvocationQuotaError'
+                  - $ref: '#/components/schemas/InvocationResponse'
+                  - $ref: '#/components/schemas/OffloadFailure'
         '500':
           description: Invocation failed
         '502':
           description: |
-            Remote offload failed. The gateway message preserves the remote HTTP
+            Upstream transport/protocol failure or remote offload failure. Platform execution
+            errors retain their InvocationResponse envelope with statusCode 502.
+            The gateway message preserves the remote HTTP
             status and error body when available. An explicit remote admission
             refusal is distinguishable from an unresolved transport failure;
             neither response fabricates a terminal execution ID or physical proof.
@@ -342,9 +350,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OffloadFailure'
+                oneOf:
+                  - $ref: '#/components/schemas/OffloadFailure'
+                  - $ref: '#/components/schemas/InvocationResponse'
+        '503':
+          description: Runtime unavailable or stopping; an error InvocationResponse carries statusCode 503, including peer forwarding.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/InvocationResponse'
+                  - $ref: '#/components/schemas/OffloadFailure'
         '504':
-          description: Remote offload timed out; physical outcome may be unresolved.
+          description: Upstream or remote offload timed out; physical outcome may be unresolved.
           headers:
             X-NanoFaaS-Offloaded:
               schema:
@@ -352,7 +370,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OffloadFailure'
+                oneOf:
+                  - $ref: '#/components/schemas/OffloadFailure'
+                  - $ref: '#/components/schemas/InvocationResponse'
 
   /v1/functions/{name}:enqueue:
     post:
@@ -873,7 +893,7 @@ components:
           type: string
         status:
           type: string
-          enum: [success, error]
+          enum: [success, error, timeout]
         output:
           description: JSON output from the function
           oneOf:
@@ -885,6 +905,19 @@ components:
             - type: 'null'
         error:
           $ref: '#/components/schemas/ErrorInfo'
+        statusCode:
+          type: integer
+          nullable: true
+          description: Handler-selected status for success, or upstream platform failure status for error.
+        headers:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: Allowed response metadata, including Retry-After for retryable platform errors.
+        encoding:
+          type: string
+          nullable: true
     ExecutionStatus:
       type: object
       required: [executionId, status]
@@ -939,7 +972,7 @@ components:
           description: Runtime initialisation time, present only on a cold start.
         statusCode:
           type: integer
-          description: HTTP status the handler chose for its response.
+          description: HTTP status chosen by the handler, or the platform error status for a failed external invocation.
         headers:
           type: object
           additionalProperties:

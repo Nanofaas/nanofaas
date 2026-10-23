@@ -294,4 +294,18 @@ class InvokeHandlerTest {
             System.clearProperty("nanofaas.callback.queue.capacity");
         }
     }
+    @Test
+    void handlerThreadReceivesIdentityForEachInvocation() throws Exception {
+        startServer(req -> Map.of("executionId", it.unimib.datai.nanofaas.sdk.lite.FunctionContext.getExecutionId(),
+                "traceId", it.unimib.datai.nanofaas.sdk.lite.FunctionContext.getTraceId()));
+        for (String id : new String[]{"one", "two"}) {
+            var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/invoke"))
+                    .header("Content-Type", "application/json").header("X-Execution-Id", id).header("X-Trace-Id", "trace-" + id)
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"input\":{}}" )).build();
+            var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+            var body = objectMapper.readTree(response.body());
+            assertEquals(id, body.get("executionId").asText()); assertEquals("trace-" + id, body.get("traceId").asText());
+        }
+    }
 }

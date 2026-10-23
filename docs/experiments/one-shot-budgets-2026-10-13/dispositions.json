@@ -1,0 +1,709 @@
+[
+  {
+    "censusRow": 1,
+    "parameter": "`preparationBudget` / `preparationSeconds`",
+    "previous": "**10 s** | `ReplicaPlanActuator`: limite locale monotono dell'intera transizione fisica; timeout produce `FAILED`.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "10 s invariati; scadenza delle sole conferme dopo piano sicuro → DEGRADED."
+  },
+  {
+    "censusRow": 2,
+    "parameter": "`auctionBudget` / `auctionSeconds`",
+    "previous": "4 s | `EpochCoordinator`: limite dell'intera negoziazione, non di ogni round; scadenza produce `DEADLINE`.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "60 s"
+  },
+  {
+    "censusRow": 3,
+    "parameter": "`solverBudget` / `solverSeconds`",
+    "previous": "150 ms | Ogni solve dispone del minimo tra questo limite e il residuo dell'asta.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "5 s"
+  },
+  {
+    "censusRow": 4,
+    "parameter": "`peerTimeout` / `peerSeconds`",
+    "previous": "150 ms | Ogni RPC della negoziazione, ulteriormente limitato dal tempo residuo dell'asta.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "5 s"
+  },
+  {
+    "censusRow": 5,
+    "parameter": "`maxRounds`",
+    "previous": "8 | Numero prefissato di round; massimo accettato dal contratto 1.000.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 6,
+    "parameter": "`parallelism`",
+    "previous": "4 | Parallelismo della negoziazione; massimo accettato 64.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 7,
+    "parameter": "`queueCapacity`",
+    "previous": "64 | Coda/semaforo della negoziazione; massimo 256, almeno quattro volte `maxPeers`. Non è la coda delle invocazioni.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 8,
+    "parameter": "`maxPeers`",
+    "previous": "16 | Massimo numero di vicini ammessi dal protocollo; massimo configurabile 64. La topologia reale ha gradi 2/2/4/2/2.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 9,
+    "parameter": "`maxSolverStates`",
+    "previous": "2.000.000 | Limite del prodotto stati/livelli del solver; massimo accettato dalla configurazione 10.000.000.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "10.000.000 stati; RAM resta64MiB."
+  },
+  {
+    "censusRow": 10,
+    "parameter": "`maxSolverBytes`",
+    "previous": "64 MiB | Memoria di lavoro del solver; massimo accettato 256 MiB. Non è la RAM assegnata alle funzioni.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 11,
+    "parameter": "`maxOperationalFraction`",
+    "previous": "0,20 | `OneShotOperations.validateBounds`: asta più preparazione devono stare entro il 20% del periodo, qui 72 s. Il limite massimo 0,20 è nel contratto Java.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "1,00; coerenza configurazione, non gate sui tempi osservati."
+  },
+  {
+    "censusRow": 12,
+    "parameter": "`maxAuctionFraction`",
+    "previous": "0,20 | `EpochCoordinator`: il budget dell'asta deve stare entro la frazione del periodo.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "1,00; coerenza configurazione, non gate sui tempi osservati."
+  },
+  {
+    "censusRow": 13,
+    "parameter": "`leadTime` / `leadSeconds`",
+    "previous": "**14 s** | Anticipo dell'asta rispetto all'attivazione; validazione di coerenza con la somma dei budget.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "90 s"
+  },
+  {
+    "censusRow": 14,
+    "parameter": "`period`",
+    "previous": "360 s | Durata/validità dell'allocazione; massimo accettato 24 ore. L'expiry v2 è monotona locale.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 15,
+    "parameter": "Invio READY/READY_ACK",
+    "previous": "massimo 500 ms per invio | `ReplicaPlanActuator.send`: limite hardcoded, anche dopo aver portato la preparazione a 10 s.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "peer5s limitato dal residuo e dagli invii rimanenti."
+  },
+  {
+    "censusRow": 16,
+    "parameter": "RPC READY/READY_ACK",
+    "previous": "massimo 200 ms per tentativo | Limitato anche dal residuo del relativo invio.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "peer5s limitato dal residuo dell’invio."
+  },
+  {
+    "censusRow": 17,
+    "parameter": "Riserva finale READY",
+    "previous": "`min(100 ms, preparationBudget/10)` | Qui 100 ms; riservata prima della scadenza della preparazione.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 18,
+    "parameter": "Poll readiness / pausa tra tentativi READY",
+    "previous": "20 ms | Cadenza hardcoded; non è un criterio di esclusione del run.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 19,
+    "parameter": "`drain-grace`",
+    "previous": "30 s, default Spring | Grace della proprietà/allocazione precedente; distinto dal timeout di preparazione.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 20,
+    "parameter": "Proposte automatiche v2",
+    "previous": "2 retry, pausa 20 ms | `LogicalEpochInitiator`; solo il percorso automatico, non l'attuale driver manuale degli intervalli. Nessun rilancio automatico della campagna.",
+    "disposition": "non usato",
+    "effective": "Fuori dal driver manuale ORACLE osservazionale; fallback/qualificazione conservati."
+  },
+  {
+    "censusRow": 21,
+    "parameter": "Ritardo iniziale automatico",
+    "previous": "almeno asta + preparazione, massimo 24 h | `LogicalEpochInitiator.validateDelay`.",
+    "disposition": "non usato",
+    "effective": "Fuori dal driver manuale ORACLE osservazionale; fallback/qualificazione conservati."
+  },
+  {
+    "censusRow": 22,
+    "parameter": "Qualificazione per avvio automatico",
+    "previous": "almeno 20 campioni; `2 × p99` sotto anticipo e frazione del periodo | `OneShotOperations.qualified`; mantiene fino a 128 campioni. Non usato dal driver manuale dell'osservazione attuale.",
+    "disposition": "non usato",
+    "effective": "Fuori dal driver manuale ORACLE osservazionale; fallback/qualificazione conservati."
+  },
+  {
+    "censusRow": 24,
+    "parameter": "Richieste P2P simultanee",
+    "previous": "8 nella ricetta NanoLab, default piattaforma 4 | Semaforo globale del trasporto; esaurimento rifiuta il tentativo P2P.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 25,
+    "parameter": "Ping vicini",
+    "previous": "timeout 1 s, cadenza 250 ms | Override di `one_shot_common.py`.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 26,
+    "parameter": "Annuncio P2P",
+    "previous": "timeout 2 s, validità 15 s | `DefaultPeerTransport`, hardcoded.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 27,
+    "parameter": "Payload P2P / batch asta",
+    "previous": "1 MiB | Limite del trasporto e del codec.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 28,
+    "parameter": "Messaggi per batch",
+    "previous": "1.000 | `AuctionCodec.Batch`.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 29,
+    "parameter": "Messaggi/bid del motore",
+    "previous": "10.000 | `OneShotAuctionEngine.MAX_MESSAGES`; deduplica fino a 40.001 identità.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 30,
+    "parameter": "Messaggio di avvio/status v2",
+    "previous": "8 KiB | `LogicalEpochInitiator`.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 31,
+    "parameter": "Quota di assegnazione",
+    "previous": "rate del piano; burst **1** | `AssignmentAdmission`: token bucket per flusso locale e assegnazioni in ingresso/uscita. Burst massimo ammesso 1.000. Può incidere sui reject/offload.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 32,
+    "parameter": "Handler per replica",
+    "previous": "**1** | Profilo SDK / `STATIC_PER_POD`; requisito del modello sperimentale.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 33,
+    "parameter": "Coda configurata per funzione",
+    "previous": "100 richieste | `one_shot_common.py`, `queue_size=100`.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 34,
+    "parameter": "Coda sync condivisa",
+    "previous": "profondità 200, attesa stimata 2 s, attesa in coda 2 s | Default `application.yml`; il runner abilita la sync-queue terminale sul cloud. La coda sync sugli edge è disabilitata dal runner, distinta dalla coda locale one-shot.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 35,
+    "parameter": "Stima throughput della sync-queue",
+    "previous": "finestra 30 s, almeno 50 campioni | Default `application.yml`; `Retry-After` 2 s.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 36,
+    "parameter": "Timeout invocazione",
+    "previous": "30 s | Funzione registrata e k6. Gli errori delle singole richieste sono risultati, non guasti della campagna.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 37,
+    "parameter": "Retry delle invocazioni",
+    "previous": "**0** nella campagna | Default generale NanoFaaS 3; backoff generale 100 ms–2 s.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 38,
+    "parameter": "Readiness backend container",
+    "previous": "20 s, polling 250 ms | Default `ContainerLocalProperties`.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 39,
+    "parameter": "Docker Java",
+    "previous": "connessione 5 s, risposta 30 s | `ContainerDeploymentProviderConfiguration`.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 40,
+    "parameter": "Comandi Docker CLI",
+    "previous": "120 s | Default `ProcessCliCommandExecutor`; adapter alternativo rispetto al Docker Java della campagna.",
+    "disposition": "non usato",
+    "effective": "Fuori dal driver manuale ORACLE osservazionale; fallback/qualificazione conservati."
+  },
+  {
+    "censusRow": 41,
+    "parameter": "Cache stato repliche",
+    "previous": "TTL 5 s, massimo stale 15 s | `ReplicaStatusSnapshot`. La preparazione one-shot richiede uno stato FRESH.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 42,
+    "parameter": "Refresh stato repliche",
+    "previous": "deadline 5 s; pool periodico 2 worker/64 attese; pool freshness 4 worker/32 attese | `ReplicaStatusSnapshot.RefreshLimits.defaults`.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 43,
+    "parameter": "Wakeup deployment",
+    "previous": "30 s, polling 250 ms; osservazione pronta fino a 5 s | Default `application.yml`.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 44,
+    "parameter": "Previsione ORACLE",
+    "previous": "validità **4.110 s** | Derivata da warmup 720 + setup 90 + misura 3.240 + allowance generatore 60. La ricetta di base dichiara 5 min, sostituiti dal runner all'avvio.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "4.230 s =720+90+3.240+180."
+  },
+  {
+    "censusRow": 45,
+    "parameter": "Archivio ORACLE / EWMA",
+    "previous": "100.000 entry ORACLE; default 1.000 funzioni EWMA | `OracleForecastStore`, `ForecastingProperties`.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 46,
+    "parameter": "Clock-health legacy",
+    "previous": "offset 100 ms, anzianità 5 min | Ricetta. **Non autorizza né blocca il protocollo v2**; i probe restano evidenza diagnostica.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 48,
+    "parameter": "Attesa cloud-init",
+    "previous": "600 s | Timeout del sottoprocesso; guasto operativo se non conclude correttamente.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "1.800 s"
+  },
+  {
+    "censusRow": 49,
+    "parameter": "Avvio control-plane / Loki",
+    "previous": "90 s ciascuno; probe HTTP 2 s | Attesa readiness. Comandi Compose del backend logging hanno anch'essi timeout 90 s.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "300 s; HTTP10s; Compose300s."
+  },
+  {
+    "censusRow": 50,
+    "parameter": "Avvio Fluent Bit / sampler VM",
+    "previous": "30 s ciascuno | Verifica disponibilità iniziale. Probe collector 2–3 s.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "120 s; HTTP10s; sampler vivo senza primo campione → dato mancante."
+  },
+  {
+    "censusRow": 51,
+    "parameter": "Bootstrap SDK del runner",
+    "previous": "120 s per replica; HTTP e prova di rilascio 30 s | `WarmInstances`; i controlli degli altri workflow usano spesso readiness 30 s / HTTP 2 s.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "Replica300s; invocazione e prova120s."
+  },
+  {
+    "censusRow": 52,
+    "parameter": "API one-shot NanoLab",
+    "previous": "30 s | Timeout client; nessuna ripetizione di trigger ambiguo.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "180 s"
+  },
+  {
+    "censusRow": 53,
+    "parameter": "Barriera prepare parallelo",
+    "previous": "10 s | Timeout barriera thread Python, prima dell'asta; distinto dalla nuova preparazione fisica 10 s.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "60 s"
+  },
+  {
+    "censusRow": 54,
+    "parameter": "Raccolta metriche/proof",
+    "previous": "HTTP 2 s; metrics di qualificazione 5 s; inventario vicini 3 s | Errori del collector sono guasti della procedura.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "HTTP10s; errori diagnostici registrati, scrittura impossibile resta guasto."
+  },
+  {
+    "censusRow": 55,
+    "parameter": "Sampler VM",
+    "previous": "campione ogni 1 s; chiamata Docker HTTP 2 s | CPU/RAM/swap VM e cgroup container, throttling incluso.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 56,
+    "parameter": "Attesa di finalizzazione locale del sampler",
+    "previous": "5 s | `vm_sampler.py`.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 57,
+    "parameter": "Silenzio sampler legacy",
+    "previous": "10 s | Controllo esistente in `VmTelemetrySession.require_healthy`; **disabilitato se presente la supervisione autonoma**. Campioni mancanti restano segnalati.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 58,
+    "parameter": "Clock probe",
+    "previous": "HTTP 1 s; pubblicazione clock-health 2 s; cadenza 10 s | Protocollo v2 conserva i probe senza gate sullo skew.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "HTTP10s; cadenza10s invariata; skew diagnostico."
+  },
+  {
+    "censusRow": 59,
+    "parameter": "Supervisore",
+    "previous": "health/heartbeat ogni 5 s | Cadenza, **nessuna deadline prestazionale** sul progresso; nessun timeout globale della campagna.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 60,
+    "parameter": "Attesa setup generatore",
+    "previous": "90 s | Valore usato nel calcolo dell'anchor/horizon, non un nuovo gate di throughput.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 61,
+    "parameter": "Warmup",
+    "previous": "720 s | Durata della campagna; precheck osservabilità 60 s.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 62,
+    "parameter": "Misure",
+    "previous": "9 × 360 s = 3.240 s | Durata totale della fase misurata, contemporanea per tutti i nodi.",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 63,
+    "parameter": "k6 `maxDuration`",
+    "previous": "intero orizzonte più allowance di 60 s | `GENERATOR_DRAIN_SECONDS`; non un timeout del singolo round.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "Orizzonte monotono residuo+180s; runner e sampler stessa scadenza."
+  },
+  {
+    "censusRow": 64,
+    "parameter": "Ritardo arrivo richieste",
+    "previous": "3.600 s nell'osservazione; default qualificato 0,25 s | Verifica deficit/lateness del generatore; niente modifica in questo task.",
+    "disposition": "solo osservazione",
+    "effective": "Valore invariato: reject, indisponibilità diagnostica, ritardi e campioni mancanti restano dati; non arrestano da soli la campagna."
+  },
+  {
+    "censusRow": 65,
+    "parameter": "Arresto generatore",
+    "previous": "wait 5 s dopo TERM, poi KILL e wait 5 s | Cleanup delle sole risorse possedute.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "TERM/KILL wait30s"
+  },
+  {
+    "censusRow": 66,
+    "parameter": "Arresto sampler/processi e reader",
+    "previous": "drain 10 s; escalation/wait/join 5 s | `vm_resources.py`; conserva raw parziale.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "Drain30s; wait/join reader30s."
+  },
+  {
+    "censusRow": 67,
+    "parameter": "Arresto collector / clock monitor",
+    "previous": "join 40 s | Fallisce cleanup se il thread non conclude.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "300 s"
+  },
+  {
+    "censusRow": 68,
+    "parameter": "Archivio finale",
+    "previous": "nessuna soglia prestazionale | Scrittori chiusi prima della copia, confronto SHA, poi esito terminale.",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 69,
+    "parameter": "Export Loki",
+    "previous": "HTTP 10 s, massimo 5.000 righe/query | Export diagnostico limitato; truncation dichiarata. Non sostituisce i raw della campagna.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "HTTP10s e query5.000 invariati; store Loki grezzo copiato e verificato prima di down -v."
+  },
+  {
+    "censusRow": 70,
+    "parameter": "Eventi nativi",
+    "previous": "retention 10.000; pagine di 100, massimo 100 pagine/client | API ammette fino a 1.000 eventi/pagina; superamento del page budget client segnala evidenza troncata.",
+    "disposition": "aumento / correzione operativa",
+    "effective": "1.000 pagine×100; retention10.000 invariata; pagine/cursori salvati incrementalmente."
+  },
+  {
+    "censusRow": 72,
+    "parameter": "edge-1",
+    "previous": "1 | 2.048 | 832 | 0,10",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 73,
+    "parameter": "edge-2",
+    "previous": "1 | 3.072 | 832 | 0,10",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 74,
+    "parameter": "edge-3",
+    "previous": "2 | 3.072 | 1.664 | 0,14",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 75,
+    "parameter": "edge-4",
+    "previous": "2 | 4.096 | 1.664 | 0,14",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 76,
+    "parameter": "edge-5",
+    "previous": "3 | 6.144 | 2.496 | 0,16",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 77,
+    "parameter": "cloud",
+    "previous": "8 | 12.288 | 5.824 | 0,21",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 79,
+    "parameter": "arithmetic",
+    "previous": "64 | 13 | 26 | 39 | 91",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 80,
+    "parameter": "sort",
+    "previous": "128 | 6 | 13 | 19 | 45",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 81,
+    "parameter": "memory",
+    "previous": "256 | 3 | 6 | 9 | 22",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 82,
+    "parameter": "matrix",
+    "previous": "128 | 6 | 13 | 19 | 45",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 83,
+    "parameter": "mixed",
+    "previous": "256 | 3 | 6 | 9 | 22",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 85,
+    "parameter": "Ingress body",
+    "previous": "1 MiB",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 86,
+    "parameter": "Execution admission",
+    "previous": "globale 4.096, per funzione 512",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 87,
+    "parameter": "Input canonici trattenuti",
+    "previous": "globale 128 MiB, per funzione 32 MiB",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 88,
+    "parameter": "Copie fisiche input",
+    "previous": "globale 64 MiB, per funzione 16 MiB",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 89,
+    "parameter": "Waiter",
+    "previous": "globale 8.192, per funzione 1.024",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 90,
+    "parameter": "Input references / depth / container entries / visited nodes",
+    "previous": "64 / 32 / 16.384 / 65.536",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 91,
+    "parameter": "Input trattenuto per execution",
+    "previous": "1 MiB",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 92,
+    "parameter": "Proxy container",
+    "previous": "request 2 MiB, response 4 MiB, buffer aggregato 32 MiB",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 93,
+    "parameter": "Proxy read / write",
+    "previous": "5 s / 5 s",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 94,
+    "parameter": "HTTP pool per destinazione",
+    "previous": "500 connessioni, 1.000 acquisizioni pendenti derivate",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 95,
+    "parameter": "Acquisizione HTTP pool",
+    "previous": "45 s, ulteriormente limitata dal timeout dell'invocazione",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 96,
+    "parameter": "Retention pool",
+    "previous": "idle 30 s, inattività 30 s, eviction/dispose ogni 5 s; max lifetime disabilitata",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 97,
+    "parameter": "Execution store",
+    "previous": "TTL 5 min, sync TTL 30 s, lifetime massimo 30 min",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 98,
+    "parameter": "Idempotency keys",
+    "previous": "100.000",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 99,
+    "parameter": "Outcome byte budget",
+    "previous": "derivato da `max-outcomes=100.000` × 116 byte quando `max-outcome-bytes=0`; il count non è un cap indipendente",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 100,
+    "parameter": "Rate generale",
+    "previous": "`maxPerSecond=1.000.000`",
+    "disposition": "risorsa / parametro sperimentale fisso",
+    "effective": "Invariato; non aumentare risorse, contesa, parallelismo o timeout delle richieste misurate."
+  },
+  {
+    "censusRow": 101,
+    "parameter": "Profili one-shot",
+    "previous": "8 MiB/body, 32 MiB retention, 128 profili; massimo 128 funzioni/profilo e configurazione",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 102,
+    "parameter": "Configurazione amministrativa",
+    "previous": "8 MiB/body; stringhe/identità massimo 256 caratteri",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 103,
+    "parameter": "Parser JSON",
+    "previous": "depth 12, numeri 64 caratteri; stringhe profili/API 256, codec asta 1.024",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 104,
+    "parameter": "Valori di flusso",
+    "previous": "massimo `2^53−1`, griglia ORACLE esatta; nella campagna quantum 0,05",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 105,
+    "parameter": "Revisioni di piano trattenute",
+    "previous": "4",
+    "disposition": "integrità / correttezza del runtime",
+    "effective": "Invariato; protegge capacità, identità, serializzazione o ciclo di vita. Non è un gate prestazionale sui risultati."
+  },
+  {
+    "censusRow": 106,
+    "parameter": "Scheduler switch",
+    "previous": "budget preparazione hardcoded 50 ms; non usato dalla campagna che non cambia scheduler",
+    "disposition": "non usato",
+    "effective": "Fuori dal driver manuale ORACLE osservazionale; fallback/qualificazione conservati."
+  }
+]

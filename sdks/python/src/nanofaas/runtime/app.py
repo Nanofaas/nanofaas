@@ -87,8 +87,7 @@ from prometheus_client import (
     generate_latest,
 )
 
-# Set up logging early
-sdk_logging.configure_logging()
+# Preserve host logging at import; standalone startup configures it explicitly.
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
@@ -106,6 +105,7 @@ async def lifespan(app: FastAPI):
     :returns: An async context manager that yields control to FastAPI after startup.
     :rtype: AsyncContextManager[None]
     """
+    sdk_logging.configure_logging(force=False)
     if HANDLER_MODULE:
         try:
             logger.info(f"Loading handler module: {HANDLER_MODULE}")
@@ -902,7 +902,7 @@ async def send_callback(
         if not reservation.start():
             return
 
-        logger.info(f"Sending callback to {url}")
+        logger.debug("Sending callback")
         if not await _post_callback_with_retries(url, serialized_result, headers, reservation):
             logger.error("Callback failed after all retries")
             RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL.labels(function=FUNCTION_NAME).inc()
@@ -942,7 +942,7 @@ async def _post_callback_with_retries(
                     callback_reservation=reservation,
                 )
             if status < 400:
-                logger.info("Callback sent successfully")
+                logger.debug("Callback sent successfully")
                 return True
             if 400 <= status < 500 and status not in (408, 429):
                 logger.warning(f"Permanent callback failure with status {status}")
@@ -1103,85 +1103,86 @@ async def invoke(
         handler is registered.
     """
     execution_id, trace_id, handler = _resolve_invocation(x_execution_id, x_trace_id)
-    callback_url = x_callback_url or CALLBACK_URL
-    is_cold_start = _consume_cold_start()
+    with context.invocation_context(execution_id, trace_id):
+        callback_url = x_callback_url or CALLBACK_URL
+        is_cold_start = _consume_cold_start()
 
-    start = time.perf_counter()
-    RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).inc()
-    handler_execution = None
-    callback_reservation = None
-    try:
+        start = time.perf_counter()
+        RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).inc()
+        handler_execution = None
+        callback_reservation = None
         try:
-            callback_reservation = _reserve_invocation_callback(callback_url)
-        except HandlerAdmissionError as error:
-            return _callback_admission_rejection(error)
+            try:
+                callback_reservation = _reserve_invocation_callback(callback_url)
+            except HandlerAdmissionError as error:
+                return _callback_admission_rejection(error)
 
-        try:
-            payload = await _read_bounded_json(request)
-        except (BodyReadTimeoutError, PayloadTooLargeError) as error:
-            if callback_reservation is not None:
-                callback_reservation.release()
+            try:
+                payload = await _read_bounded_json(request)
+            except (BodyReadTimeoutError, PayloadTooLargeError) as error:
+                if callback_reservation is not None:
+                    callback_reservation.release()
+                callback_reservation = None
+                return _body_rejection(error)
+            except json.JSONDecodeError:
+                reservation = callback_reservation
+                callback_reservation = None
+                return _fail_response(
+                    background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
+                    callback_reservation=reservation,
+                    status_code=400, count_failure=False,
+                    error={"code": "INVALID_JSON", "message": "Request body must be valid JSON"},
+                )
+            input_data = _handler_input(payload)
+
+            logger.debug("Invoking handler")
+
+            try:
+                handler_execution = _runtime_work.start_handler(handler, input_data)
+            except HandlerAdmissionError as error:
+                return _handler_admission_rejection(error)
+            output = await handler_execution.wait(HANDLER_TIMEOUT_SECONDS)
+
+            reservation = callback_reservation
             callback_reservation = None
-            return _body_rejection(error)
-        except json.JSONDecodeError:
+            return _build_success_response(
+                output, execution_id, is_cold_start, background_tasks, callback_url, trace_id,
+                x_dispatch_attempt, reservation
+            )
+        except asyncio.TimeoutError:
+            _runtime_work.record_wait_timeout()
             reservation = callback_reservation
             callback_reservation = None
             return _fail_response(
                 background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
                 callback_reservation=reservation,
-                status_code=400, count_failure=False,
-                error={"code": "INVALID_JSON", "message": "Request body must be valid JSON"},
+                status_code=504, count_failure=True,
+                error={"code": "HANDLER_TIMEOUT", "message": "Handler exceeded configured timeout"},
             )
-        input_data = _handler_input(payload)
-
-        logger.info(f"Invoking handler for execution {execution_id}")
-
-        try:
-            handler_execution = _runtime_work.start_handler(handler, input_data)
-        except HandlerAdmissionError as error:
-            return _handler_admission_rejection(error)
-        output = await handler_execution.wait(HANDLER_TIMEOUT_SECONDS)
-
-        reservation = callback_reservation
-        callback_reservation = None
-        return _build_success_response(
-            output, execution_id, is_cold_start, background_tasks, callback_url, trace_id,
-            x_dispatch_attempt, reservation
-        )
-    except asyncio.TimeoutError:
-        _runtime_work.record_wait_timeout()
-        reservation = callback_reservation
-        callback_reservation = None
-        return _fail_response(
-            background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
-            callback_reservation=reservation,
-            status_code=504, count_failure=True,
-            error={"code": "HANDLER_TIMEOUT", "message": "Handler exceeded configured timeout"},
-        )
-    except asyncio.CancelledError:
-        _cancel_invocation(
-            handler_execution, callback_reservation, callback_url, execution_id, trace_id,
-            x_dispatch_attempt,
-        )
-        callback_reservation = None
-        raise
-    except Exception:
-        logger.error("Handler failed in execution %s", execution_id)
-        RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
-        error = {"code": "HANDLER_ERROR", "message": "Handler failed"}
-        reservation = callback_reservation
-        callback_reservation = None
-        return _fail_response(
-            background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
-            callback_reservation=reservation,
-            status_code=500, error=error, count_failure=False,
-        )
-    finally:
-        if callback_reservation is not None:
-            callback_reservation.release()
-        elapsed = time.perf_counter() - start
-        RUNTIME_INVOCATION_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(elapsed)
-        RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).dec()
+        except asyncio.CancelledError:
+            _cancel_invocation(
+                handler_execution, callback_reservation, callback_url, execution_id, trace_id,
+                x_dispatch_attempt,
+            )
+            callback_reservation = None
+            raise
+        except Exception:
+            logger.error("Handler failed in execution %s", execution_id)
+            RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()
+            error = {"code": "HANDLER_ERROR", "message": "Handler failed"}
+            reservation = callback_reservation
+            callback_reservation = None
+            return _fail_response(
+                background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
+                callback_reservation=reservation,
+                status_code=500, error=error, count_failure=False,
+            )
+        finally:
+            if callback_reservation is not None:
+                callback_reservation.release()
+            elapsed = time.perf_counter() - start
+            RUNTIME_INVOCATION_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(elapsed)
+            RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).dec()
 
 
 def _resolve_invocation(x_execution_id: str | None, x_trace_id: str | None):
@@ -1190,7 +1191,6 @@ def _resolve_invocation(x_execution_id: str | None, x_trace_id: str | None):
     trace_id = x_trace_id or DEFAULT_TRACE_ID or None
     if not execution_id:
         raise HTTPException(status_code=400, detail="Execution ID required")
-    context.set_context(execution_id, trace_id)
     handler = decorator.get_registered_handler()
     if not handler:
         logger.error("No handler registered")

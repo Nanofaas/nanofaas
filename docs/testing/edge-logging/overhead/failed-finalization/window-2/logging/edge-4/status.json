@@ -1,0 +1,17 @@
+{
+  "status": "partial",
+  "exportStatus": "complete",
+  "nodeId": "edge-4",
+  "issues": [
+    "recoverable state archive failed: edge-4: Warning: Permanently added '10.83.80.209' (ED25519) to the list of known hosts.\nrm: cannot remove '/tmp/nanolab-logs-edge-4-8f9243d298a0-state.tar.gz': Operation not permitted\n"
+  ],
+  "truncated": false,
+  "collection": {
+    "status": "drained",
+    "received": 7.0,
+    "delivered": 7.0,
+    "dropped": 0.0,
+    "pending": 0
+  },
+  "stateArchive": "failed"
+}

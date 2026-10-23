@@ -20,6 +20,7 @@ if (selectedOptionalControlPlaneModuleNames.contains('containerd-deployment-prov
 
 dependencies {
     implementation project(':common')
+    implementation project(':logging-runtime')
     implementation project(':control-plane-spi')
     implementation project(':forecasting-api')
     // api, not implementation (Task 10 step 4, issue #208): control-plane's own PUBLIC types
@@ -44,6 +45,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
+    // Test the actual managed dispatch fence without adding a production provider dependency.
+    testImplementation project(':container-deployment-runtime')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
     testImplementation 'org.springframework.boot:spring-boot-webflux-test'

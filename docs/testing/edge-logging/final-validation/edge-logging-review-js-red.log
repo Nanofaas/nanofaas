@@ -1,0 +1,72 @@
+TAP version 13
+# Subtest: logger consumes shared corpus without overwriting runtime fields
+ok 1 - logger consumes shared corpus without overwriting runtime fields
+  ---
+  duration_ms: 1.817162
+  type: 'test'
+  ...
+# Subtest: concurrent async contexts survive failures and restore their caller
+ok 2 - concurrent async contexts survive failures and restore their caller
+  ---
+  duration_ms: 0.176288
+  type: 'test'
+  ...
+# Subtest: text diagnostics preserve error status and scoped identity
+not ok 3 - text diagnostics preserve error status and scoped identity
+  ---
+  duration_ms: 0.364783
+  type: 'test'
+  location: '/home/michele/Documenti/nanofaas/.worktrees/edge-logging/sdks/javascript/build-test/test/logging-contract.test.js:54:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /503/. Input:
+    
+    'ERROR probe [exec=exec-text trace=trace-text] callback delivery failed'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: 'ERROR probe [exec=exec-text trace=trace-text] callback delivery failed'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///home/michele/Documenti/nanofaas/.worktrees/edge-logging/sdks/javascript/build-test/test/logging-contract.test.js:60:16)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1402:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    Test.postRun (node:internal/test_runner/test:1542:19)
+    Test.run (node:internal/test_runner/test:1467:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: concurrent response warnings retain canonical IDs and restore the caller
+not ok 4 - concurrent response warnings retain canonical IDs and restore the caller
+  ---
+  duration_ms: 26.935093
+  type: 'test'
+  location: '/home/michele/Documenti/nanofaas/.worktrees/edge-logging/sdks/javascript/build-test/test/runtime.logging-finalization.test.js:5:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + undefined
+    - 'invalid'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'invalid'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///home/michele/Documenti/nanofaas/.worktrees/edge-logging/sdks/javascript/build-test/test/runtime.logging-finalization.test.js:27:20)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 2
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 139.721466

@@ -1,0 +1,788 @@
+{
+  "summary": {
+    "changed_count": 111,
+    "affected_count": 0,
+    "changed_files": 36,
+    "risk_level": "low"
+  },
+  "changed_symbols": [
+    {
+      "id": "Section:AGENTS.md:L1:Repository Guidelines",
+      "name": "Repository Guidelines",
+      "type": "Section",
+      "filePath": "AGENTS.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:AGENTS.md:L25:Operational Workflows",
+      "name": "Operational Workflows",
+      "type": "Section",
+      "filePath": "AGENTS.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-budgets-2026-10-13/README.md:L1:Budget e limiti di one-shot — 13 ottobre 2026",
+      "name": "Budget e limiti di one-shot — 13 ottobre 2026",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-budgets-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-budgets-2026-10-13/README.md:L27:Scadenze e limiti del protocollo",
+      "name": "Scadenze e limiti del protocollo",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-budgets-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-budgets-2026-10-13/README.md:L71:Trasporto, quote di richieste e disponibilità",
+      "name": "Trasporto, quote di richieste e disponibilità",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-budgets-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-budgets-2026-10-13/README.md:L99:Supervisione, servizi e cleanup",
+      "name": "Supervisione, servizi e cleanup",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-budgets-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-budgets-2026-10-13/README.md:L127:Budget fisici",
+      "name": "Budget fisici",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-budgets-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-budgets-2026-10-13/README.md:L160:Altri limiti generali NanoFaaS che possono produrre reject o attese",
+      "name": "Altri limiti generali NanoFaaS che possono produrre reject o attese",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-budgets-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-budgets-2026-10-13/README.md:L190:Soglie di qualificazione ancora presenti, separate dall'osservazione",
+      "name": "Soglie di qualificazione ancora presenti, separate dall'osservazione",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-budgets-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-budgets-2026-10-13/README.md:L225:Verifica della modifica",
+      "name": "Verifica della modifica",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-budgets-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-budgets-2026-10-13/dispositions.md:L1:Disposizione del censimento per il prossimo freeze",
+      "name": "Disposizione del censimento per il prossimo freeze",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-budgets-2026-10-13/dispositions.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/README.md:L1:Revisione del piano e audit iniziale dell'esperimento one-shot",
+      "name": "Revisione del piano e audit iniziale dell'esperimento one-shot",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/README.md:L11:Sorgenti e copertura",
+      "name": "Sorgenti e copertura",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/README.md:L25:È un workflow Sonata?",
+      "name": "È un workflow Sonata?",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/README.md:L50:Finding da risolvere",
+      "name": "Finding da risolvere",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/README.md:L75:Verifiche eseguite",
+      "name": "Verifiche eseguite",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/README.md:L89:Consegna",
+      "name": "Consegna",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/README.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/coverage.md:L1:Copertura della revisione applicata",
+      "name": "Copertura della revisione applicata",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/coverage.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Const:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:events",
+      "name": "events",
+      "type": "Const",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Const:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:row",
+      "name": "row",
+      "type": "Const",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:row.epoch",
+      "name": "epoch",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:row.function",
+      "name": "function",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:row.input",
+      "name": "input",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:row.origin",
+      "name": "origin",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:row.originalId",
+      "name": "originalId",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:row.phase",
+      "name": "phase",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:row.scheduledAt",
+      "name": "scheduledAt",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:row.url",
+      "name": "url",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Const:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:context",
+      "name": "context",
+      "type": "Const",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Function:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:context.open",
+      "name": "open",
+      "type": "Function",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Function:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:log",
+      "name": "log",
+      "type": "Function",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Function:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:now",
+      "name": "now",
+      "type": "Function",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Const:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:adapters",
+      "name": "adapters",
+      "type": "Const",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Function:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:post",
+      "name": "post",
+      "type": "Function",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Function:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:post.json@7:56",
+      "name": "json",
+      "type": "Function",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Function:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:sleep",
+      "name": "sleep",
+      "type": "Function",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Method:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:constructor#2",
+      "name": "constructor",
+      "type": "Method",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Const:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:module",
+      "name": "module",
+      "type": "Const",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Const:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:error",
+      "name": "error",
+      "type": "Const",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Const:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:result",
+      "name": "result",
+      "type": "Const",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:result.error",
+      "name": "error",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Property:docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs:result.events",
+      "name": "events",
+      "type": "Property",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/k6-null.mjs",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py:here",
+      "name": "here",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py:root",
+      "name": "root",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py:target",
+      "name": "target",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py:names",
+      "name": "names",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py:source",
+      "name": "source",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py:docs",
+      "name": "docs",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py:result",
+      "name": "result",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/publish_evidence.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py:root",
+      "name": "root",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py:output",
+      "name": "output",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py:spec",
+      "name": "spec",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py:observer",
+      "name": "observer",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py:results",
+      "name": "results",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Function:docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py:configuration",
+      "name": "configuration",
+      "type": "Function",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Function:docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py:record",
+      "name": "record",
+      "type": "Function",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Function:docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py:action",
+      "name": "action",
+      "type": "Function",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py:archived",
+      "name": "archived",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/reproduce.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:root",
+      "name": "root",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:out",
+      "name": "out",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:spec",
+      "name": "spec",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:observer",
+      "name": "observer",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:frozen",
+      "name": "frozen",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:scenario",
+      "name": "scenario",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:original",
+      "name": "original",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:trace",
+      "name": "trace",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:original_trace",
+      "name": "original_trace",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:protocol",
+      "name": "protocol",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:built",
+      "name": "built",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py:receipt",
+      "name": "receipt",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify-final-freeze.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify.py:root",
+      "name": "root",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify.py:output",
+      "name": "output",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify.py:env",
+      "name": "env",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify.py:paths",
+      "name": "paths",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify.py:command",
+      "name": "command",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify.py:started",
+      "name": "started",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Variable:docs/experiments/one-shot-review-2026-10-13/evidence/verify.py:result",
+      "name": "result",
+      "type": "Variable",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/evidence/verify.py",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/execution-ledger.md:L1:SDD ledger — plan: docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "name": "SDD ledger — plan: docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/execution-ledger.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/implementation.md:L1:Implementazione e chiusura della revisione — 13 ottobre 2026",
+      "name": "Implementazione e chiusura della revisione — 13 ottobre 2026",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/implementation.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/implementation.md:L9:Disposizione dei finding",
+      "name": "Disposizione dei finding",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/implementation.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/implementation.md:L37:Evidenza finale",
+      "name": "Evidenza finale",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/implementation.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/implementation.md:L46:DAG Sonata e fingerprint",
+      "name": "DAG Sonata e fingerprint",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/implementation.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/implementation.md:L70:Copertura e limiti",
+      "name": "Copertura e limiti",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/implementation.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/experiments/one-shot-review-2026-10-13/workflow.md:L1:Workflow compilato del freeze05",
+      "name": "Workflow compilato del freeze05",
+      "type": "Section",
+      "filePath": "docs/experiments/one-shot-review-2026-10-13/workflow.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md:L1:One-shot multi-funzione con round di sei minuti — Implementation Plan",
+      "name": "One-shot multi-funzione con round di sei minuti — Implementation Plan",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md:L13:Revisione dell'obiettivo concordata il 12 ottobre",
+      "name": "Revisione dell'obiettivo concordata il 12 ottobre",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md:L157:Revisione temporale richiesta l’11 ottobre: progetto in corso",
+      "name": "Revisione temporale richiesta l’11 ottobre: progetto in corso",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md:L164:Observation03 closure and autonomous supervision follow-up (12 October)",
+      "name": "Observation03 closure and autonomous supervision follow-up (12 October)",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-10-one-shot-multifunction-multipass.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L1:One-shot observation readiness implementation plan",
+      "name": "One-shot observation readiness implementation plan",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L15:Stato dell’implementazione",
+      "name": "Stato dell’implementazione",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L19:Global constraints",
+      "name": "Global constraints",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L32:Review focus",
+      "name": "Review focus",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L40:Mappa dei checkout e rischio",
+      "name": "Mappa dei checkout e rischio",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L52:Task 0: Audit completo e matrice di copertura dell'esperimento",
+      "name": "Task 0: Audit completo e matrice di copertura dell'esperimento",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L64:Task 1: Diagnostica nativa delle assegnazioni e chiusura DEGRADED",
+      "name": "Task 1: Diagnostica nativa delle assegnazioni e chiusura DEGRADED",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L81:Task 2: Proseguire con un piano utilizzabile e registrare la mancata reciprocità",
+      "name": "Task 2: Proseguire con un piano utilizzabile e registrare la mancata reciprocità",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L101:Task 3: Un solo profilo congelato delle soglie di arresto",
+      "name": "Task 3: Un solo profilo congelato delle soglie di arresto",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L124:Task 4: Composizione Sonata e supervisione di tutte le risorse",
+      "name": "Task 4: Composizione Sonata e supervisione di tutte le risorse",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L136:Task 5: Integrità dei risultati, grafici e fingerprint completo",
+      "name": "Task 5: Integrità dei risultati, grafici e fingerprint completo",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L148:Task 6: Esecuzione Sonata simulata fino alla fine, failure e archiviazione",
+      "name": "Task 6: Esecuzione Sonata simulata fino alla fine, failure e archiviazione",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md:L166:Done del lavoro pianificato",
+      "name": "Done del lavoro pianificato",
+      "type": "Section",
+      "filePath": "docs/superpowers/plans/2026-10-13-one-shot-observation-readiness.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-10-one-shot-multifunction-multipass-design.md:L1:Campagna one-shot Multipass con cinque funzioni e round sincronizzati",
+      "name": "Campagna one-shot Multipass con cinque funzioni e round sincronizzati",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-10-one-shot-multifunction-multipass-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-10-one-shot-multifunction-multipass-design.md:L9:Topologia e tempi",
+      "name": "Topologia e tempi",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-10-one-shot-multifunction-multipass-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md:L1:One-shot: conferme incomplete e soglie di arresto della campagna",
+      "name": "One-shot: conferme incomplete e soglie di arresto della campagna",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md:L3:Obiettivo e autorizzazione",
+      "name": "Obiettivo e autorizzazione",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md:L30:Comportamento richiesto",
+      "name": "Comportamento richiesto",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md:L62:Proposta di soglie operative per il prossimo freeze",
+      "name": "Proposta di soglie operative per il prossimo freeze",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md:L129:Esiti e prove",
+      "name": "Esiti e prove",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md:L131:Workflow e gestione dei guasti",
+      "name": "Workflow e gestione dei guasti",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md:L148:Conservazione e riproducibilità",
+      "name": "Conservazione e riproducibilità",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md",
+      "change_type": "touched"
+    },
+    {
+      "id": "Section:docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md:L186:Chiarimenti della revisione finale applicata",
+      "name": "Chiarimenti della revisione finale applicata",
+      "type": "Section",
+      "filePath": "docs/superpowers/specs/2026-10-13-one-shot-observation-readiness-design.md",
+      "change_type": "touched"
+    }
+  ],
+  "affected_processes": []
+}

@@ -1,0 +1,8 @@
+{
+  "collector-metrics.txt": "aa4cf143fc8c188c8d1471d97902062f860c9533f65899bf7375e7350b08f78c",
+  "loki-query.json": "3cded4777499647b7e21bc22b066ad9ec0b530b2e2564c46d11c92efffa0412f",
+  "collector.log": "2c60746f55cbdb249c40a709d72182c1e989e5565d6f7c5417321e599d25ad9e",
+  "collector-stats.json": "030cc376a85512a4f417cda1deb0720fce5f45d5238c3c591a3f0c36aaf1f1ec",
+  "status.json": "14268edf535d047d5b017a16f5065b02afea8751eb7087af613155ff02b2f36a",
+  "collector-state.tar.gz": "b18cd52aaabd91cca44c199332c4bf877a91ec8b40e68f0bb8fb49ed3bd324ca"
+}

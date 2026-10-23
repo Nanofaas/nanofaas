@@ -17,6 +17,7 @@ use serde_json::value::RawValue;
 use tokio::sync::oneshot;
 use tokio::task::{JoinError, JoinHandle};
 use tracing::Instrument;
+use tracing::instrument::WithSubscriber;
 
 use crate::bounded::{EncodeError, to_vec_bounded};
 use crate::callback::Identity;
@@ -62,7 +63,7 @@ pub(crate) async fn invoke(State(shared): State<Arc<Shared>>, request: Request) 
     let (reply, replied) = oneshot::channel();
     // The invocation outlives this request future: if the client disconnects, axum drops us
     // and `run` sees its reply channel close, cancels the handler and still sends the callback.
-    tokio::spawn(run(shared, admitted, reply));
+    tokio::spawn(run(shared, admitted, reply).with_current_subscriber());
     replied.await.unwrap_or_else(|_| {
         runtime_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -197,6 +198,7 @@ async fn run(shared: Arc<Shared>, admitted: Admitted, mut reply: oneshot::Sender
     shared.cold_start.mark_arrival();
 
     let span = tracing::info_span!(
+        target: "nanofaas::invocation",
         "invocation",
         execution_id = %identity.execution_id,
         trace_id = identity.trace_id.as_deref().unwrap_or_default(),
@@ -210,7 +212,8 @@ async fn run(shared: Arc<Shared>, admitted: Admitted, mut reply: oneshot::Sender
             let _reservation = handler_reservation;
             future.await
         }
-        .instrument(span),
+        .instrument(span.clone())
+        .with_current_subscriber(),
     );
     let finished = tokio::select! {
         joined = &mut handle => Finished::Done(joined),
@@ -234,13 +237,15 @@ async fn run(shared: Arc<Shared>, admitted: Admitted, mut reply: oneshot::Sender
     shared
         .metrics
         .handler_duration(started.elapsed().as_secs_f64());
-    if let Some(response) = conclude(
-        &shared,
-        finished,
-        callback_reservation,
-        &identity,
-        cold_start,
-    ) {
+    if let Some(response) = span.in_scope(|| {
+        conclude(
+            &shared,
+            finished,
+            callback_reservation,
+            &identity,
+            cold_start,
+        )
+    }) {
         let _ = reply.send(response);
     }
 }
@@ -570,6 +575,63 @@ mod admission_tests {
         RuntimeSettings {
             handler_timeout: Duration::from_secs(2),
             ..RuntimeSettings::default()
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn terminal_errors_preserve_the_resolved_trace() {
+        use std::sync::Mutex;
+        use tracing_subscriber::fmt::format::JsonFields;
+        #[derive(Clone)]
+        struct Sink(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Sink {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let sink = Sink(bytes.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .fmt_fields(JsonFields::default())
+            .event_format(crate::logging::LogFormatter::new("function-runtime", true))
+            .with_writer(move || sink.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let runtime = TestRuntime::start(settings(), |rt| {
+            rt.register("terminal", |_: Context, input: Value| async move {
+                match input.as_str().unwrap() {
+                    "fail" => Err::<crate::HandlerResponse, BoxError>(
+                        std::io::Error::other("failed test handler").into(),
+                    ),
+                    "panic" => panic!("panic test handler"),
+                    _ => Ok(crate::HandlerResponse::new(Value::Null, 99)),
+                }
+            })
+        })
+        .await;
+        for mode in ["fail", "panic", "invalid"] {
+            let request = Request::post("/invoke")
+                .header("x-execution-id", mode)
+                .header("x-trace-id", format!("trace-{mode}"))
+                .body(Body::from(json!({"input": mode}).to_string()))
+                .unwrap();
+            assert_eq!(
+                runtime.send(request).await.status(),
+                StatusCode::INTERNAL_SERVER_ERROR
+            );
+        }
+        let logs = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+        for mode in ["fail", "panic", "invalid"] {
+            let event = logs
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .find(|event| event["executionId"] == mode)
+                .expect("terminal diagnostic");
+            assert_eq!(event["traceId"], format!("trace-{mode}"));
         }
     }
 

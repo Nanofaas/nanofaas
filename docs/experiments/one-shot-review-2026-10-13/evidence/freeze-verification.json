@@ -1,0 +1,15 @@
+{
+  "atUtc": "2026-10-13T07:21:22.957342+00:00",
+  "freeze": "/home/michele/Documenti/nanofaas/.superpowers/archives/oneshot-readiness-20261013/oracle-freeze-05",
+  "fingerprint": "f766a97752bfbcacb6a0924c8a77b9293e06e2f0e183808f510644c1974aff81",
+  "frozenFilesVerified": 453,
+  "runtimeSourceFilesVerified": 6921,
+  "dependencyFilesVerified": 99,
+  "compiledUnits": 141,
+  "nodesFunctionsTraceUnchanged": true,
+  "rounds": 8,
+  "vmAcquisitions": 0,
+  "campaignStarted": false,
+  "dagHostInventory": "simulated for offline compilation; real inventory deferred to run",
+  "sourceRevision": "f3222af4ad294674458f32882522583ed8556a13"
+}

@@ -277,6 +277,7 @@ public class CallbackDispatcher {
     public enum SubmitResult { ACCEPTED, SATURATED, PAYLOAD_TOO_LARGE, SERIALIZATION_FAILED }
 
     private final class CallbackTask implements Runnable {
+        private final java.util.Map<String, String> logContext;
         private final CallbackReservation reservation;
         private final String executionId;
         private final byte[] payload;
@@ -290,11 +291,19 @@ public class CallbackDispatcher {
             this.payload = payload;
             this.traceId = traceId;
             this.dispatchAttempt = dispatchAttempt;
+            var context = new java.util.HashMap<String, String>();
+            var current = org.slf4j.MDC.getCopyOfContextMap();
+            if (current != null) context.putAll(current);
+            context.remove("executionId"); context.remove("traceId"); context.remove("attempt");
+            if (executionId != null) context.put("executionId", executionId);
+            if (traceId != null) context.put("traceId", traceId);
+            if (dispatchAttempt != null) context.put("attempt", dispatchAttempt);
+            this.logContext = java.util.Map.copyOf(context);
         }
 
         @Override
         public void run() {
-            try {
+            try (var ignored = it.unimib.datai.nanofaas.logging.LoggingContext.open(logContext)) {
                 if (!callbackClient.sendSerializedResult(executionId, payload, traceId, dispatchAttempt)
                         && runtimeMetrics != null) {
                     runtimeMetrics.recordCallbackFailure();

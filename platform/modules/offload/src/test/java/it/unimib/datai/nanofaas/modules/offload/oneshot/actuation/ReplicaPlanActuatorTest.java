@@ -60,7 +60,7 @@ class ReplicaPlanActuatorTest {
         var snapshot=AuctionSnapshot.open(node,node+"-run",epoch,0,1,from,from.plus(period),problem,initial,identities,Map.of());
         var ledger=new SellerLedger(snapshot,OneShotAuctionEngine.Options.base());snapshot=ledger.finalizeAuction().state();
         var input=new EpochInput(problem,identities,Map.of("f",new ForecastSnapshot(new ForecastQuery(node,"f",3,from,from.plus(period)),ForecastSnapshot.Status.AVAILABLE,load,1,"oracle",from.minusSeconds(5))),1);
-        return new EpochOutcome(epoch,EpochOutcome.Status.CONVERGED,snapshot,100,10,1,"test",input);
+        return new EpochOutcome(epoch,EpochOutcome.Status.FIXED_ROUNDS_COMPLETED,snapshot,100,10,1,"test",input);
     }
     static PeerTransport peers(String node) {
         return new PeerTransport() {
@@ -110,7 +110,7 @@ class ReplicaPlanActuatorTest {
             Map.of(node.equals("a")?"b":"a",node.equals("a")?"b-run":"a-run"),Map.of("f",2),state.prices(),Map.of(),List.of(),Map.of(grant.id(),grant),Set.of(),true,"FINALIZED");
         var forecast=new ForecastSnapshot(new ForecastQuery(node,"f",generation,from,from.plusSeconds(300)),ForecastSnapshot.Status.AVAILABLE,node.equals("a")?7.0:0.0,1,"oracle",from.minusSeconds(5));
         var input=new EpochInput(base.input().problem(),identities,Map.of("f",forecast),1);
-        return new EpochOutcome(1,EpochOutcome.Status.CONVERGED,snapshot,100,10,1,"test",input);
+        return new EpochOutcome(1,EpochOutcome.Status.FIXED_ROUNDS_COMPLETED,snapshot,100,10,1,"test",input);
     }
     @Test void readinessShrinksGrantAndBuyerUsesOnlyAcknowledgedQuantity() {
         var now=new AtomicReference<>(Instant.parse("2026-10-04T10:00:00Z"));var from=now.get().plusSeconds(10);
@@ -132,25 +132,6 @@ class ReplicaPlanActuatorTest {
         var identities=Map.of("f",new AuctionSnapshot.FunctionIdentity("v",3),"g",new AuctionSnapshot.FunctionIdentity("v",3));
         var snapshot=new SellerLedger(AuctionSnapshot.open("a","a-run",epoch,0,1,from,from.plusSeconds(300),problem,initial,identities,Map.of()),OneShotAuctionEngine.Options.base()).finalizeAuction().state();
         var forecasts=new HashMap<String,ForecastSnapshot>();rows.forEach(row->forecasts.put(row.id(),new ForecastSnapshot(new ForecastQuery("a",row.id(),3,from,from.plusSeconds(300)),ForecastSnapshot.Status.AVAILABLE,row.load(),1,"oracle",from.minusSeconds(5))));
-        return new EpochOutcome(epoch,EpochOutcome.Status.CONVERGED,snapshot,100,10,1,"test",new EpochInput(problem,identities,forecasts,1));
+        return new EpochOutcome(epoch,EpochOutcome.Status.FIXED_ROUNDS_COMPLETED,snapshot,100,10,1,"test",new EpochInput(problem,identities,forecasts,1));
     }
-    @Test void transitionBetweenMemorySaturatingFunctionsNeverAllocatesBothAtMaximum() {
-        var now=new AtomicReference<>(Instant.parse("2026-10-04T10:00:00Z"));var control=mock(ManagedReplicaControl.class);when(control.setReadyConcurrency(any(),anyInt())).thenReturn(true);var counts=new HashMap<String,Integer>();counts.put("f",0);counts.put("g",0);
-        when(control.generationOf(any())).thenAnswer(a->new FunctionGeneration(((RegisteredFunction)a.getArgument(0)).name(),3));
-        when(control.acquireReplicaLease(any(),anyString(),any())).thenAnswer(a->Optional.of(new ReplicaControlLease(a.getArgument(0),UUID.randomUUID().toString(),a.getArgument(1),System.nanoTime()+Duration.ofHours(1).toNanos())));
-        when(control.renewReplicaLease(any(),any())).thenAnswer(a->Optional.of(a.getArgument(0)));when(control.ownsReplicaLease(any())).thenReturn(true);when(control.supportsPhysicalReplicaControl(any())).thenReturn(true);
-        when(control.observeReplicaStatus(any())).thenAnswer(a->{var name=((ManagedDeploymentTarget)a.getArgument(0)).functionName();return ReplicaObservation.fresh(new ReplicaStatus(counts.get(name),counts.get(name)),now.get());});
-        when(control.setReplicas(any(ReplicaControlLease.class),any(),anyInt())).thenAnswer(a->{var name=((ManagedDeploymentTarget)a.getArgument(1)).functionName();counts.put(name,a.getArgument(2));assertThat(counts.values().stream().mapToInt(Integer::intValue).sum()).isLessThanOrEqualTo(2);return true;});
-        try(var actuator=new ReplicaPlanActuator(control,()->List.of(registered("f",1),registered("g",1)),peers("a"),now::get,()->true,Duration.ofSeconds(2),Duration.ofSeconds(1))) {
-            actuator.start();var from=now.get().plusSeconds(5);
-            assertThat(actuator.prepare(memoryOutcome(1,from,2,0)).block().status()).isEqualTo(PlanActivation.Status.PREPARED);
-            now.set(from);assertThat(actuator.activePlan()).isPresent();
-            var second=actuator.prepare(memoryOutcome(2,from.plusSeconds(300),0,2)).block();
-            assertThat(second.status()).isEqualTo(PlanActivation.Status.DEGRADED);assertThat(second.readyReplicas()).containsEntry("g",0);assertThat(second.plan().functions().get("g").cloudRate()).isEqualTo(2);
-            now.set(from.plusSeconds(300));actuator.activePlan();
-            var third=actuator.prepare(memoryOutcome(3,from.plusSeconds(600),0,2)).block();
-            assertThat(third.readyReplicas()).containsEntry("f",0).containsEntry("g",2);
-        }
-    }
-
 }

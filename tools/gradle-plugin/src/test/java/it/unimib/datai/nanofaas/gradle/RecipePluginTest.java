@@ -497,6 +497,22 @@ class RecipePluginTest {
     }
 
     @Test
+    void rustFunctionsResolveSharedDockerfileBeforeBuilding() throws IOException {
+        Path shared = projectDir.resolve("functions/rust/shared/Dockerfile");
+        Files.createDirectories(shared.getParent());
+        Path dockerfile = projectDir.resolve("functions/rust/word-stats/Dockerfile");
+        Files.move(dockerfile, shared);
+        Files.createSymbolicLink(dockerfile, Path.of("../shared/Dockerfile"));
+        recipe(V2_HEADER + CP_JVM + "functions: [{name: word-stats, sdk: rust, container: {image: ws-rust}}]\n");
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        assertThat(dockerCalls().stream().filter(call -> call.getFirst().equals("build")).toList())
+                .containsExactly(List.of("build", "-f", shared.toRealPath().toString(),
+                        "-t", "nanofaas/demo/ws-rust:local", projectDir.toRealPath().toString()));
+    }
+
+    @Test
     void rustFunctionsBuildFromTheRepositoryRoot() throws IOException {
         recipe(V2_HEADER + CP_JVM + """
                 functions: [{name: word-stats, sdk: rust, container: {image: ws-rust}}]

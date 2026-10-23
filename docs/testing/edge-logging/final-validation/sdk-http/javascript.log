@@ -1,0 +1,2 @@
+{"schemaVersion":1,"timestamp":"2026-10-10T09:48:09.951Z","level":"INFO","service":"function-runtime","logger":"nanofaas.handler","message":"SDK handler caffè\nnext","executionId":"javascript-one","traceId":"trace-one"}
+{"schemaVersion":1,"timestamp":"2026-10-10T09:48:09.951Z","level":"INFO","service":"function-runtime","logger":"nanofaas.handler","message":"SDK handler caffè\nnext","executionId":"javascript-two","traceId":"trace-two"}

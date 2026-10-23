@@ -5,7 +5,10 @@ import java.util.*;
 /** Immutable next-epoch configuration; physical resource and measurement identity remain explicit. */
 public record OneShotSettings(int schemaVersion,String profileId,String environmentFingerprint,String purpose,boolean allowSynthetic,
         URI cloudUri,long memoryCapacityMiB,double flowQuantum,Duration period,Duration leadTime,boolean scheduled,Instant anchor,
-        Duration preparationBudget,double maxOperationalFraction,int burst,Map<String,Function> functions,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochSettings negotiation,long maxSolverStates,long maxSolverBytes) {
+        Duration preparationBudget,double maxOperationalFraction,int burst,Map<String,Function> functions,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochSettings negotiation,long maxSolverStates,long maxSolverBytes,String sessionId) {
+    public OneShotSettings(int version,String profile,String environment,String purpose,boolean synthetic,URI cloud,long memory,double q,Duration period,Duration lead,boolean scheduled,Instant anchor,Duration preparation,double fraction,int burst,Map<String,Function> functions,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochSettings negotiation,long states,long bytes) {
+        this(version,profile,environment,purpose,synthetic,cloud,memory,q,period,lead,scheduled,anchor,preparation,fraction,burst,functions,negotiation,states,bytes,null);
+    }
     public OneShotSettings(int version,String profile,String environment,String purpose,boolean synthetic,URI cloud,long memory,double q,Duration period,Duration lead,boolean scheduled,Instant anchor,Duration preparation,double fraction,int burst,Map<String,Function> functions) {
         this(version,profile,environment,purpose,synthetic,cloud,memory,q,period,lead,scheduled,anchor,preparation,fraction,burst,functions,new it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochSettings(Duration.ofSeconds(5),Duration.ofSeconds(1),Duration.ofSeconds(1),100,4,64,16,.1),2000000,64L*1024*1024);
     }
@@ -17,12 +20,14 @@ public record OneShotSettings(int schemaVersion,String profileId,String environm
     }
     public static boolean digest(String s) { return s!=null && s.matches("sha256:[0-9a-f]{64}"); }
     public OneShotSettings {
-        if(schemaVersion!=1 || profileId==null || profileId.isBlank() || profileId.length()>256 || !digest(environmentFingerprint) || !Set.of("workflow-validation","scientific-experiment").contains(purpose)
+        if((schemaVersion!=1 && schemaVersion!=2) || schemaVersion==1 && sessionId!=null
+            || schemaVersion==2 && (sessionId==null || sessionId.isBlank() || sessionId.length()>256)
+            || profileId==null || profileId.isBlank() || profileId.length()>256 || !digest(environmentFingerprint) || !Set.of("workflow-validation","scientific-experiment").contains(purpose)
             || cloudUri==null || !Set.of("http","https").contains(cloudUri.getScheme()) || cloudUri.getHost()==null || cloudUri.getUserInfo()!=null || cloudUri.getQuery()!=null || cloudUri.getFragment()!=null
             || negotiation==null || maxSolverStates<1 || maxSolverStates>10000000 || maxSolverBytes<1 || maxSolverBytes>256L*1024*1024
             || memoryCapacityMiB<1 || memoryCapacityMiB>Integer.MAX_VALUE || !Double.isFinite(flowQuantum) || flowQuantum<=0 || period==null || period.isNegative() || period.isZero() || period.compareTo(Duration.ofHours(24))>0
             || leadTime==null || leadTime.isNegative() || leadTime.isZero() || leadTime.compareTo(period)>=0 || preparationBudget==null || preparationBudget.isNegative() || preparationBudget.isZero() || preparationBudget.compareTo(leadTime)>=0
-            || !Double.isFinite(maxOperationalFraction) || maxOperationalFraction<=0 || maxOperationalFraction>.2 || anchor==null || burst<1 || burst>1000 || functions==null || functions.isEmpty() || functions.size()>128)
+            || !Double.isFinite(maxOperationalFraction) || maxOperationalFraction<=0 || maxOperationalFraction>1 || anchor==null || burst<1 || burst>1000 || functions==null || functions.isEmpty() || functions.size()>128)
             throw new IllegalArgumentException("invalid one-shot configuration");
         functions=Map.copyOf(functions);
         functions.forEach((id,f)-> { if(id==null || id.isBlank() || id.length()>256 || f==null) throw new IllegalArgumentException("invalid function"); });

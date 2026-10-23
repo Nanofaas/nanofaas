@@ -149,7 +149,11 @@ public final class InvokeHandler implements HttpHandler {
         metrics.incInFlight(functionName);
         long startNanos = System.nanoTime();
 
+        var previousLogContext = org.slf4j.MDC.getCopyOfContextMap();
+        org.slf4j.MDC.clear();
         FunctionContext.set(effectiveExecutionId, traceId);
+        org.slf4j.MDC.put("functionName", functionName);
+        if (dispatchAttempt != null) org.slf4j.MDC.put("attempt", dispatchAttempt);
         try {
             ReadRequestResult readResult = readRequest(
                     exchange, callbackReservation, effectiveExecutionId, traceId, dispatchAttempt);
@@ -240,7 +244,7 @@ public final class InvokeHandler implements HttpHandler {
             if (callbackReservation != null) callbackReservation.close();
             metrics.observeDuration(functionName, (System.nanoTime() - startNanos) / 1_000_000_000.0);
             metrics.decInFlight(functionName);
-            FunctionContext.clear();
+            if (previousLogContext == null) org.slf4j.MDC.clear(); else org.slf4j.MDC.setContextMap(previousLogContext);
         }
     }
 
@@ -315,7 +319,12 @@ public final class InvokeHandler implements HttpHandler {
     private Object invokeWithTimeout(InvocationRequest request) throws InterruptedException, TimeoutException {
         RuntimeLimits.Reservation handlerReservation = limits.tryReserveHandler();
         if (handlerReservation == null) throw new HandlerSaturatedException();
-        FutureTask<Object> task = new FutureTask<>(() -> functionHandler.handle(request));
+        var logContext = org.slf4j.MDC.getCopyOfContextMap();
+        FutureTask<Object> task = new FutureTask<>(() -> {
+            try (var ignored = it.unimib.datai.nanofaas.logging.LoggingContext.open(logContext)) {
+                return functionHandler.handle(request);
+            }
+        });
         AtomicReference<HandlerWork> workReference = new AtomicReference<>();
         Thread thread = Thread.ofVirtual().unstarted(() -> {
             try {
@@ -590,6 +599,7 @@ public final class InvokeHandler implements HttpHandler {
     }
 
     private final class CallbackTask implements Runnable {
+        private final java.util.Map<String, String> logContext;
         private final RuntimeLimits.Reservation reservation;
         private final String executionId;
         private final byte[] body;
@@ -602,9 +612,15 @@ public final class InvokeHandler implements HttpHandler {
             this.body = body;
             this.traceId = traceId;
             this.dispatchAttempt = dispatchAttempt;
+            var context = new java.util.HashMap<String, String>();
+            context.put("functionName", functionName);
+            if (executionId != null) context.put("executionId", executionId);
+            if (traceId != null) context.put("traceId", traceId);
+            if (dispatchAttempt != null) context.put("attempt", dispatchAttempt);
+            this.logContext = java.util.Map.copyOf(context);
         }
         @Override public void run() {
-            try {
+            try (var ignored = it.unimib.datai.nanofaas.logging.LoggingContext.open(logContext)) {
                 if (!callbackClient.sendSerializedResult(executionId, body, traceId, dispatchAttempt)) {
                     metrics.recordCallbackFailure(functionName);
                 }

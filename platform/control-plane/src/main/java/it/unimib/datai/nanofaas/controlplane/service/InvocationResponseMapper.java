@@ -29,7 +29,7 @@ public final class InvocationResponseMapper {
             InvocationResult result = snapshot.lastError() == null
                     ? InvocationResult.successWithEnvelope(snapshot.output(), snapshot.statusCode(),
                             snapshot.headers(), snapshot.encoding())
-                    : new InvocationResult(false, null, snapshot.lastError());
+                    : new InvocationResult(false, null, snapshot.lastError(), snapshot.statusCode(), snapshot.headers(), null);
             return toResponse(executionRecord, result);
         }
         if (snapshot.state() == ExecutionState.TIMEOUT) {

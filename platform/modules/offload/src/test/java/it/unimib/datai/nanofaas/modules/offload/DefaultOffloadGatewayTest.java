@@ -107,9 +107,25 @@ class DefaultOffloadGatewayTest {
     }
 
     @Test
+    void remoteRuntimeRefusalPreservesPlatformEnvelope() {
+        server.enqueue(new MockResponse().setResponseCode(429).setHeader("Content-Type", "application/json")
+                .setHeader("Retry-After", "1")
+                .setBody("{\"executionId\":\"remote-1\",\"status\":\"error\",\"statusCode\":429,"
+                        + "\"headers\":{\"Retry-After\":\"1\"},\"error\":{\"code\":\"RUNTIME_HANDLER_SATURATED\",\"message\":\"busy\"}}"));
+        var result = gateway().invokeRemote(task(spec("echo", null, 5000)), OffloadTrigger.EAGER,
+                OffloadContext.none(), BUDGET_MS).block();
+        assertThat(result.success()).isFalse();
+        assertThat(result.statusCode()).isEqualTo(429);
+        assertThat(result.error().code()).isEqualTo("RUNTIME_HANDLER_SATURATED");
+        assertThat(result.headers()).containsEntry("Retry-After", "1")
+                .containsEntry("X-NanoFaaS-Terminal-Execution-Id", "remote-1");
+    }
+
+    @Test
     void remoteNativeAdmissionRefusalRetainsExactStatusAndReason() {
         String body = "{\"error\":\"ONE_SHOT_ADMISSION_REJECTED\",\"message\":\"inbound assignment absent or quota exhausted\"}";
         server.enqueue(new MockResponse().setResponseCode(429)
+                .setHeader("Retry-After", "1")
                 .setHeader("Content-Type", "application/json").setBody(body));
 
         assertThatThrownBy(() -> invokeRemoteBlocking(gateway(), task(spec("echo", null, 5000)),
@@ -117,6 +133,8 @@ class DefaultOffloadGatewayTest {
                 .satisfies(error -> {
                     OffloadFailedException failure = offloadFailure(error);
                     assertThat(failure.gatewayTimeout()).isFalse();
+                    assertThat(failure.statusCode()).isEqualTo(429);
+                    assertThat(failure.retryAfter()).isEqualTo("1");
                     assertThat(failure.targetUrl()).isEqualTo(serverUrl());
                     assertThat(failure.getMessage()).isEqualTo("remote " + serverUrl() + " returned 429: " + body);
                 });

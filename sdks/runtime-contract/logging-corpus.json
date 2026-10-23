@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "plain",
+      "input": {
+        "message": "hello",
+        "level": "INFO"
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "timestamp": "2026-10-10T10:00:00Z",
+        "service": "function-runtime",
+        "logger": "contract",
+        "message": "hello",
+        "level": "INFO"
+      }
+    },
+    {
+      "name": "correlated",
+      "input": {
+        "message": "completed",
+        "level": "INFO",
+        "executionId": "exec-7",
+        "traceId": "trace-7"
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "timestamp": "2026-10-10T10:00:00Z",
+        "service": "function-runtime",
+        "logger": "contract",
+        "message": "completed",
+        "level": "INFO",
+        "executionId": "exec-7",
+        "traceId": "trace-7"
+      }
+    },
+    {
+      "name": "escaping",
+      "input": {
+        "message": "line 1\n\"line 2\"\\ caffè ☕",
+        "level": "WARN"
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "timestamp": "2026-10-10T10:00:00Z",
+        "service": "function-runtime",
+        "logger": "contract",
+        "message": "line 1\n\"line 2\"\\ caffè ☕",
+        "level": "WARN"
+      }
+    },
+    {
+      "name": "exception",
+      "input": {
+        "message": "failed",
+        "level": "ERROR",
+        "exception": "Error: failure\n at handler"
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "timestamp": "2026-10-10T10:00:00Z",
+        "service": "function-runtime",
+        "logger": "contract",
+        "message": "failed",
+        "level": "ERROR",
+        "exception": "Error: failure\n at handler"
+      }
+    },
+    {
+      "name": "attributes",
+      "input": {
+        "message": "reserved fields",
+        "level": "INFO",
+        "attributes": {
+          "executionId": "user-value",
+          "level": "user-value"
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "timestamp": "2026-10-10T10:00:00Z",
+        "service": "function-runtime",
+        "logger": "contract",
+        "message": "reserved fields",
+        "level": "INFO",
+        "attributes": {
+          "executionId": "user-value",
+          "level": "user-value"
+        }
+      }
+    }
+  ]
+}

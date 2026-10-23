@@ -89,3 +89,7 @@ accepted the terminal callback. Serialization errors, oversized output/callbacks
 and rejected callbacks return runtime errors without the function-result marker
 or handler headers. A valid function response may still use a non-2xx status:
 its marker lets the control plane distinguish it from a dispatch failure.
+
+## Structured logging
+
+Set `NANOFAAS_LOG_FORMAT=json` to use the shared JSON contract in runtime-owned logs; `NANOFAAS_LOG_SERVICE` overrides the service name. Custom `WithLogger` configuration takes precedence. Applications can create their own logger with `nanofaas.NewLogger(os.Stderr, "my-service")` and derive invocation identity with `nanofaas.Logger(ctx, base)`. Application attributes are nested under `attributes` and cannot replace canonical identifiers. No global slog logger is installed. The default runtime uses the host slog logger; explicitly configured text output remains available.

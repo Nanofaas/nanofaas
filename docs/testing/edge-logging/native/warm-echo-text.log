@@ -1,0 +1,27 @@
+09:36:14.823 [main] INFO  i.u.d.n.s.w.WarmEchoApplication [exec= trace=] - Starting AOT-processed WarmEchoApplication using Java 25.0.4 with PID 2084360 (/home/michele/Documenti/nanofaas/.worktrees/edge-logging/services/java/warm-echo/build/native/nativeCompile/warm-echo started by michele in /home/michele/Documenti/nanofaas/.worktrees/edge-logging)
+09:36:14.823 [main] INFO  i.u.d.n.s.w.WarmEchoApplication [exec= trace=] - No active profile set, falling back to 1 default profile: "default"
+09:36:14.830 [main] INFO  o.s.boot.tomcat.TomcatWebServer [exec= trace=] - Tomcat initialized with port 43801 (http)
+09:36:14.831 [main] INFO  o.a.coyote.http11.Http11NioProtocol [exec= trace=] - Initializing ProtocolHandler ["http-nio-43801"]
+09:36:14.831 [main] INFO  o.a.catalina.core.StandardService [exec= trace=] - Starting service [Tomcat]
+09:36:14.831 [main] INFO  o.a.catalina.core.StandardEngine [exec= trace=] - Starting Servlet engine: [Apache Tomcat/11.0.24]
+09:36:14.832 [main] INFO  o.s.b.w.c.s.WebApplicationContextInitializer [exec= trace=] - Root WebApplicationContext: initialization completed in 9 ms
+09:36:14.841 [main] INFO  o.s.v.b.OptionalValidatorFactoryBean [exec= trace=] - Failed to set up a Bean Validation provider: jakarta.validation.NoProviderFoundException: Unable to create a Configuration, because no Jakarta Validation provider could be found. Add a provider like Hibernate Validator (RI) to your classpath.
+09:36:14.844 [main] WARN  i.m.c.i.binder.jvm.JvmGcMetrics [exec= trace=] - GC notifications will not be available because no GarbageCollectorMXBean of the JVM provides any. GCs=[young generation scavenger, complete scavenger]
+09:36:14.847 [main] INFO  o.a.coyote.http11.Http11NioProtocol [exec= trace=] - Starting ProtocolHandler ["http-nio-43801"]
+09:36:14.848 [main] INFO  o.s.boot.tomcat.TomcatWebServer [exec= trace=] - Tomcat started on port 43801 (http) with context path '/'
+09:36:14.849 [main] INFO  i.u.d.n.s.w.WarmEchoApplication [exec= trace=] - Started WarmEchoApplication in 0.035 seconds (process running for 0.037)
+09:36:14.913 [http-nio-43801-exec-1] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] [exec= trace=] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+09:36:14.913 [http-nio-43801-exec-1] INFO  o.s.web.servlet.DispatcherServlet [exec= trace=] - Initializing Servlet 'dispatcherServlet'
+09:36:14.913 [http-nio-43801-exec-1] INFO  o.s.web.servlet.DispatcherServlet [exec= trace=] - Completed initialization in 0 ms
+Exception in thread "callback-dispatcher-1" java.lang.NullPointerException: Stack trace is imprecise, the top frames are missing and/or have wrong line numbers. To get precise stack traces, build the image with option -H:-ReduceImplicitExceptionStackTraceInformation
+	at it.unimib.datai.nanofaas.sdk.runtime.CallbackClient.callbackUrl(CallbackClient.java:166)
+	at it.unimib.datai.nanofaas.sdk.runtime.CallbackClient.doSendPayload(CallbackClient.java:143)
+	at it.unimib.datai.nanofaas.sdk.runtime.CallbackClient.sendSerializedResult(CallbackClient.java:118)
+	at it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcher$CallbackTask.run(CallbackDispatcher.java:307)
+	at java.base@25.0.4/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base@25.0.4/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base@25.0.4/java.lang.Thread.run(Thread.java:1474)
+09:36:15.119 [SpringApplicationShutdownHook] INFO  o.s.boot.tomcat.GracefulShutdown [exec= trace=] - Commencing graceful shutdown. Waiting for active requests to complete
+09:36:15.119 [tomcat-shutdown] INFO  o.a.coyote.http11.Http11NioProtocol [exec= trace=] - Pausing ProtocolHandler ["http-nio-43801"]
+09:36:15.120 [tomcat-shutdown] INFO  o.s.boot.tomcat.GracefulShutdown [exec= trace=] - Graceful shutdown complete
+09:36:15.120 [SpringApplicationShutdownHook] INFO  o.a.coyote.http11.Http11NioProtocol [exec= trace=] - Stopping ProtocolHandler ["http-nio-43801"]
