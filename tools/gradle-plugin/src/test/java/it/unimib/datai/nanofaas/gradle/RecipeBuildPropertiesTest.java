@@ -29,7 +29,7 @@ class RecipeBuildPropertiesTest {
     @Test
     void nativeOptionsGoToTheirOwnProjectsOnly() throws IOException {
         JsonNode data = data("""
-                controlPlane: {modules: [], build: {mode: native, native: {optimization: s}}}
+                controlPlane: {modules: [], build: {mode: native, native: {optimization: s, maxHeap: 64m}}}
                 functions:
                   - {name: word-stats, sdk: java-lite, build: {mode: native, native: {gc: G1, monitoring: [jvmstat]}}}
                   - {name: word-stats, sdk: java, build: {mode: jvm}}
@@ -39,7 +39,7 @@ class RecipeBuildPropertiesTest {
 
         // The explicit control-plane optimization is also build identity, so build-metadata records it.
         assertThat(RecipeBuildProperties.byProject(data)).containsExactlyInAnyOrderEntriesOf(Map.of(
-                ":control-plane", Map.of("nativeOptimization", "s"),
+                ":control-plane", Map.of("nativeOptimization", "s", "nativeMaxHeap", "64m"),
                 ":functions:java:word-stats-lite", Map.of("nativeGc", "G1", "nativeMonitoring", "jvmstat"),
                 ":functions:java:word-stats", Map.of("nanofaasRecipeBuildMode", "jvm"),
                 ":services:java:warm-echo", Map.of("nativeOptimization", "2", "nanofaasRecipeBuildMode", "native"),
@@ -67,7 +67,9 @@ class RecipeBuildPropertiesTest {
         JsonNode data = data("controlPlane: {modules: [], build: {mode: native, native: {gc: G1, monitoring: [jvmstat]}}}\n");
 
         assertThat(RecipeBuildProperties.effectiveNative(data.get("controlPlane")))
-                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "G1", List.of("jvmstat", "jfr"), "host", null));
+                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "G1", List.of("jvmstat", "jfr"), "host", null, null));
+        assertThat(RecipeBuildProperties.effectiveNative(data("controlPlane: {modules: [], build: {mode: native, native: {maxHeap: 64m}}}\n")
+                .get("controlPlane")).maxHeap()).isEqualTo("64m");
         assertThat(RecipeBuildProperties.effectiveNative(data("controlPlane: {modules: [], build: {mode: jvm}}\n")
                 .get("controlPlane"))).isNull();
     }
@@ -80,9 +82,9 @@ class RecipeBuildPropertiesTest {
                 """);
 
         assertThat(RecipeBuildProperties.effectiveNative(data.get("controlPlane")))
-                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "G1", List.of("jfr"), "container", "oracle"));
+                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "G1", List.of("jfr"), "container", "oracle", null));
         assertThat(RecipeBuildProperties.effectiveNative(data.at("/services/0")))
-                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "serial", List.of(), "container", "community"));
+                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "serial", List.of(), "container", "community", null));
     }
 
     @Test

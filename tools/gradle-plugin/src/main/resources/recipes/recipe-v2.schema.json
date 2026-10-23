@@ -74,7 +74,7 @@
       "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(?![\\s\\S])"
     },
     "native": {
-      "description": "native-image options of this component; omitted fields keep -O3, the serial collector and no monitoring.",
+      "description": "native-image options of this component; omitted fields keep -O3, the serial collector, no monitoring and Native Image's default maximum heap.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -85,6 +85,11 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": {"enum": ["all", "heapdump", "jfr", "jvmstat", "jmxserver", "jmxclient", "threaddump", "nmt", "jcmd"]}
+        },
+        "maxHeap": {
+          "description": "Default maximum heap baked into the image (-R:MaxHeapSize), e.g. 64m; nothing is passed at run time.",
+          "type": "string",
+          "pattern": "^[1-9][0-9]*[mg](?![\\s\\S])"
         }
       }
     },

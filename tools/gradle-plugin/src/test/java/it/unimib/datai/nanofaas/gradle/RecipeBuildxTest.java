@@ -34,7 +34,7 @@ class RecipeBuildxTest {
         return new RecipeTasks.Target("controlPlane", "control-plane", "control-plane", "java", mode,
                 ":control-plane:" + (mode.equals("native") ? "nativeCompile" : "bootJar"), null, null, "control-plane/",
                 image, null, null, builder == null ? null : new RecipeBuildProperties.NativeOptions("3", "serial",
-                        List.of(), builder, builder.equals("container") ? "community" : null));
+                        List.of(), builder, builder.equals("container") ? "community" : null, null));
     }
 
     @Test

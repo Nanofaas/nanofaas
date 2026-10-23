@@ -117,6 +117,7 @@ function or a Java service. It is allowed only with `mode: native`.
 | `optimization` | `"s"`, `"0"`, `"1"`, `"2"`, `"3"` | `"3"` | `-O<value>` |
 | `gc` | `serial`, `G1` | `serial` | `--gc=<value>` |
 | `monitoring` | `all`, `heapdump`, `jfr`, `jvmstat`, `jmxserver`, `jmxclient`, `threaddump`, `nmt`, `jcmd` | none | `--enable-monitoring=<list>` |
+| `maxHeap` | a size such as `64m` or `1g` | Native Image's own | `-R:MaxHeapSize=<value>` |
 
 - `G1` adds `jfr` to `monitoring`, because G1 has no usable GC MXBeans. The report lists the
   effective values.
@@ -124,10 +125,13 @@ function or a Java service. It is allowed only with `mode: native`.
   value `"3"`. A non-integral value such as `3.5` is rejected.
 - `G1` needs Oracle GraalVM on the host, since Community offers only `serial` and `epsilon`.
   The plugin does not check the distribution; native-image fails with its own message.
+- `maxHeap` is baked into the image as the default maximum heap: the executable applies it
+  with no run-time argument. The report lists it only when it is set.
 - Two native components in one recipe can use different options.
 
 With `-Precipe`, the recipe owns these choices, so these flags are rejected:
-`-PnativeOptimization`, `-PnativeGc`, `-PnativeMonitoring`, `-PnanofaasBuildVariant` and
+`-PnativeOptimization`, `-PnativeGc`, `-PnativeMonitoring`, `-PnativeMaxHeap`,
+`-PnanofaasBuildVariant` and
 `-PnanofaasBuildOptimization`. Flags that only size or feed the builder remain accepted:
 `-PnativeBuildMemory`, `-PnativeParallelism`, `-PcontainerdMavenLocal` and
 `-Dmaven.repo.local`.

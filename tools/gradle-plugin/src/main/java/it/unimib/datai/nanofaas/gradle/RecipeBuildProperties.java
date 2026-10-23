@@ -31,7 +31,8 @@ final class RecipeBuildProperties {
     private static final Map<String, String> OWNED_FLAGS = ownedFlags();
 
     /** {@code distribution} is the GraalVM the container builder installs; null for the host builder, which uses its own. */
-    record NativeOptions(String optimization, String gc, List<String> monitoring, String builder, String distribution) {
+    record NativeOptions(String optimization, String gc, List<String> monitoring, String builder, String distribution,
+                         String maxHeap) {
     }
 
     record Identity(String variant, String optimization) {
@@ -45,6 +46,7 @@ final class RecipeBuildProperties {
         flags.put("nativeOptimization", "build.native.optimization");
         flags.put("nativeGc", "build.native.gc");
         flags.put("nativeMonitoring", "build.native.monitoring");
+        flags.put("nativeMaxHeap", "build.native.maxHeap");
         flags.put("nanofaasBuildVariant", "controlPlane.build.variant");
         flags.put("nanofaasBuildOptimization", "controlPlane.build.native.optimization (derived from jvm.args on the JVM)");
         flags.put(AOT_CONFIG_PROPERTY, "controlPlane.config");
@@ -117,6 +119,9 @@ final class RecipeBuildProperties {
             options.get("monitoring").forEach(value -> values.add(value.asText()));
             properties.put("nativeMonitoring", String.join(",", values));
         }
+        if (options.has("maxHeap")) {
+            properties.put("nativeMaxHeap", options.get("maxHeap").asText());
+        }
     }
 
     /** The options the root build.gradle actually passes to native-image, G1's jfr included. */
@@ -134,7 +139,8 @@ final class RecipeBuildProperties {
         String builder = component.path("build").path("builder").asText("host");
         // The container builder installs Oracle GraalVM only for G1: Community's Native Image has no G1.
         String distribution = builder.equals("container") ? (gc.equals("G1") ? "oracle" : "community") : null;
-        return new NativeOptions(options.path("optimization").asText("3"), gc, List.copyOf(monitoring), builder, distribution);
+        return new NativeOptions(options.path("optimization").asText("3"), gc, List.copyOf(monitoring), builder, distribution,
+                options.path("maxHeap").asText(null));
     }
 
     /** Recorded with a variant, or with an explicit native optimization, as -PnativeOptimization alone records it. */
