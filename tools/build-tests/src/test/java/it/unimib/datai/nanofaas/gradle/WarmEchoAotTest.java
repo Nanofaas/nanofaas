@@ -23,7 +23,7 @@ class WarmEchoAotTest {
     @BeforeEach
     void writeFixture() throws IOException {
         write("settings.gradle", """
-                plugins { id 'it.unimib.datai.nanofaas.control-plane-modules' }
+                plugins { id 'io.github.nanofaas.build' }
                 // The real Spring Boot plugin imports its BOM even to plan tasks; only POMs are resolved.
                 dependencyResolutionManagement { repositories { mavenCentral() } }
                 include ':control-plane', ':sdks:java', ':services:java:warm-echo'

@@ -75,7 +75,7 @@ COPY --from=builder /tmp/native-libraries/ /
 # assembleRecipe's multi-architecture path (registry.platforms) compiles and packages a
 # container-built native image in this one build, so the image's provenance names the builder
 # stage above. The staged runtime files come from the named context `recipe`; the layout
-# follows tools/gradle-plugin/dockerfiles/Dockerfile.native.
+# follows deploy/recipes/Dockerfile.native.
 FROM ${RUNTIME_IMAGE} AS recipe-native
 ARG BUILDER_IMAGE
 ARG RUNTIME_IMAGE

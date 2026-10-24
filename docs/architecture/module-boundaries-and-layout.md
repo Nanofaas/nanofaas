@@ -18,7 +18,7 @@ The platform separates host contracts, optional capabilities and shared implemen
 
 Shared implementations retain `runtime` names; they are not presented as interface libraries. Optional deployment implementations retain `*-deployment-provider` IDs. The `container-deployment-provider` module implements the `container-local` backend: a module ID and a public runtime backend identifier have different roles. No package or public identifier is renamed for directory consistency.
 
-Build tooling lives under `tools/`: `tools/gradle-plugin` owns Gradle composition and recipe templates in its `dockerfiles/` directory; `tools/native-java` owns the shared native builder. `deploy/` owns operational configuration. `platform/control-plane/Dockerfile` packages a prebuilt JAR; `Dockerfile.from-source` compiles from the repository-root context. The source filename now identifies its build semantics, independently of Compose. Recipe templates remain filesystem inputs and are not copied into application staging.
+Gradle composition and recipe JSON Schemas belong to the external [nanofaas-gradle-plugin](https://github.com/Nanofaas/nanofaas-gradle-plugin) repository. NanoFaaS owns recipe packaging templates in `deploy/recipes/`, the shared native builder in `tools/native-java`, and checks of its real build files in `tools/build-tests`. `deploy/` owns operational configuration. `platform/control-plane/Dockerfile` packages a prebuilt JAR; `Dockerfile.from-source` compiles from the repository-root context. The source filename now identifies its build semantics, independently of Compose. Recipe Dockerfiles remain filesystem inputs and are not copied into application staging.
 
 ## Dependency boundaries
 

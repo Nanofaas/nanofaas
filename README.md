@@ -19,6 +19,10 @@ beyond invocation (queueing, autoscaling, concurrency control, hot
 reconfiguration, offloading, and each deployment backend) is a module you choose
 at build time. A build contains only the modules it needs.
 
+Build composition is provided by the standalone
+[NanoFaaS Gradle plugin](https://github.com/Nanofaas/nanofaas-gradle-plugin).
+See [plugin versions and local development](docs/gradle-plugin.md).
+
 ## Highlights
 
 - **Build-time modularity.** Twelve optional modules with declared defaults,

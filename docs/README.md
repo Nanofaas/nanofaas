@@ -17,6 +17,7 @@
 | [Function definition](function-definition.md) | `function.yaml` manifest reference |
 | [Example functions](example-function.md) | Worked examples for every execution mode + real examples in the repo |
 | [Container-only validation](no-k8s-profile.md) | Run the platform without Kubernetes (`container-local` backend) |
+| [Gradle build plugin](gradle-plugin.md) | Plugin ownership, pinned versions, local development and first-release bootstrap |
 | [Distribution recipes](recipes.md) | Build a control plane and selected functions, their images and a push report from one YAML recipe |
 | [Function images and registries](image-registries.md) | Docker, k3s and containerd registry setup, private pulls, imported images and pull diagnostics |
 | [Rootless containerd deployment](deployment-containerd.md) | Prepare pinned Java dependencies, build the provider, and configure its rootless runtime |

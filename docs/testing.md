@@ -42,8 +42,8 @@ Run the focused PMD checks on authored production Java sources:
 ./gradlew deadCode -PcontrolPlaneModules=all
 ```
 
-`deadCode` covers all Java subprojects, including optional modules and the included
-`tools/gradle-plugin` build. It checks unused private methods and fields, local
+`deadCode` covers all Java subprojects, including optional modules. The external
+[Gradle plugin](gradle-plugin.md) has its own `pmdMain` task in its repository. It checks unused private methods and fields, local
 variables, private method/constructor parameters, and assignments whose values
 are never read. Test sources and generated sources under `build/` are excluded.
 The normal command reports findings without failing. Tool, parsing, compilation,
@@ -215,3 +215,18 @@ The composition-level checks classify core, SPI and execution-runtime classes by
 Optional production modules consume SPI/API contracts and shared libraries, not another optional implementation or core/execution-runtime implementation. Integration tests may use implementations. Every selected module must contribute production subjects; `none` is a valid empty selection. SPI purity checks the SPI artifact's actual types rather than allowing the entire shared `controlplane` package.
 
 `SyncQueueConfiguration` is the explicit composition exception: it may reference `EngineSyncQueueGateway`, `EngineInvocationEnqueuer.AdmissionProfile`, `SchedulerEngine`, `PendingWorkStore`, `SyncQueueAdmissionController` and `WaitEstimator`. The enclosing `EngineInvocationEnqueuer` is accepted only as structural enum metadata, never for direct calls or construction. Additional collaborators require a deliberate policy update. The core and execution runtime retain shared state ownership; Docker and containerd providers retain the shared container deployment runtime. A Gradle project is not necessarily an independent component requiring a separate API artifact.
+
+## Build integration tests
+
+`./gradlew test` also runs the `tools/build-tests` included build. It checks the
+real module descriptors and warm-echo AOT behavior against the version of the
+external plugin pinned in `gradle.properties`. To run only these checks:
+
+```bash
+./gradlew -p tools/build-tests test
+```
+
+The plugin's unit and TestKit suite runs in `Nanofaas/nanofaas-gradle-plugin` CI.
+Use the [explicit checkout override](gradle-plugin.md) when testing changes to
+both repositories before publication. Run builds sequentially when they share
+the same plugin checkout, since composite builds write to its build directory.
