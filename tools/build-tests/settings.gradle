@@ -1,0 +1,6 @@
+def localPlugin = providers.gradleProperty('nanofaasGradlePluginDir').orNull
+if (localPlugin != null) {
+    includeBuild(settingsDir.parentFile.parentFile.toPath().resolve(localPlugin).toFile())
+}
+
+rootProject.name = 'nanofaas-build-tests'

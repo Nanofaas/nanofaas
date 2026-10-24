@@ -1,5 +1,11 @@
 pluginManagement {
-    includeBuild('tools/gradle-plugin')
+    def localPlugin = providers.gradleProperty('nanofaasGradlePluginDir').orNull
+    if (localPlugin != null) {
+        includeBuild(localPlugin)
+    }
+    plugins {
+        id 'io.github.nanofaas.build' version providers.gradleProperty('nanofaasGradlePluginVersion').get()
+    }
     resolutionStrategy {
         eachPlugin {
             if (requested.id.id == 'org.graalvm.buildtools.native' && requested.version != null) {
@@ -18,10 +24,14 @@ plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
     // Build health / dependency analysis for all projects (settings plugin since 2.0).
     id 'com.autonomousapps.build-health' version '3.19.2'
-    id 'it.unimib.datai.nanofaas.control-plane-modules'
+    id 'io.github.nanofaas.build'
 }
 
 rootProject.name = 'nanofaas'
+
+includeBuild('tools/build-tests') {
+    name = 'nanofaas-build-tests'
+}
 
 include('container-deployment-runtime'); project(':container-deployment-runtime').projectDir = file('platform/libs/container-deployment-runtime')
 include('common');            project(':common').projectDir = file('platform/libs/common')

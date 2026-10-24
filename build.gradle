@@ -214,10 +214,9 @@ tasks.named('build') {
     dependsOn 'verifyHelmVersionSync'
 }
 
-// tools/gradle-plugin is an included build (settings.gradle pluginManagement): the root
-// test task builds its jar but would never run its tests without this edge.
+// Keep checks of NanoFaaS's real descriptors and build scripts in the consumer repository.
 tasks.named('test') {
-    dependsOn gradle.includedBuild('gradle-plugin').task(':test')
+    dependsOn gradle.includedBuild('nanofaas-build-tests').task(':test')
 }
 
 // Static analysis covers the full project graph, including optional modules.
@@ -232,7 +231,6 @@ tasks.register('deadCode') {
     group = 'verification'
     description = 'Report potentially unused Java code across all modules (use -PdeadCodeStrict=true to fail on findings).'
     dependsOn subprojects.collect { it.tasks.named('pmdMain') }
-    dependsOn gradle.includedBuild('gradle-plugin').task(':pmdMain')
 }
 
 apply from: rootProject.file('gradle/dead-code-public.gradle')

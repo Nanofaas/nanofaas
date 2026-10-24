@@ -71,3 +71,9 @@ Application messages are limited to 1 MiB; outgoing requests are bounded by
 `nanofaas.p2p.max-concurrent-requests` (default 4) and a positive caller timeout.
 Closing a subscription disables retained wire callbacks. Stopping the transport or
 changing the local participation incarnation fences old callbacks and responses.
+
+After the Gradle plugin extraction, descriptor checks run with
+`./gradlew -p tools/build-tests test --tests '*RepositoryModuleDescriptorsTest'`.
+`ControlPlaneModuleProjectPluginTest` and `OpenApiComposerTest` now run in the
+[nanofaas-gradle-plugin repository](https://github.com/Nanofaas/nanofaas-gradle-plugin).
+The commands above record the original validation checkout.

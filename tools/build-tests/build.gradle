@@ -2,10 +2,6 @@ plugins {
     id 'java-gradle-plugin'
 }
 
-apply from: file('../../gradle/dead-code.gradle')
-
-group = 'it.unimib.datai.nanofaas'
-
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
@@ -14,9 +10,9 @@ java {
 
 repositories {
     mavenCentral()
+    gradlePluginPortal()
 }
 
-// Versions of the plugins warm-echo applies, from the main build's gradle.properties.
 def mainBuildProperties = new Properties()
 file('../../gradle.properties').withInputStream { mainBuildProperties.load(it) }
 
@@ -25,8 +21,7 @@ configurations {
 }
 
 dependencies {
-    implementation 'org.yaml:snakeyaml:2.7'
-    implementation 'com.networknt:json-schema-validator:2.0.7'
+    implementation "io.github.nanofaas:nanofaas-gradle-plugin:${mainBuildProperties.nanofaasGradlePluginVersion}"
     testImplementation gradleTestKit()
     testImplementation 'org.assertj:assertj-core:3.27.7'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.14.4'
@@ -36,18 +31,8 @@ dependencies {
     testPluginClasspath "org.graalvm.buildtools:native-gradle-plugin:${mainBuildProperties.graalvmBuildToolsVersion}"
 }
 
-// TestKit's withPluginClasspath() then resolves these by id, so a fixture can apply the real plugins offline.
 tasks.named('pluginUnderTestMetadata') {
     pluginClasspath.from(configurations.testPluginClasspath)
-}
-
-gradlePlugin {
-    plugins {
-        controlPlaneModules {
-            id = 'it.unimib.datai.nanofaas.control-plane-modules'
-            implementationClass = 'it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPlugin'
-        }
-    }
 }
 
 tasks.withType(Test).configureEach {
@@ -56,5 +41,8 @@ tasks.withType(Test).configureEach {
     inputs.file(warmEchoScript)
     inputs.file(file('../../gradle/jvm-jar-without-aot.gradle'))
     inputs.file(file('../../gradle/spring-aot-native-only.gradle'))
+    inputs.files(fileTree('../../platform/modules') {
+        include '*/module.properties', '*/build.gradle', '*/build.gradle.kts'
+    })
     systemProperty 'nanofaas.warmEchoBuildScript', warmEchoScript.absolutePath
 }

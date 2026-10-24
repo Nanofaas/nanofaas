@@ -2,8 +2,10 @@
 
 A recipe is a versioned YAML file that says which control plane to build — its modules and
 JVM or native mode — and which function implementations to package with it. The
-`it.unimib.datai.nanofaas.control-plane-modules` settings plugin reads it, builds the
+`io.github.nanofaas.build` settings plugin reads it, builds the
 artifacts with the existing Gradle tasks, and builds and pushes images with the Docker CLI.
+The plugin is maintained in [nanofaas-gradle-plugin](https://github.com/Nanofaas/nanofaas-gradle-plugin);
+see [plugin versions and local development](gradle-plugin.md).
 A recipe never starts the control plane, registers functions, or deploys anything.
 
 [`recipes/local-demo.yaml`](../recipes/local-demo.yaml) is a runnable example.
@@ -34,16 +36,16 @@ build uses.
 ## Recipe format
 
 The current schema is
-[`recipe-v2.schema.json`](../tools/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json).
+[`recipe-v2.schema.json`](https://raw.githubusercontent.com/Nanofaas/nanofaas-gradle-plugin/v0.1.2/src/main/resources/recipes/recipe-v2.schema.json).
 The plugin picks the schema that the file's `schemaVersion` names, validates against the
 copy packaged with it, and never downloads a schema. A `schemaVersion: 1` file is validated
 against the frozen
-[`recipe-v1.schema.json`](../tools/gradle-plugin/src/main/resources/recipes/recipe-v1.schema.json)
+[`recipe-v1.schema.json`](https://raw.githubusercontent.com/Nanofaas/nanofaas-gradle-plugin/v0.1.2/src/main/resources/recipes/recipe-v1.schema.json)
 and keeps working unchanged; it cannot use the fields v2 adds. Add this line at the top of a
 recipe to get completion and checks in editors that use the YAML language server:
 
 ```yaml
-# yaml-language-server: $schema=../tools/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Nanofaas/nanofaas-gradle-plugin/v0.1.2/src/main/resources/recipes/recipe-v2.schema.json
 ```
 
 ```yaml
@@ -266,8 +268,8 @@ build/recipes/<name>/
 
 The directory is regenerated on every assembly. Gradle's incremental compilation and
 Docker's layer cache are what make repeated assemblies fast. Java images are built from
-the staged directory with [`tools/gradle-plugin/dockerfiles/Dockerfile.jvm`](../tools/gradle-plugin/dockerfiles/Dockerfile.jvm)
-or [`Dockerfile.native`](../tools/gradle-plugin/dockerfiles/Dockerfile.native). Python, JavaScript, Go and bash
+the staged directory with [`deploy/recipes/Dockerfile.jvm`](../deploy/recipes/Dockerfile.jvm)
+or [`Dockerfile.native`](../deploy/recipes/Dockerfile.native). Python, JavaScript, Go and bash
 images use the function's own Dockerfile with the repository as the build context; a
 `dockerfile` service uses its own Dockerfile with its own directory as the context.
 

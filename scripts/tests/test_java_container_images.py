@@ -207,7 +207,7 @@ def test_recipe_native_stage_packages_like_the_recipe_native_dockerfile():
     image's provenance names the GraalVM builder stage. It must package exactly as Dockerfile.native does."""
     dockerfile = (REPO_ROOT / "tools/native-java/Dockerfile").read_text(encoding="utf-8")
     stage = _stage(dockerfile, "recipe-native")
-    packaging = (REPO_ROOT / "tools/gradle-plugin/dockerfiles/Dockerfile.native").read_text(encoding="utf-8").splitlines()
+    packaging = (REPO_ROOT / "deploy/recipes/Dockerfile.native").read_text(encoding="utf-8").splitlines()
     runtime = packaging[max(i for i, line in enumerate(packaging) if line.startswith("FROM ${RUNTIME_IMAGE}")):]
 
     def settings(lines):
