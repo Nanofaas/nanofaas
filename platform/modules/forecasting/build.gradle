@@ -7,6 +7,9 @@ dependencies {
     api project(':forecasting-api')
     implementation project(':control-plane-spi')
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // The admin API that switches providers is the runtime-config module's, booted with the core.
+    testImplementation project(':control-plane')
+    testImplementation project(':control-plane-modules:runtime-config')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-webtestclient'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'

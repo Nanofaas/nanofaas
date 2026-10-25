@@ -7,21 +7,22 @@ import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import java.time.*;
 import java.util.HashSet;
+import java.util.List;
 
 /** Registration-aware observation also counts complete windows with no arrivals. */
 public final class ForecastObservationLifecycle implements SmartLifecycle {
-    private final EwmaForecastSource source;
+    private final List<? extends WindowedForecastSource<?>> sources;
     private final FunctionCatalogView catalog;
     private final ManagedReplicaControl replicas;
     private final Clock clock;
     private final boolean enabled;
     private Disposable loop;
     private volatile boolean running;
-    public ForecastObservationLifecycle(EwmaForecastSource source, FunctionCatalogView catalog, ManagedReplicaControl replicas, Clock clock) {
-        this(source,catalog,replicas,clock,true);
+    public ForecastObservationLifecycle(WindowedForecastSource<?> source, FunctionCatalogView catalog, ManagedReplicaControl replicas, Clock clock) {
+        this(List.of(source),catalog,replicas,clock,true);
     }
-    public ForecastObservationLifecycle(EwmaForecastSource source, FunctionCatalogView catalog, ManagedReplicaControl replicas, Clock clock,boolean enabled) {
-        this.source = source; this.catalog = catalog; this.replicas = replicas; this.clock = clock;this.enabled=enabled;
+    public ForecastObservationLifecycle(List<? extends WindowedForecastSource<?>> sources, FunctionCatalogView catalog, ManagedReplicaControl replicas, Clock clock,boolean enabled) {
+        this.sources = List.copyOf(sources); this.catalog = catalog; this.replicas = replicas; this.clock = clock;this.enabled=enabled;
     }
     synchronized void refresh() {
         if (catalog == null || replicas == null) return;
@@ -33,9 +34,11 @@ public final class ForecastObservationLifecycle implements SmartLifecycle {
             active.add(generation.functionName() + "#" + generation.id());
             generations.add(generation);
         }
-        source.retain(active);
         var now = clock.instant();
-        for (var generation : generations) source.observe(generation.functionName(), generation.id(), now);
+        for (var source : sources) {
+            source.retain(active);
+            for (var generation : generations) source.observe(generation.functionName(), generation.id(), now);
+        }
     }
     @Override public synchronized void start() {
         if (running || !enabled) return;

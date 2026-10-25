@@ -61,3 +61,47 @@ components:
           nullable: true
           format: date-time
     ForecastTrace: {"type": "object", "additionalProperties": false, "properties": {"schemaVersion": {"enum": [1]}, "nodeId": {"type": "string", "minLength": 1, "maxLength": 256}, "revision": {"type": "integer", "minimum": 0}, "provider": {"type": "string", "enum": ["oracle"]}, "producedAt": {"type": "string", "format": "date-time"}, "entries": {"type": "array", "items": {"type": "object", "additionalProperties": false, "properties": {"function": {"type": "string", "minLength": 1, "maxLength": 256}, "generation": {"type": "integer", "minimum": 1}, "start": {"type": "string", "format": "date-time"}, "end": {"type": "string", "format": "date-time"}, "rate": {"type": "number", "minimum": 0}, "unit": {"enum": ["requests/s"]}}, "required": ["function", "generation", "start", "end", "rate", "unit"]}, "minItems": 0, "maxItems": 100000}}, "required": ["schemaVersion", "nodeId", "revision", "provider", "producedAt", "entries"]}
+    ForecastingRuntimeConfigNamespace:
+      type: object
+      description: >-
+        The `forecasting` namespace of the runtime-config admin API, present when this module is
+        built in and `nanofaas.forecasting.enabled=true`: GET
+        `/v1/admin/runtime-config/forecasting`, and `namespaces.forecasting` after a successful
+        PATCH. A PATCH may set `provider`, `holtLevel`, `holtTrend`, `holtDamping` and `ariOrder`;
+        the next forecast query uses them. Every provider keeps observing arrivals, so a switch
+        needs no warm-up. Alpha, window, max age and history are startup configuration, and a
+        change does not persist across a restart.
+      required: [provider, available, holtLevel, holtTrend, holtDamping, ariOrder, persistence]
+      properties:
+        provider:
+          type: string
+          enum: [ewma, oracle, holt, ari]
+        available:
+          type: array
+          items:
+            type: string
+            enum: [ewma, oracle, holt, ari]
+        holtLevel:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 1
+        holtTrend:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 1
+        holtDamping:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 1
+          description: 1 extends the trend undamped.
+        ariOrder:
+          type: integer
+          minimum: 1
+          maximum: 64
+          description: At most (history - 2) / 2.
+        persistence:
+          type: string
+          enum: [restart]
