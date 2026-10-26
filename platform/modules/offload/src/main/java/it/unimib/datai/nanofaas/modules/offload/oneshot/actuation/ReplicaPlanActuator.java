@@ -187,108 +187,202 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
         }
     }
     private PlanActivation apply(Preparation p) {
-        var desired=new LinkedHashMap<String,Integer>();var ready=new LinkedHashMap<String,Integer>();
+        var desired = new LinkedHashMap<String, Integer>();
+        var ready = new LinkedHashMap<String, Integer>();
         try {
-            check(p);validate(p);var rows=p.snapshot.baseProblem().functions();var targets=new HashMap<String,ManagedDeploymentTarget>();
-            Duration ttl=(p.outcome.timing()==null?Duration.between(now.get(),p.snapshot.validUntil()):p.outcome.timing().remaining(p.outcome.timing().expiryDeadline())).plus(drainGrace);
-            for(var row:rows) {
-                var id=p.snapshot.identities().get(row.id());var existing=leases.get(row.id());
-                if(existing!=null && existing.generation().id()!=id.generation()) { leases.remove(row.id(),existing);existing=null; }
-                var acquired=existing==null?control.acquireReplicaLease(new FunctionGeneration(row.id(),id.generation()),owner,ttl):control.renewReplicaLease(existing,ttl);
-                leases.put(row.id(),acquired.orElseThrow(()->new IllegalStateException("replica ownership unavailable: "+row.id())));
-                targets.put(row.id(),function(row.id()).managedDeploymentTarget().orElseThrow());leaseTargets.put(row.id(),targets.get(row.id()));
-            }
-            if(p.outcome.timing()!=null) for(var row:rows) {
-                if(!control.setReadyConcurrency(leases.get(row.id()),0)) throw new IllegalStateException("queued dispatch pause rejected");
-                control.pauseReplicaAdmission(leases.get(row.id()),targets.get(row.id())).orElseThrow(()->new IllegalStateException("physical admission pause rejected"));
-            }
-            var current=new LinkedHashMap<String,Integer>(); long used=0;
-            for(var row:rows) { int count=observation(p,targets.get(row.id())).status().desiredReplicas();current.put(row.id(),count);used=Math.addExact(used,Math.multiplyExact(row.memoryMiB(),count)); }
-            long budget=p.snapshot.baseProblem().memoryCapacityMiB();if(used>budget) throw new IllegalStateException("existing physical memory exceeds budget");
-            var old=active.get();boolean protectedOld=p.outcome.timing()==null && ((old!=null && now.get().isBefore(old.endsAt())) || now.get().isBefore(reservedUntil.get()));
-            // Drain reductions before allocating increases. A live epoch retains its immutable capacity.
-            for(var row:rows) {
-                int requested=p.snapshot.desiredReplicas().get(row.id());int count=current.get(row.id());
-                int minimum=0;
-                if(protectedOld && old!=null && now.get().isBefore(old.endsAt())) {
-                    var prior=old.functions().get(row.id());
-                    if(prior!=null) {
-                        double rate=prior.localRate()+prior.inbound().stream().mapToLong(Assignment::quantity).sum()*old.flowQuantum();
-                        minimum=rate==0?0:(int)Math.max(1,Math.ceil(rate*prior.demandSeconds()/prior.utilization()-1e-9));
-                    }
-                }
-                if(p.outcome.timing()==null && now.get().isBefore(reservedUntil.get())) minimum=Math.max(minimum,count);
-                int target=Math.max(minimum,requested);
-                if(target<count) {
-                    if(!control.setReplicas(leases.get(row.id()),targets.get(row.id()),target)) throw new IllegalStateException("leased downscale rejected");
-                    int actual=observation(p,targets.get(row.id())).status().desiredReplicas();
-                    used-=Math.multiplyExact(count-actual,row.memoryMiB());current.put(row.id(),actual);
-                }
-                desired.put(row.id(),target);
-            }
-            if(used>budget) throw new IllegalStateException("physical overlap memory exceeds budget");
-            for(var row:rows) {
-                int count=current.get(row.id());int target=desired.get(row.id());
-                int growth=(int)Math.min(Math.max(0,target-count),(budget-used)/row.memoryMiB());target=count+growth;
-                if(target!=count && !control.setReplicas(leases.get(row.id()),targets.get(row.id()),target)) throw new IllegalStateException("leased upscale rejected");
-                used+=growth*row.memoryMiB();desired.put(row.id(),target);
-            }
-            if(p.outcome.timing()!=null) {
-                check(p);
-                for(var row:rows) {
-                    // Physical readiness excludes quiesced slots. Reopen the current pool while
-                    // queued dispatch remains paused, then measure its actual ready capacity.
-                    var lease=leases.get(row.id());var target=targets.get(row.id());
-                    var token=control.pauseReplicaAdmission(lease,target).orElseThrow(()->new IllegalStateException("current pool capability unavailable"));
-                    if(!control.resumeRetainedReplicas(lease,target,token,token.admissionEpoch())) throw new IllegalStateException("current pool resume rejected");
-                }
-            }
-            for(var row:rows) {
-                int count=Math.min(desired.get(row.id()),observation(p,targets.get(row.id())).status().readyReplicas());
-                if(p.outcome.timing()==null && !control.setReadyConcurrency(leases.get(row.id()),count)) throw new IllegalStateException("ready admission fence rejected: "+row.id());
-                ready.put(row.id(),count);
-            }
-            var localReady=new LinkedHashMap<String,Assignment>();var localRates=new HashMap<String,Double>();double quantum=p.outcome.input().flowQuantum();
-            for(var row:rows) {
-                long capacity=(long)Math.min(9007199254740991d,Math.floor(ready.get(row.id())*row.utilization()/row.demandSeconds()));
-                var inbound=p.snapshot.assignments().values().stream().filter(a->a.sellerId().equals(p.snapshot.nodeId()) && a.function().equals(row.id())).sorted(Comparator.comparing(Assignment::id)).toList();
-                for(var grant:inbound) { long quantity=Math.min(grant.quantity(),capacity);if(grant.readyConfirmed() && quantity<grant.quantity()) throw new IllegalStateException("confirmed inbound cannot be revoked");var confirmation=grant.confirm(quantity);localReady.put(grant.id(),confirmation);capacity-=quantity; }
-                localRates.put(row.id(),Math.min(row.fixedLocal(),capacity)*quantum);
-            }
-            p.localReady=Map.copyOf(localReady);
-            if(p.outcome.timing()==null && localReady.values().stream().anyMatch(a->a.quantity()>0)) {
-                 reservedUntil.accumulateAndGet(p.snapshot.validUntil(),(a,b)->a.isAfter(b)?a:b);
-            }
-            if(p.outcome.timing()!=null) {
-                check(p);
-                // Install seller/local readiness before advertising or acknowledging any grant.
-                publishLogical(p,routingPlan(p,ready,localRates,List.of()));
-                for(var row:rows) if(!control.setReadyConcurrency(leases.get(row.id()),ready.get(row.id()))) throw new IllegalStateException("queued dispatch resume rejected");
-            }
-            boolean degraded=!desired.equals(p.snapshot.desiredReplicas());
-            for(var peer:p.snapshot.peerIncarnations().keySet()) {
-                var confirmations=localReady.values().stream().filter(a->a.buyerId().equals(peer)).toList();
-                if(!send(p,peer,AuctionCodec.Phase.READY,confirmations)) degraded=true;
-            }
-            // A buyer routes only after the seller acknowledges its matching READY_ACK.
-            for(var peer:p.snapshot.peerIncarnations().keySet()) {
-                while(windowOpen(p) && p.deadline-nanos(p)>Math.min(Duration.ofMillis(100).toNanos(),preparationBudget.toNanos()/10) && !receivedForSeller(p,peer)) Thread.sleep(20);
-                if(!receivedForSeller(p,peer)) degraded=true;
-                var confirmations=p.received.values().stream().filter(a->a.sellerId().equals(peer)).toList();
-                if(!confirmations.isEmpty() && send(p,peer,AuctionCodec.Phase.READY_ACK,confirmations)) confirmations.forEach(a->p.acknowledged.put(a.id(),a));
-            }
+            check(p);
+            validate(p);
+            var targets = acquireTargets(p);
+            pauseDispatch(p, targets);
+            allocateReplicas(p, targets, desired);
+            observeReadiness(p, targets, desired, ready);
+            var localRates = installLocalReadiness(p, ready);
+            publishLocalReadiness(p, ready, localRates);
+
+            boolean degraded = !desired.equals(p.snapshot.desiredReplicas());
+            degraded |= confirmAssignments(p);
             // Confirmation expiry cannot revoke an already published safe local plan.
             // Ownership, generation, cancellation and epoch expiry remain mandatory.
-            if(p.outcome.timing()==null) check(p); else checkOwnershipAndWindow(p);
-            for(var row:rows) {
-                var outbound=p.acknowledged.values().stream().filter(a->a.function().equals(row.id())).toList();
-                if(ready.get(row.id())<p.snapshot.desiredReplicas().get(row.id()) || outbound.stream().mapToLong(Assignment::quantity).sum()<p.snapshot.assignments().values().stream().filter(a->a.buyerId().equals(p.snapshot.nodeId()) && a.function().equals(row.id())).mapToLong(Assignment::quantity).sum()) degraded=true;
+            if (p.outcome.timing() == null) {
+                check(p);
+            } else {
+                checkOwnershipAndWindow(p);
             }
-            var plan=routingPlan(p,ready,localRates,p.acknowledged.values());
-            if(p.outcome.timing()==null) pending.set(plan); else publishLogical(p,plan);
-            p.closed=true;
-            return new PlanActivation(degraded?PlanActivation.Status.DEGRADED:PlanActivation.Status.PREPARED,plan,desired,ready,"ready subset; unacknowledged outbound goes to terminal cloud",now.get(),diagnostics(p,plan));
-        } catch(InterruptedException | RuntimeException failure) { if(failure instanceof InterruptedException) Thread.currentThread().interrupt(); p.failed=true;p.closed=true;return new PlanActivation(PlanActivation.Status.FAILED,null,desired,ready,failure.getMessage(),now.get()); }
+            degraded |= incompleteReadiness(p, ready);
+            var plan = routingPlan(p, ready, localRates, p.acknowledged.values());
+            if (p.outcome.timing() == null) {
+                pending.set(plan);
+            } else {
+                publishLogical(p, plan);
+            }
+            p.closed = true;
+            return new PlanActivation(degraded ? PlanActivation.Status.DEGRADED : PlanActivation.Status.PREPARED,
+                    plan, desired, ready, "ready subset; unacknowledged outbound goes to terminal cloud", now.get(), diagnostics(p, plan));
+        } catch (InterruptedException | RuntimeException failure) {
+            if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+            p.failed = true;
+            p.closed = true;
+            return new PlanActivation(PlanActivation.Status.FAILED, null, desired, ready, failure.getMessage(), now.get());
+        }
+    }
+    private Map<String, ManagedDeploymentTarget> acquireTargets(Preparation p) {
+        var targets = new HashMap<String, ManagedDeploymentTarget>();
+        Duration ttl = (p.outcome.timing() == null ? Duration.between(now.get(), p.snapshot.validUntil())
+                : p.outcome.timing().remaining(p.outcome.timing().expiryDeadline())).plus(drainGrace);
+        for (var row : p.snapshot.baseProblem().functions()) {
+            var id = p.snapshot.identities().get(row.id());
+            var existing = leases.get(row.id());
+            if (existing != null && existing.generation().id() != id.generation()) {
+                leases.remove(row.id(), existing);
+                existing = null;
+            }
+            var acquired = existing == null
+                    ? control.acquireReplicaLease(new FunctionGeneration(row.id(), id.generation()), owner, ttl)
+                    : control.renewReplicaLease(existing, ttl);
+            leases.put(row.id(), acquired.orElseThrow(() -> new IllegalStateException("replica ownership unavailable: " + row.id())));
+            targets.put(row.id(), function(row.id()).managedDeploymentTarget().orElseThrow());
+            leaseTargets.put(row.id(), targets.get(row.id()));
+        }
+        return targets;
+    }
+    private void pauseDispatch(Preparation p, Map<String, ManagedDeploymentTarget> targets) {
+        if (p.outcome.timing() == null) return;
+        for (var row : p.snapshot.baseProblem().functions()) {
+            if (!control.setReadyConcurrency(leases.get(row.id()), 0)) throw new IllegalStateException("queued dispatch pause rejected");
+            control.pauseReplicaAdmission(leases.get(row.id()), targets.get(row.id()))
+                    .orElseThrow(() -> new IllegalStateException("physical admission pause rejected"));
+        }
+    }
+    private void allocateReplicas(Preparation p, Map<String, ManagedDeploymentTarget> targets,
+                                  Map<String, Integer> desired) throws InterruptedException {
+        var rows = p.snapshot.baseProblem().functions();
+        var current = new LinkedHashMap<String, Integer>();
+        long used = 0;
+        for (var row : rows) {
+            int count = observation(p, targets.get(row.id())).status().desiredReplicas();
+            current.put(row.id(), count);
+            used = Math.addExact(used, Math.multiplyExact(row.memoryMiB(), count));
+        }
+        long budget = p.snapshot.baseProblem().memoryCapacityMiB();
+        if (used > budget) throw new IllegalStateException("existing physical memory exceeds budget");
+        var old = active.get();
+        boolean protectedOld = p.outcome.timing() == null
+                && ((old != null && now.get().isBefore(old.endsAt())) || now.get().isBefore(reservedUntil.get()));
+        // Drain reductions before allocating increases. A live epoch retains its immutable capacity.
+        for (var row : rows) {
+            int requested = p.snapshot.desiredReplicas().get(row.id());
+            int count = current.get(row.id());
+            int minimum = 0;
+            if (protectedOld && old != null && now.get().isBefore(old.endsAt())) {
+                var prior = old.functions().get(row.id());
+                if (prior != null) {
+                    double rate = prior.localRate() + prior.inbound().stream().mapToLong(Assignment::quantity).sum() * old.flowQuantum();
+                    minimum = rate == 0 ? 0 : (int) Math.max(1, Math.ceil(rate * prior.demandSeconds() / prior.utilization() - 1e-9));
+                }
+            }
+            if (p.outcome.timing() == null && now.get().isBefore(reservedUntil.get())) minimum = Math.max(minimum, count);
+            int target = Math.max(minimum, requested);
+            if (target < count) {
+                if (!control.setReplicas(leases.get(row.id()), targets.get(row.id()), target)) throw new IllegalStateException("leased downscale rejected");
+                int actual = observation(p, targets.get(row.id())).status().desiredReplicas();
+                used -= Math.multiplyExact(count - actual, row.memoryMiB());
+                current.put(row.id(), actual);
+            }
+            desired.put(row.id(), target);
+        }
+        if (used > budget) throw new IllegalStateException("physical overlap memory exceeds budget");
+        for (var row : rows) {
+            int count = current.get(row.id());
+            int target = desired.get(row.id());
+            int growth = (int) Math.min(Math.max(0, target - count), (budget - used) / row.memoryMiB());
+            target = count + growth;
+            if (target != count && !control.setReplicas(leases.get(row.id()), targets.get(row.id()), target)) throw new IllegalStateException("leased upscale rejected");
+            used += growth * row.memoryMiB();
+            desired.put(row.id(), target);
+        }
+    }
+    private void observeReadiness(Preparation p, Map<String, ManagedDeploymentTarget> targets,
+                                  Map<String, Integer> desired, Map<String, Integer> ready) throws InterruptedException {
+        var rows = p.snapshot.baseProblem().functions();
+        if (p.outcome.timing() != null) {
+            check(p);
+            for (var row : rows) {
+                // Physical readiness excludes quiesced slots. Reopen the current pool while
+                // queued dispatch remains paused, then measure its actual ready capacity.
+                var lease = leases.get(row.id());
+                var target = targets.get(row.id());
+                var token = control.pauseReplicaAdmission(lease, target)
+                        .orElseThrow(() -> new IllegalStateException("current pool capability unavailable"));
+                if (!control.resumeRetainedReplicas(lease, target, token, token.admissionEpoch())) throw new IllegalStateException("current pool resume rejected");
+            }
+        }
+        for (var row : rows) {
+            int count = Math.min(desired.get(row.id()), observation(p, targets.get(row.id())).status().readyReplicas());
+            if (p.outcome.timing() == null && !control.setReadyConcurrency(leases.get(row.id()), count)) throw new IllegalStateException("ready admission fence rejected: " + row.id());
+            ready.put(row.id(), count);
+        }
+    }
+    private Map<String, Double> installLocalReadiness(Preparation p, Map<String, Integer> ready) {
+        var localReady = new LinkedHashMap<String, Assignment>();
+        var localRates = new HashMap<String, Double>();
+        double quantum = p.outcome.input().flowQuantum();
+        for (var row : p.snapshot.baseProblem().functions()) {
+            long capacity = (long) Math.min(9007199254740991d, Math.floor(ready.get(row.id()) * row.utilization() / row.demandSeconds()));
+            var inbound = p.snapshot.assignments().values().stream()
+                    .filter(a -> a.sellerId().equals(p.snapshot.nodeId()) && a.function().equals(row.id()))
+                    .sorted(Comparator.comparing(Assignment::id)).toList();
+            for (var grant : inbound) {
+                long quantity = Math.min(grant.quantity(), capacity);
+                if (grant.readyConfirmed() && quantity < grant.quantity()) throw new IllegalStateException("confirmed inbound cannot be revoked");
+                localReady.put(grant.id(), grant.confirm(quantity));
+                capacity -= quantity;
+            }
+            localRates.put(row.id(), Math.min(row.fixedLocal(), capacity) * quantum);
+        }
+        // Keep the function/assignment order used by READY batches after extracting this phase.
+        p.localReady = Collections.unmodifiableMap(localReady);
+        if (p.outcome.timing() == null && localReady.values().stream().anyMatch(a -> a.quantity() > 0)) {
+            reservedUntil.accumulateAndGet(p.snapshot.validUntil(), (a, b) -> a.isAfter(b) ? a : b);
+        }
+        return localRates;
+    }
+    private void publishLocalReadiness(Preparation p, Map<String, Integer> ready, Map<String, Double> localRates) {
+        if (p.outcome.timing() == null) return;
+        check(p);
+        // Install seller/local readiness before advertising or acknowledging any grant.
+        publishLogical(p, routingPlan(p, ready, localRates, List.of()));
+        for (var row : p.snapshot.baseProblem().functions()) {
+            if (!control.setReadyConcurrency(leases.get(row.id()), ready.get(row.id()))) throw new IllegalStateException("queued dispatch resume rejected");
+        }
+    }
+    private boolean confirmAssignments(Preparation p) throws InterruptedException {
+        boolean degraded = false;
+        for (var peer : p.snapshot.peerIncarnations().keySet()) {
+            var confirmations = p.localReady.values().stream().filter(a -> a.buyerId().equals(peer)).toList();
+            if (!send(p, peer, AuctionCodec.Phase.READY, confirmations)) degraded = true;
+        }
+        // A buyer routes only after the seller acknowledges its matching READY_ACK.
+        for (var peer : p.snapshot.peerIncarnations().keySet()) {
+            while (windowOpen(p) && p.deadline - nanos(p) > Math.min(Duration.ofMillis(100).toNanos(), preparationBudget.toNanos() / 10)
+                    && !receivedForSeller(p, peer)) Thread.sleep(20);
+            if (!receivedForSeller(p, peer)) degraded = true;
+            var confirmations = p.received.values().stream().filter(a -> a.sellerId().equals(peer)).toList();
+            if (!confirmations.isEmpty() && send(p, peer, AuctionCodec.Phase.READY_ACK, confirmations)) {
+                confirmations.forEach(a -> p.acknowledged.put(a.id(), a));
+            }
+        }
+        return degraded;
+    }
+    private boolean incompleteReadiness(Preparation p, Map<String, Integer> ready) {
+        for (var row : p.snapshot.baseProblem().functions()) {
+            long confirmed = p.acknowledged.values().stream().filter(a -> a.function().equals(row.id()))
+                    .mapToLong(Assignment::quantity).sum();
+            long negotiated = p.snapshot.assignments().values().stream()
+                    .filter(a -> a.buyerId().equals(p.snapshot.nodeId()) && a.function().equals(row.id()))
+                    .mapToLong(Assignment::quantity).sum();
+            if (ready.get(row.id()) < p.snapshot.desiredReplicas().get(row.id()) || confirmed < negotiated) return true;
+        }
+        return false;
     }
     private List<PlanActivation.AssignmentDiagnostic> diagnostics(Preparation p,ActiveRoutingPlan plan) {
         return p.snapshot.assignments().values().stream().sorted(Comparator.comparing(Assignment::id)).map(a -> {

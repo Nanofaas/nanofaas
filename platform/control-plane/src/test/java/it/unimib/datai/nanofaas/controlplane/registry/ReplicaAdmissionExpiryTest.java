@@ -3,8 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.deployment.*;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.InstantSource;
@@ -16,9 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class ReplicaAdmissionExpiryTest {
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void expiryDuringProviderResumeClosesAdmissionAndRetainsOwnership(boolean retained) {
+    @Test
+    void expiryDuringProviderResumeClosesAdmissionAndRetainsOwnership() {
         var provider = mock(ManagedDeploymentProvider.class);
         when(provider.backendId()).thenReturn("local");
         when(provider.supportsEpochReplicaControl("f")).thenReturn(true);
@@ -37,15 +35,13 @@ class ReplicaAdmissionExpiryTest {
             nano.addAndGet(Duration.ofSeconds(2).toNanos());
             return true;
         };
-        when(provider.resumeReplicas("f", admission, "issued")).thenAnswer(expire);
         when(provider.resumeRetainedReplicas("f", admission, "issued")).thenAnswer(expire);
         try (var snapshot = ReplicaStatusSnapshot.withDefaults(InstantSource.system());
              var control = new ManagedDeploymentCoordinator(new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)),
                      registry, new FunctionOperationLocks(), capacities, snapshot, nano::get)) {
             var lease = control.acquireReplicaLease(capacities.activeGeneration("f"), "one-shot", Duration.ofSeconds(1)).orElseThrow();
             var token = new ReplicaQuiesceToken(lease, target, admission);
-            boolean resumed = retained ? control.resumeRetainedReplicas(lease, target, token, "issued")
-                    : control.resumeReplicas(lease, target, token, "issued");
+            boolean resumed = control.resumeRetainedReplicas(lease, target, token, "issued");
             assertThat(resumed).isFalse();
             verify(provider).pauseReplicaAdmission("f");
             assertThat(control.acquireReplicaLease(lease.generation(), "other", Duration.ofSeconds(1))).isEmpty();

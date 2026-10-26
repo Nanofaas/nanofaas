@@ -40,34 +40,35 @@ public final class TrendForecastSource extends WindowedForecastSource<TrendForec
     }
     private final int history;
     private final Supplier<Model> model;
-    private Model active;
     /** {@code history} complete windows are retained per generation; ARI of order p needs 2p+2. */
     public TrendForecastSource(String nodeId, Duration window, Duration maxAge, int maxFunctions, int history,
                                Supplier<Model> model, Clock clock) {
         super(new Windows(nodeId, window, maxAge, maxFunctions, clock));
         if (history < 4 || history > 100_000) throw new IllegalArgumentException("history must be in [4, 100000] windows");
         this.history = history; this.model = Objects.requireNonNull(model);
-        this.active = Objects.requireNonNull(model.get());
+        Objects.requireNonNull(model.get());
     }
     static boolean unit(double value) { return Double.isFinite(value) && value > 0 && value <= 1; }
     // One query reads the model once, so its rate and provider name always agree.
-    @Override public synchronized ForecastSnapshot forecast(ForecastQuery query) {
-        active = Objects.requireNonNull(model.get());
-        return super.forecast(query);
+    @Override public ForecastSnapshot forecast(ForecastQuery query) {
+        return forecast(query, model.get());
+    }
+    ForecastSnapshot forecast(ForecastQuery query, Model selected) {
+        Objects.requireNonNull(selected);
+        return forecast(query, selected instanceof Holt ? "holt" : "ari", History::chronological,
+                (rates, next) -> estimate(rates, next, query, selected));
     }
     @Override protected History newState() { return new History(history); }
     @Override protected void add(History state, double rate) { state.add(rate); }
     // Only retained windows matter: a longer gap equals a full history of zeros.
     @Override protected void addZeros(History state, long count) { for (long i = Math.min(count, history); i > 0; i--) state.add(0); }
-    @Override protected String provider() { return active instanceof Holt ? "holt" : "ari"; }
-    @Override protected Double estimate(History state, long next, ForecastQuery query) {
-        if (state.size == 0) return null;
-        double[] rates = state.chronological();
+    private Double estimate(double[] rates, long next, ForecastQuery query, Model selected) {
+        if (rates.length == 0) return null;
         long window = Math.multiplyExact(windowSeconds(), 1_000_000_000L);
         long origin = Math.multiplyExact(next, window);
         long from = nanos(query.start()) - origin, until = nanos(query.end()) - origin;
         int steps = (int) Math.min(MAX_STEPS, Math.max(1, Math.ceilDiv(until, window)));
-        double[] path = switch (active) {
+        double[] path = switch (selected) {
             case Holt holt -> holt(holt, rates, steps);
             case Ari ari -> ari(ari, rates, steps);
         };

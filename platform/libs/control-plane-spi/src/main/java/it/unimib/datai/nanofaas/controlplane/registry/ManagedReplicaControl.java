@@ -29,8 +29,6 @@ public interface ManagedReplicaControl {
 
     default boolean supportsEpochReplicaControl(ManagedDeploymentTarget target) { return false; }
     default java.util.Optional<ReplicaQuiesceToken> pauseReplicaAdmission(ReplicaControlLease lease, ManagedDeploymentTarget target) { return java.util.Optional.empty(); }
-    default java.util.Optional<ReplicaQuiesceToken> quiesceReplicas(ReplicaControlLease lease, ManagedDeploymentTarget target, java.time.Duration timeout) { return java.util.Optional.empty(); }
-    default boolean resumeReplicas(ReplicaControlLease lease, ManagedDeploymentTarget target, ReplicaQuiesceToken token, String admissionEpoch) { return false; }
     default boolean resumeRetainedReplicas(ReplicaControlLease lease, ManagedDeploymentTarget target, ReplicaQuiesceToken token, String admissionEpoch) { return false; }
 
     /** The latest observation for {@code target}: fresh, stale, or explicitly unavailable. */

@@ -20,6 +20,7 @@ public final class EwmaForecastSource extends WindowedForecastSource<EwmaForecas
     @Override protected void addZeros(Mean mean, long count) {
         mean.value = mean.value == null ? 0 : mean.value * Math.pow(1 - alpha, (double) count);
     }
-    @Override protected Double estimate(Mean mean, long next, ForecastQuery query) { return mean.value; }
-    @Override protected String provider() { return "ewma"; }
+    @Override public ForecastSnapshot forecast(ForecastQuery query) {
+        return forecast(query, "ewma", mean -> mean.value, (rate, next) -> rate);
+    }
 }

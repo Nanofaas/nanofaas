@@ -45,7 +45,6 @@ public final class ReplicaSlots {
         slots.forEach((id, slot) -> { if (!readyBackends.containsKey(id)) slot.draining=true; });
         slots.entrySet().removeIf(e -> !readyBackends.containsKey(e.getKey()) && e.getValue().lease==null);
         readyBackends.forEach((id, incarnation) -> {
-            if (id==null || incarnation==null || incarnation.isBlank()) throw new IllegalArgumentException("backend incarnation required");
             var prior=slots.get(id);
             if(prior==null) slots.put(id,new Slot(incarnation));
             else if(!prior.incarnation.equals(incarnation)) prior.draining=true;

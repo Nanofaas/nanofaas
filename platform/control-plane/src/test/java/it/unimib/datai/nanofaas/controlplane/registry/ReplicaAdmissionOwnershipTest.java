@@ -39,28 +39,27 @@ class ReplicaAdmissionOwnershipTest {
             var lease = fixture.acquire();
             var token = fixture.control.pauseReplicaAdmission(lease, fixture.target).orElseThrow();
             var renewed = fixture.control.renewReplicaLease(lease, Duration.ofSeconds(1)).orElseThrow();
-            assertThat(fixture.control.resumeReplicas(renewed, fixture.target, token, "issued")).isFalse();
-            assertThat(fixture.control.resumeReplicas(lease, fixture.target, token, "issued")).isFalse();
+            assertThat(fixture.control.resumeRetainedReplicas(renewed, fixture.target, token, "issued")).isFalse();
+            assertThat(fixture.control.resumeRetainedReplicas(lease, fixture.target, token, "issued")).isFalse();
             fixture.capacities.remove("f");
             fixture.capacities.register("f", 4);
             assertThat(fixture.control.resumeRetainedReplicas(renewed, fixture.target, token, "issued")).isFalse();
-            verify(fixture.provider, never()).resumeReplicas(anyString(), any(), anyString());
             verify(fixture.provider, never()).resumeRetainedReplicas(anyString(), any(), anyString());
         }
     }
 
     @Test
-    void leaseExpiringDuringPhysicalQuiesceCannotAuthorizeResumeOrAnotherOwner() {
+    void leaseExpiringDuringAdmissionPauseCannotAuthorizeResumeOrAnotherOwner() {
         try (var fixture = new Fixture()) {
             var lease = fixture.acquire();
-            when(fixture.provider.quiesceReplicas("f", Duration.ofMillis(20))).thenAnswer(call -> {
+            when(fixture.provider.pauseReplicaAdmission("f")).thenAnswer(call -> {
                 fixture.nano.addAndGet(Duration.ofSeconds(2).toNanos());
                 return java.util.Optional.of(fixture.admission);
             });
-            assertThat(fixture.control.quiesceReplicas(lease, fixture.target, Duration.ofMillis(20))).isEmpty();
+            assertThat(fixture.control.pauseReplicaAdmission(lease, fixture.target)).isEmpty();
             assertThat(fixture.control.acquireReplicaLease(lease.generation(), "other", Duration.ofSeconds(1))).isEmpty();
             assertThat(fixture.control.ownsReplicaLease(lease)).isFalse();
-            verify(fixture.provider, never()).resumeReplicas(anyString(), any(), anyString());
+            verify(fixture.provider, never()).resumeRetainedReplicas(anyString(), any(), anyString());
         }
     }
 
@@ -71,9 +70,7 @@ class ReplicaAdmissionOwnershipTest {
             assertThat(fixture.control.supportsEpochReplicaControl(fixture.target)).isFalse();
             var lease = fixture.acquire();
             assertThat(fixture.control.pauseReplicaAdmission(lease, fixture.target)).isEmpty();
-            assertThat(fixture.control.quiesceReplicas(lease, fixture.target, Duration.ofMillis(20))).isEmpty();
             verify(fixture.provider, never()).pauseReplicaAdmission(anyString());
-            verify(fixture.provider, never()).quiesceReplicas(anyString(), any());
         }
     }
 
@@ -102,7 +99,6 @@ class ReplicaAdmissionOwnershipTest {
             when(provider.backendId()).thenReturn("local");
             when(provider.supportsEpochReplicaControl("f")).thenReturn(true);
             when(provider.pauseReplicaAdmission("f")).thenReturn(java.util.Optional.of(admission));
-            when(provider.resumeReplicas("f", admission, "issued")).thenReturn(true);
             when(provider.resumeRetainedReplicas("f", admission, "issued")).thenReturn(true);
             var registry = new FunctionRegistry();
             capacities.register("f", 4);

@@ -50,6 +50,11 @@ window after the latest complete one gets its own forecast, and the answer is th
 duration-weighted mean over `[start,end)`. Windows more than 4096 ahead repeat the
 4096th. MISSING and STALE follow the EWMA rules.
 
+Each query copies the completed windows and their revision/time under the observation
+lock, then calculates its forecast after releasing the lock. Model fitting therefore
+does not block arrival recording, and concurrent observations cannot alter the query's
+captured history or snapshot metadata.
+
 - `holt` is Holt's linear method with a damped trend, run over the retained windows
   from the oldest: `level = l * rate + (1-l) * (level + d * trend)` and
   `trend = t * (level - previous) + (1-t) * d * trend`. Its forecast `s` windows
@@ -81,7 +86,8 @@ Replace the `0` with the revision the first `curl` read: a stale revision answer
 `409`, an invalid value `422`. `provider` is one of the namespace's `available` ids
 (`ewma`, `oracle`, `holt`, `ari`); `holtLevel`, `holtTrend`, `holtDamping` and
 `ariOrder` replace the model parameters, which Holt and ARI apply to the windows
-already retained. The next forecast query uses the change. `alpha`, `window`,
+already retained. The next forecast query uses the change; an in-flight query keeps
+the provider and model parameters selected when it began. `alpha`, `window`,
 `max-age` and `history` stay as started, because existing series were built with
 them. A change does not persist across a restart (`persistence: restart`): the
 configured provider and parameters win again on the next boot. In a native image the

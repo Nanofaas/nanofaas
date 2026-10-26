@@ -55,20 +55,26 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         final long epoch,token;
         final EpochTiming timing;
         final Mono<PlanActivation> activation;
-        LogicalPreparation(long epoch,EpochTiming timing,OneShotSettings settings,String identity,long negotiationNanos,long token) {
+        boolean activationStarted;
+        LogicalPreparation(long epoch,EpochTiming timing,String identity,long negotiationNanos,long token) {
             this.epoch=epoch;this.timing=timing;this.token=token;
-            activation=Mono.defer(()-> {
-                synchronized(OneShotOperations.this) {
-                    if(!running || token!=lifecycle || logicalPreparation!=this || timing.expired(timing.expiryDeadline()))
-                        return Mono.error(new IllegalStateException("logical activation retired or expired"));
-                    if(!busy.compareAndSet(false,true)) return Mono.error(new IllegalStateException("preparation active"));
-                }
+            var startedActivation=Mono.defer(()-> {
                 long start=nanos.getAsLong();
                 return Mono.using(()->Boolean.TRUE,ignored->actuator.activate(timing.sessionId(),epoch)
                         .doOnNext(result->recordLogical(epoch,result,identity,negotiationNanos+nanos.getAsLong()-start,true))
                         .doOnError(error->recordLogicalFailure(epoch,negotiationNanos+nanos.getAsLong()-start)),
                         ignored->busy.set(false),true);
             }).cache();
+            activation=Mono.defer(()-> {
+                synchronized(OneShotOperations.this) {
+                    if(activationStarted) return startedActivation;
+                    if(!running || token!=lifecycle || logicalPreparation!=this || timing.expired(timing.expiryDeadline()))
+                        return Mono.error(new IllegalStateException("logical activation retired or expired"));
+                    if(!busy.compareAndSet(false,true)) return Mono.error(new IllegalStateException("preparation active"));
+                    activationStarted=true;
+                    return startedActivation;
+                }
+            });
         }
     }
     private record Grid(Instant anchor,Duration period) {}
@@ -204,7 +210,7 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                         if(result.status()==PlanActivation.Status.NEGOTIATED) {
                             preparedSettings.put(frozen.revision(),frozen.settings());
                             while(preparedSettings.size()>4) preparedSettings.remove(Collections.min(preparedSettings.keySet()));
-                            logicalPreparation=new LogicalPreparation(epoch,timing,frozen.settings(),identity,elapsed,token);
+                            logicalPreparation=new LogicalPreparation(epoch,timing,identity,elapsed,token);
                         }
                     }
                     recordLogical(epoch,result,identity,elapsed,false);

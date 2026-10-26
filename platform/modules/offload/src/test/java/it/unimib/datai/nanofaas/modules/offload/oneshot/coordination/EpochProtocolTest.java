@@ -24,6 +24,7 @@ class EpochProtocolTest {
             AuctionCodec.Phase.OFFERS, AuctionCodec.Phase.BIDS, AuctionCodec.Phase.GRANTS, AuctionCodec.Phase.CHECK);
 
     static final class Fake implements PeerTransport {
+        private final AuctionCodec codec = new AuctionCodec();
         final String id; final Map<String,Fake> network; volatile String incarnation; volatile PeerReceiver receiver;
         boolean duplicate=true, loseGrants, loseFirstGrantReply;
         final List<Captured> attempts = new CopyOnWriteArrayList<>();
@@ -39,17 +40,19 @@ class EpochProtocolTest {
                 attempts.add(call);
                 var target=network.get(peer); if(target.receiver==null) return Mono.just(new byte[]{0});
                 if(loseGrants && call.batch().phase()==AuctionCodec.Phase.GRANTS) return Mono.error(new IllegalStateException("grant lost"));
-                return deliver(peer, topic, payload, target)
-                        .flatMap(reply -> duplicate ? deliver(peer, topic, payload, target) : Mono.just(reply))
+                return deliver(call, payload, target)
+                        .flatMap(reply -> duplicate ? deliver(call, payload, target) : Mono.just(reply))
                         .flatMap(reply -> loseFirstGrantReply && call.batch().phase() == AuctionCodec.Phase.GRANTS
                                 && lostReplies.add(call.key()) ? Mono.error(new IllegalStateException("grant reply lost")) : Mono.just(reply));
             });
         }
         private Captured capture(String peer, String topic, byte[] payload) {
-            return new Captured(peer, topic, payload.clone(), new AuctionCodec().decode(payload));
+            return new Captured(peer, topic, payload.clone(), codec.decode(payload));
         }
-        private Mono<byte[]> deliver(String peer, String topic, byte[] payload, Fake target) {
-            deliveries.add(capture(peer, topic, payload));
+        private Mono<byte[]> deliver(Captured call, byte[] payload, Fake target) {
+            // Logging a duplicate must not construct another mapper or decode the batch again.
+            // The real receiver still decodes and validates every delivery below.
+            deliveries.add(new Captured(call.peer(), call.topic(), payload.clone(), call.batch()));
             return target.receiver.onMessage(id, payload);
         }
         public PeerSubscription subscribe(String topic,PeerReceiver receiver) { this.receiver=receiver;return ()->this.receiver=null; }

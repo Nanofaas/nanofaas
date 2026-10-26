@@ -1,4 +1,0 @@
-{"executionId":"go-one","level":"INFO","logger":"nanofaas","message":"SDK handler caffè\nnext","schemaVersion":1,"service":"function-runtime","timestamp":"2026-10-10T07:37:23.051467831Z","traceId":"trace-one"}
-{"executionId":"go-one","level":"WARN","logger":"nanofaas","message":"callback delivery exhausted","schemaVersion":1,"service":"function-runtime","timestamp":"2026-10-10T07:37:23.051625654Z","traceId":"trace-one"}
-{"executionId":"go-two","level":"INFO","logger":"nanofaas","message":"SDK handler caffè\nnext","schemaVersion":1,"service":"function-runtime","timestamp":"2026-10-10T07:37:23.052245124Z","traceId":"trace-two"}
-{"executionId":"go-two","level":"WARN","logger":"nanofaas","message":"callback delivery exhausted","schemaVersion":1,"service":"function-runtime","timestamp":"2026-10-10T07:37:23.052388211Z","traceId":"trace-two"}

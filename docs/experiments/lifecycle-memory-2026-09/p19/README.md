@@ -1,5 +1,9 @@
 # P19 corrected control — fix round 3
 
+> Historical evidence: raw dossier payloads now live in Git revision `550d8f7a`,
+> while summaries and manifests remain here. Restore the complete directory before
+> running dossier integrity checks; see [artifact recovery](../../../generated-artifacts.md#historical-evidence).
+
 The immutable dossier named in `baseline.json` records the P23 control and its
 acceptance verdict. Round 3 fixes the remaining managed pool-registry retention:
 Netty disposed the physical pool, but resolved/unresolved address inequality left

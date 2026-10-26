@@ -45,7 +45,7 @@ declares the Jackson annotations dependency, using the existing Spring BOM.
   not claimed to have passed.
 - GitNexus impact reports CRITICAL risk for the shared DTO. The change analysis
   used the explicit correction worktree and the current main index, with neither
-  partial nor truncated results. See [graph-changes.json](graph-changes.json).
+  partial nor truncated results. See [graph-changes.json](https://github.com/Nanofaas/nanofaas/blob/550d8f7a/docs/testing/evidence/2026-10-08-catalog-resources/graph-changes.json).
 
 The HTTP smoke uses `LOCAL` execution to isolate catalog persistence from
 infrastructure. It does not claim verification of managed deployment recovery on

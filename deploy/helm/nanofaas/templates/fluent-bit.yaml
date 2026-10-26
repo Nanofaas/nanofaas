@@ -1,4 +1,4 @@
-{{- if .Values.observability.logs.enabled }}
+{{- define "nanofaas.fluentBitConfigMap" -}}
 {{- $logs := .Values.observability.logs }}
 {{- $endpoint := urlParse $logs.loki.url }}
 {{- $host := get $endpoint "host" }}
@@ -7,10 +7,11 @@
 {{- fail "observability.logs.loki.url must be an http(s) Loki push URL" }}
 {{- end }}
 {{- $port := ternary "443" "80" (eq $scheme "https") }}
-{{- if contains ":" $host }}
+{{- if regexMatch ":[0-9]+$" $host }}
 {{- $port = regexFind "[0-9]+$" $host }}
 {{- $host = regexReplaceAll ":[0-9]+$" $host "" }}
 {{- end }}
+{{- $host = trimPrefix "[" $host | trimSuffix "]" }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -79,6 +80,10 @@ data:
         Line_Format json
         Retry_Limit False
         storage.total_limit_size {{ $logs.bufferSize }}
+{{- end }}
+{{- if .Values.observability.logs.enabled }}
+{{- $logs := .Values.observability.logs }}
+{{ include "nanofaas.fluentBitConfigMap" . }}
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -92,6 +97,7 @@ spec:
     metadata:
       labels: {app: nanofaas-fluent-bit}
       annotations:
+        checksum/fluent-bit-config: {{ include "nanofaas.fluentBitConfigMap" . | sha256sum | quote }}
         prometheus.io/scrape: "true"
         prometheus.io/port: "2020"
         prometheus.io/path: /api/v1/metrics/prometheus

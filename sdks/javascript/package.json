@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:test": "tsc -p tsconfig.test.json",
-    "test": "npm run build:test && node --test build-test/test/**/*.test.js"
+    "test": "npm run build:test && node --test --test-concurrency=1 build-test/test/**/*.test.js"
   },
   "dependencies": {
     "prom-client": "^15.1.3"

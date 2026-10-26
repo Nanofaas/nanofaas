@@ -19,7 +19,7 @@ Questo è un censimento di **one-shot, del workflow NanoLab e dei limiti della
 piattaforma che possono incidere sulla campagna**. Non tutti i valori chiamati
 budget sono soglie prestazionali: alcuni limitano memoria, messaggi o richieste
 simultanee. Le righe di codice dell'intero ambito produttivo cercato sono
-conservate in [code-limit-matches.jsonl](code-limit-matches.jsonl), con repository,
+conservate in [code-limit-matches.jsonl](https://github.com/Nanofaas/nanofaas/blob/550d8f7a/docs/experiments/one-shot-budgets-2026-10-13/code-limit-matches.jsonl), con repository,
 file e numero di riga; i match testuali non sono automaticamente budget applicati.
 [inventory.json](inventory.json) conserva i valori effettivi derivati dallo
 scenario del run e distingue il prossimo protocollo dal freeze precedente.

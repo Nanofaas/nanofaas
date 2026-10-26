@@ -150,7 +150,7 @@
          returned token is not needed because the physical leases are retained. -->
     <Match>
         <Class name="it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator"/>
-        <Method name="~lambda\$reopenReplicaAdmission\$.*"/>
+        <Method name="~lambda\$resumeRetainedReplicas\$.*"/>
         <Bug pattern="RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT"/>
     </Match>
     <!-- All increments hold the instance monitor; volatile permits fenced callback reads. -->

@@ -64,15 +64,6 @@ public interface ManagedDeploymentProvider {
         return java.util.Optional.empty();
     }
 
-    /** Returns a capability only after positive drain; failure must leave admission closed. */
-    default java.util.Optional<ReplicaAdmissionToken> quiesceReplicas(String functionName, java.time.Duration timeout) {
-        return java.util.Optional.empty();
-    }
-
-    default boolean resumeReplicas(String functionName, ReplicaAdmissionToken token, String admissionEpoch) {
-        return false;
-    }
-
     /** Admission-only rotation for unchanged allocations; occupied slots remain owned. */
     default boolean resumeRetainedReplicas(String functionName, ReplicaAdmissionToken token, String admissionEpoch) {
         return false;

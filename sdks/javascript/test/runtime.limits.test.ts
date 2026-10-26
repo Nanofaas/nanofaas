@@ -830,6 +830,7 @@ test("a direct attacker-sized NanofaasError is replaced before HTTP serializatio
 test("invalid allowed response header emits one canonical failure callback", async () => {
     const callbackBodies: unknown[] = [];
     const callbackServer = createServer(async (req, res) => {
+        if (req.method === "GET") { res.writeHead(204).end(); return; }
         const chunks: Buffer[] = [];
         for await (const chunk of req) chunks.push(Buffer.from(chunk));
         callbackBodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
@@ -847,6 +848,8 @@ test("invalid allowed response header emits one canonical failure callback", asy
     ));
     await runtime.start();
     try {
+        await fetch(`http://127.0.0.1:${callbackPort}/ready`);
+        await (await fetch(`${runtime.baseUrl}/metrics`)).text();
         const response = await invoke(runtime.baseUrl, "invalid-response-header", null);
         assert.equal(response.status, 500);
         const expectedFailure = {

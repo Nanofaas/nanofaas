@@ -37,6 +37,7 @@
 | Doc | What it covers |
 | --- | --- |
 | [Testing](testing.md) | Test layers and commands |
+| [Generated evidence](generated-artifacts.md) | What belongs in Git, artifact retention and recovery of historical logs/dumps |
 | [SonarQube analysis](sonarqube.md) | On-demand local analysis via `scripts/sonar.sh` |
 | [Image releases](operations/image-releases.md) | The 52-cell matrix, tag policy, and paid Azure release flow |
 | [Release performance](performance/history.md) | Per-release benchmark records (also under `performance/releases/`) |

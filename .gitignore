@@ -21,6 +21,46 @@
 **/dist/
 **/build-test/
 
+# Raw execution evidence belongs in local/CI artifact storage, not Git.
+# Keep experiment sources, configuration, compact summaries and manifests tracked.
+docs/experiments/**/*.gz
+docs/experiments/**/*.xz
+docs/experiments/**/*.jsonl
+docs/experiments/**/*.jfr
+docs/experiments/**/*.out
+docs/experiments/**/*.err
+docs/experiments/**/*.xml
+docs/experiments/**/*.html
+docs/experiments/**/graph/*.json
+docs/testing/**/*.gz
+docs/testing/**/*.xz
+docs/testing/**/*.jsonl
+docs/testing/**/*.jfr
+docs/testing/**/*.out
+docs/testing/**/*.err
+docs/testing/**/*.xml
+docs/testing/**/*.html
+docs/**/populations.json
+docs/**/checkpoints.json
+docs/**/warmup.json
+docs/**/collector-stats.json
+docs/**/loki-query.json
+docs/**/resources-before.json
+docs/**/resources-after.json
+docs/**/*-snapshot.json
+docs/**/*-warmup-response.json
+docs/**/*-query.json
+docs/**/*-metrics.txt
+docs/**/*host-top*.txt
+docs/**/*graph-*.json
+docs/experiments/**/dossiers/**/profile-audit.json
+docs/experiments/**/dossiers/**/profiles/managed/result.json
+docs/experiments/**/dossiers/**/profiles/proxy/result.json
+docs/experiments/**/dossiers/**/aborted/managed*/result.json
+docs/experiments/**/dossiers/**/aborted/proxy*/result.json
+docs/experiments/**/evidence/compiled-workflow.json
+docs/experiments/**/evidence/scope.json
+docs/experiments/**/evidence/tests.json
 # Compiled benchmark harnesses under docs/experiments/*/. Their .class files are already covered by
 # the global rule; the directory also receives generated run configuration.
 docs/experiments/*/.classes/

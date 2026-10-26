@@ -282,7 +282,7 @@ function assertResponse(actual: ActualResponse, expected: ExpectedResponse): voi
 }
 
 async function runScenario(scenario: Scenario): Promise<void> {
-    const startedAt = Date.now();
+    let startedAt = 0;
     const config = corpus.runtimeConfigurations[scenario.runtimeConfigRef]!;
     const callbackRelease = deferred();
     const callbackEntered = deferred();
@@ -313,6 +313,7 @@ async function runScenario(scenario: Scenario): Promise<void> {
     );
     const callbackBehavior = new Map(scenario.backend.callbacks.map((item) => [item.requestId, item.behavior]));
     const callbackServer = createServer(async (req, res) => {
+        if (req.method === "GET") { res.writeHead(204).end(); return; }
         const chunks: Buffer[] = [];
         for await (const chunk of req) chunks.push(Buffer.from(chunk));
         if (req.url?.includes("fixture-callback")) {
@@ -350,6 +351,7 @@ async function runScenario(scenario: Scenario): Promise<void> {
     });
     const callbackPort = await listen(callbackServer);
     const callbackBaseUrl = `http://127.0.0.1:${callbackPort}`;
+    await fetch(`${callbackBaseUrl}/ready`);
     const initialCallbackBytes = scenario.initialCounters.pendingCallbackBytes;
     const runtime = createRuntime({
         port: 0,
@@ -429,6 +431,8 @@ async function runScenario(scenario: Scenario): Promise<void> {
         if (initialCountersAsserted) return;
         assert.deepEqual(await runtimeCounters(runtime), scenario.initialCounters);
         initialCountersAsserted = true;
+        // Fixture startup and the first fetch initialization are outside the lifecycle budget.
+        startedAt = Date.now();
     };
     const fillCallback = async (): Promise<void> => {
         const fixture: CorpusRequest = {
@@ -581,6 +585,21 @@ async function runScenario(scenario: Scenario): Promise<void> {
         handlerRelease.resolve();
         if (fixtureHandlerResponse) await fixtureHandlerResponse;
 
+        if (stopped) {
+            await runtime.start();
+            runtimeBaseUrl = runtime.baseUrl;
+            stopped = false;
+        }
+        let finalCounters: RuntimeCounters;
+        await waitUntil(async () => {
+            finalCounters = await runtimeCounters(runtime);
+            return Object.entries(scenario.expected.finalCounters).every(([name, value]) =>
+                finalCounters[name as keyof RuntimeCounters] === value);
+        }, scenario.deadlineMs, `${scenario.id} final counters`);
+        const elapsedMs = Date.now() - startedAt;
+        assert.deepEqual(finalCounters!, scenario.expected.finalCounters);
+        if (Object.values(finalCounters!).every((value) => value === 0)) observed.add("counters-zero");
+
         for (const expected of scenario.expected.responses) {
             const actual = actualResponses.get(expected.requestId)!;
             assertResponse(actual, expected);
@@ -657,20 +676,6 @@ async function runScenario(scenario: Scenario): Promise<void> {
             && scenario.expected.observations.includes("runtime-redispatch-zero")
         ) observed.add("runtime-redispatch-zero");
 
-        if (stopped) {
-            await runtime.start();
-            runtimeBaseUrl = runtime.baseUrl;
-            stopped = false;
-        }
-        await waitUntil(async () => {
-            const actual = await runtimeCounters(runtime);
-            return Object.entries(scenario.expected.finalCounters).every(([name, value]) =>
-                actual[name as keyof RuntimeCounters] === value);
-        }, scenario.deadlineMs, `${scenario.id} final counters`);
-        const finalCounters = await runtimeCounters(runtime);
-        assert.deepEqual(finalCounters, scenario.expected.finalCounters);
-        if (Object.values(finalCounters).every((value) => value === 0)) observed.add("counters-zero");
-
         const metrics = await (await fetch(`${runtimeBaseUrl}/metrics`)).text();
         if (metricValue(metrics, "runtime_callback_failures") > 0) {
             observed.add("callback-failure-metric");
@@ -682,7 +687,7 @@ async function runScenario(scenario: Scenario): Promise<void> {
             observed.add("structured-log");
         }
         assert.deepEqual([...observed].sort(), [...scenario.expected.observations].sort());
-        assert.ok(Date.now() - startedAt <= scenario.deadlineMs, `${scenario.id} exceeded corpus deadline`);
+        assert.ok(elapsedMs <= scenario.deadlineMs, `${scenario.id} exceeded corpus deadline`);
     } finally {
         callbackRelease.resolve();
         handlerRelease.resolve();
