@@ -250,7 +250,7 @@ build mode, and the functions to package with their images. See
 | `recipes/` | Distribution recipes |
 | `deploy/helm/nanofaas/` | Helm chart |
 | `docs/` | Guides, architecture notes and reference |
-| `paper/` | Monograph on the design and its evaluation (Italian) |
+| `monograph/` | Monograph on the design and its evaluation (Italian) |
 
 Provisioning and end-to-end orchestration live in the companion
 [NanoLab](https://github.com/miciav/nanolab) repository.

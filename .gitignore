@@ -21,11 +21,6 @@
 **/dist/
 **/build-test/
 
-# k6 / experiment results
-k6/results/
-experiments/k6/results/
-experiments/loadtest/results/
-experiments/.image-cache/
 # Compiled benchmark harnesses under docs/experiments/*/. Their .class files are already covered by
 # the global rule; the directory also receives generated run configuration.
 docs/experiments/*/.classes/
@@ -51,14 +46,14 @@ recovery/
 MagicMock/
 tools/controlplane/environments/azure*.yaml
 
-# LaTeX build artifacts (paper/)
-paper/**/*.aux
-paper/**/*.bbl
-paper/**/*.blg
-paper/**/*.fdb_latexmk
-paper/**/*.fls
-paper/**/*.log
-paper/**/*.out
-paper/**/*.toc
-paper/**/*.synctex.gz
-paper/nanofaas.pdf
+# LaTeX build artifacts (monograph/)
+monograph/**/*.aux
+monograph/**/*.bbl
+monograph/**/*.blg
+monograph/**/*.fdb_latexmk
+monograph/**/*.fls
+monograph/**/*.log
+monograph/**/*.out
+monograph/**/*.toc
+monograph/**/*.synctex.gz
+monograph/nanofaas.pdf

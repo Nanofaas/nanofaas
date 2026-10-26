@@ -177,7 +177,7 @@ bootstrap steps in `.github/workflows/gitops.yml` and set
 | Core-only API | `./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest' --tests '*P07ConfiguredHttpCalibrationTest'` | Java 25 | Gradle XML |
 | Async queue | `./gradlew :control-plane-modules:concurrency-control:test -PcontrolPlaneModules=async-queue,concurrency-control,runtime-config` | Java 25 | Gradle XML |
 | Sync queue | `./gradlew :control-plane-modules:concurrency-control:test :control-plane-modules:sync-queue:test -PcontrolPlaneModules=sync-queue,concurrency-control,runtime-config` | Java 25 | Gradle XML |
-| Scripts and experiments | `uv run --python 3.12 --with pytest --with pyyaml python -m pytest scripts/tests experiments/tests sdks/runtime-contract -ra --junitxml=build/test-results/tools.xml` | uv, Python 3.12, Helm, Node, Bash | XML and skip summary |
+| Scripts and payload corpora | `uv run --python 3.12 --with pytest --with pyyaml python -m pytest scripts/tests functions/test-data sdks/runtime-contract -ra --junitxml=build/test-results/tools.xml` | uv, Python 3.12, Helm, Node, Bash | XML and skip summary |
 | Scaffolder | `uv run --python 3.12 --project tools/fn-init --group dev python -m pytest tools/fn-init/tests -ra --junitxml=build/test-results/scaffolder.xml` | uv, Python 3.12; fn-init's declared dependencies | XML and skip summary |
 
 The SDK and watchdog jobs retain their language-specific tests. The native job

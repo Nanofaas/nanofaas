@@ -17,10 +17,10 @@ stratified over the complete interval, and `large` exhausts the valid domain.
 Regenerate and verify performance corpora from the repository root:
 
 ```bash
-python3 experiments/generate-payload-corpora.py
-python3 experiments/generate-payload-corpora.py --check
+python3 functions/test-data/payload_corpora.py
+python3 functions/test-data/payload_corpora.py --check
 ```
 
-The generator is deterministic, uses only the Python standard library, and also
-derives the three control-plane catalog samples from the first `small` case.
-See `docs/loadtest-payload-profile.md` for the schema and k6 usage.
+The generator is deterministic and uses only the Python standard library; its
+tests, run in CI, also check that the committed corpora match it. See
+`docs/loadtest-payload-profile.md` for the schema and who reads the corpora.

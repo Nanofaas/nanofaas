@@ -17,7 +17,7 @@ def workflow():
 def test_required_tool_suites_are_scheduled():
     jobs = workflow()['jobs']
     commands = '\n'.join(step.get('run', '') for job in jobs.values() for step in job['steps'])
-    for suite in ('scripts/tests', 'experiments/tests', 'tools/fn-init/tests'):
+    for suite in ('scripts/tests', 'functions/test-data', 'tools/fn-init/tests'):
         assert suite in commands, f'{suite} is never run by CI'
     assert './gradlew releaseChecks -PcontrolPlaneModules=all' in commands
 
