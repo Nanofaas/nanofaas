@@ -344,18 +344,6 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
 
     @Override
     public java.util.Optional<ReplicaAdmissionToken> pauseReplicaAdmission(String functionName) {
-        return closeReplicaAdmission(functionName, null);
-    }
-
-    @Override
-    public java.util.Optional<ReplicaAdmissionToken> quiesceReplicas(String functionName, Duration timeout) {
-        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
-            throw new IllegalArgumentException("positive quiesce timeout required");
-        }
-        return closeReplicaAdmission(functionName, timeout);
-    }
-
-    private java.util.Optional<ReplicaAdmissionToken> closeReplicaAdmission(String functionName, Duration drainTimeout) {
         var lock = locks.get(functionName);
         if (lock == null) return java.util.Optional.empty();
         lock.lock();
@@ -363,7 +351,6 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
             var state = states.get(functionName);
             if (state == null || state.pendingRemoval || !isOneShot(state.spec)) return java.util.Optional.empty();
             state.quiesceToken = state.proxy.beginQuiesce();
-            if (drainTimeout != null && !state.proxy.awaitQuiesced(drainTimeout)) return java.util.Optional.empty();
             return java.util.Optional.of(new ReplicaAdmissionToken(state.quiesceToken.admissionEpoch()));
         } finally {
             lock.unlock();
@@ -371,16 +358,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     }
 
     @Override
-    public boolean resumeReplicas(String functionName, ReplicaAdmissionToken token, String admissionEpoch) {
-        return reopenReplicaAdmission(functionName, token, admissionEpoch, false);
-    }
-
-    @Override
     public boolean resumeRetainedReplicas(String functionName, ReplicaAdmissionToken token, String admissionEpoch) {
-        return reopenReplicaAdmission(functionName, token, admissionEpoch, true);
-    }
-
-    private boolean reopenReplicaAdmission(String functionName, ReplicaAdmissionToken token, String admissionEpoch, boolean retained) {
         var lock = locks.get(functionName);
         if (lock == null) return false;
         lock.lock();
@@ -388,8 +366,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
             var state = states.get(functionName);
             if (state == null || state.pendingRemoval || !isOneShot(state.spec) || token == null
                     || state.quiesceToken == null || !state.quiesceToken.admissionEpoch().equals(token.admissionEpoch())) return false;
-            boolean resumed = retained ? state.proxy.resumeRetained(state.quiesceToken, admissionEpoch)
-                    : state.proxy.resume(state.quiesceToken, admissionEpoch);
+            boolean resumed = state.proxy.resumeRetained(state.quiesceToken, admissionEpoch);
             if (resumed) state.quiesceToken = null;
             return resumed;
         } finally {

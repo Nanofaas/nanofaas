@@ -115,6 +115,29 @@ class LogicalOperationsTest {
         }
     }
 
+    @Test void activationCanRetryAfterAConflictingPreparationFails() {
+        try (var f = new Fixture()) {
+            f.configure();
+            assertThat(f.operations.prepareLogical("session", 0, f.window()).block().status())
+                    .isEqualTo(PlanActivation.Status.NEGOTIATED);
+            doAnswer(a -> {
+                assertThatThrownBy(() -> f.operations.activate("session", 0).block())
+                        .isInstanceOf(IllegalStateException.class).hasMessage("preparation active");
+                throw new IllegalArgumentException("forecast temporarily unavailable");
+            }).when(f.inputs).pin(eq(1L), any(), any(), any());
+            var from = f.settings.anchor().plus(f.settings.period());
+            var next = new OneShotOperations.LogicalWindow(from, from.plus(f.settings.period()), f.settings.leadTime());
+            assertThatThrownBy(() -> f.operations.prepareLogical("session", 1, next).block())
+                    .isInstanceOf(IllegalArgumentException.class).hasMessage("forecast temporarily unavailable");
+            assertThat(f.operations.status().get("busy")).isEqualTo(false);
+
+            assertThat(f.operations.activate("session", 0).block().status()).isEqualTo(PlanActivation.Status.PREPARED);
+            assertThat(f.operations.activate("session", 0).block().status()).isEqualTo(PlanActivation.Status.PREPARED);
+            assertThat(f.events.page(0, 0, 100).stream().filter(e -> e.event().status().equals("PREPARED")))
+                    .hasSize(1);
+        }
+    }
+
     @Test void stopDuringInputPinningCannotStageAPlanAfterRestart() {
         try(var f=new Fixture()) {
             f.configure();

@@ -79,6 +79,11 @@ npm test
 npm run build
 ```
 
+The test command runs files serially so independent HTTP fixtures do not compete
+with the 40–50 ms I/O deadlines. Tests still exercise concurrent invocations.
+Fixtures establish HTTP readiness before timed lifecycle actions; setup and
+assertion-only metric collection are outside the corpus lifecycle budget.
+
 ## Common logging contract
 
 `NANOFAAS_LOG_FORMAT=json` enables the shared contract; default text is available and `NANOFAAS_LOG_SERVICE` selects the service name. JSON levels are uppercase, missing execution/trace IDs are omitted, and logger fields are now nested under `attributes`, preventing application values from overwriting runtime identity. Handler and callback contexts are isolated across async work. No process console methods or host logging configuration are replaced.

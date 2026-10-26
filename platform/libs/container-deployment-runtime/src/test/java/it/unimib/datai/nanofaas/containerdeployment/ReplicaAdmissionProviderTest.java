@@ -22,7 +22,6 @@ class ReplicaAdmissionProviderTest {
         old.markDispatched();
         var token = fixture.provider.pauseReplicaAdmission("f").orElseThrow();
         assertThat(fixture.proxy.slots.tryAcquire("closed")).isEmpty();
-        assertThat(fixture.provider.resumeReplicas("f", token, token.admissionEpoch())).isFalse();
         assertThat(fixture.provider.resumeRetainedReplicas("f", token, token.admissionEpoch())).isTrue();
         assertThat(fixture.proxy.slots.occupied()).containsExactly(old);
         assertThat(fixture.proxy.slots.tryAcquire("full", "1")).isEmpty();
@@ -32,16 +31,15 @@ class ReplicaAdmissionProviderTest {
     }
 
     @Test
-    void strictQuiesceFailureLeavesPhysicalOwnershipAndAdmissionClosed() {
+    void admissionPauseKeepsPhysicalOwnershipUntilPositiveRelease() {
         var fixture = new Fixture();
         var old = fixture.proxy.slots.tryAcquire("old", "1").orElseThrow();
         old.markDispatched();
-        assertThat(fixture.provider.quiesceReplicas("f", Duration.ofMillis(1))).isEmpty();
+        var token = fixture.provider.pauseReplicaAdmission("f").orElseThrow();
         assertThat(fixture.proxy.slots.tryAcquire("closed")).isEmpty();
         assertThat(fixture.proxy.slots.occupied()).containsExactly(old);
         assertThat(old.markReleased(new ExecutionObservation("RELEASED", old.incarnation(), "old", "1", true))).isTrue();
-        var token = fixture.provider.quiesceReplicas("f", Duration.ofMillis(1)).orElseThrow();
-        assertThat(fixture.provider.resumeReplicas("f", token, token.admissionEpoch())).isTrue();
+        assertThat(fixture.provider.resumeRetainedReplicas("f", token, token.admissionEpoch())).isTrue();
         verify(fixture.adapter, never()).removeContainer(anyString());
     }
 
@@ -63,7 +61,6 @@ class ReplicaAdmissionProviderTest {
         var fixture = new Fixture();
         assertThat(fixture.provider.supportsEpochReplicaControl("missing")).isFalse();
         assertThat(fixture.provider.pauseReplicaAdmission("missing")).isEmpty();
-        assertThat(fixture.provider.quiesceReplicas("missing", Duration.ofMillis(1))).isEmpty();
         fixture.provider.provision(spec("legacy", Map.of()));
         assertThat(fixture.provider.supportsEpochReplicaControl("legacy")).isFalse();
         assertThat(fixture.provider.pauseReplicaAdmission("legacy")).isEmpty();
@@ -99,8 +96,6 @@ class ReplicaAdmissionProviderTest {
         @Override public void updateBackends(List<String> urls) { slots.update(urls.stream().collect(Collectors.toMap(url -> url, url -> "inc:" + url))); }
         @Override public void enablePhysicalSlots() { }
         @Override public ReplicaSlots.QuiesceToken beginQuiesce() { return slots.beginQuiesce(); }
-        @Override public boolean awaitQuiesced(Duration timeout) { return slots.quiesced(); }
-        @Override public boolean resume(ReplicaSlots.QuiesceToken token, String epoch) { return slots.resume(token, epoch); }
         @Override public boolean resumeRetained(ReplicaSlots.QuiesceToken token, String epoch) { return slots.resumeRetained(token, epoch); }
         @Override public void close() { }
     }

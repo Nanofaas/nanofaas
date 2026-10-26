@@ -1,3 +1,0 @@
-{"BlockIO":"0B / 0B","CPUPerc":"0.01%","Container":"ac81072c5c3ab2e0172a2cb0c3bb54a12ff7c32ad3756117c285165f7f6dc7c1","ID":"ac81072c5c3a","MemPerc":"0.27%","MemUsage":"708KiB / 256MiB","Name":"nl-logfn-3bb08e8292","NetIO":"0B / 0B","PIDs":"3"}
-{"BlockIO":"0B / 123kB","CPUPerc":"0.06%","Container":"613d3b5f0aa60c077e7a9708dd9f815d129fb9fb5d108b1301ebd73c4b8d2ed9","ID":"613d3b5f0aa6","MemPerc":"10.43%","MemUsage":"53.42MiB / 512MiB","Name":"nl-logcp-3bb08e8292","NetIO":"0B / 0B","PIDs":"21"}
-{"BlockIO":"12.3kB / 127kB","CPUPerc":"0.07%","Container":"9358cd1ac3d51cbb6a3a77eb25d2d2fec343ce8c5c14bfb0556591b4d0a70ca0","ID":"9358cd1ac3d5","MemPerc":"7.47%","MemUsage":"4.781MiB / 64MiB","Name":"nanolab-logs-edge-1-e655c01e29c7","NetIO":"0B / 0B","PIDs":"4"}

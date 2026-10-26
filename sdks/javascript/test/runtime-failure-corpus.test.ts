@@ -13,6 +13,7 @@ for (const [name, definition] of Object.entries(corpus.contractDefinitions)) {
     test(`shared failure: ${name}`, { timeout: corpus.config.deadlineMs }, async () => {
         const callbacks: { payload: unknown; path: string; attempt: string | undefined; trace: string | undefined }[] = [];
         const server = createServer(async (req, res) => {
+            if (req.method === "GET") { res.writeHead(204).end(); return; }
             const chunks: Buffer[] = [];
             for await (const chunk of req) chunks.push(Buffer.from(chunk));
             callbacks.push({ path: req.url!, payload: JSON.parse(Buffer.concat(chunks).toString()), attempt: req.headers["x-dispatch-attempt"] as string, trace: req.headers["x-trace-id"] as string });
@@ -34,6 +35,9 @@ for (const [name, definition] of Object.entries(corpus.contractDefinitions)) {
         });
         await runtime.start();
         try {
+            // Establish fixture connections before measuring 40 ms production I/O deadlines.
+            await fetch(`http://127.0.0.1:${address.port}/ready`);
+            await (await fetch(`${runtime.baseUrl}/metrics`)).text();
             const headers = { "content-type": "application/json", "x-execution-id": corpus.config.executionId, "x-dispatch-attempt": String(corpus.config.dispatchAttempt), "x-trace-id": corpus.config.traceId };
             let response: { status: number; body: any };
             if (name === "ingress-io-timeout") {

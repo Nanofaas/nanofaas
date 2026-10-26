@@ -324,8 +324,12 @@ async fn consumes_the_shared_runtime_saturation_wire_contract() {
     for scenario in &corpus.scenarios {
         assert_typed_projection(corpus.policy.maximum_scenario_deadline_ms, scenario);
         let config = &corpus.runtime_configurations[&scenario.runtime_config_ref];
+        // Loading system TLS roots belongs to fixture setup, not the scripted lifecycle.
+        let harness = tokio::time::timeout(Duration::from_secs(10), Harness::new(scenario, config))
+            .await
+            .expect("corpus fixture setup exceeded its deadline");
         let deadline = Duration::from_millis(scenario.deadline_ms);
-        tokio::time::timeout(deadline, run_scenario(scenario, config, &logs))
+        tokio::time::timeout(deadline, run_scenario(harness, &logs))
             .await
             .unwrap_or_else(|_| panic!("{} exceeded its {deadline:?} deadline", scenario.id));
     }
@@ -573,8 +577,8 @@ struct Harness<'a> {
     stops: usize,
 }
 
-async fn run_scenario(scenario: &Scenario, config: &RuntimeConfig, logs: &Arc<Mutex<Vec<u8>>>) {
-    let mut harness = Harness::new(scenario, config).await;
+async fn run_scenario(mut harness: Harness<'_>, logs: &Arc<Mutex<Vec<u8>>>) {
+    let scenario = harness.scenario;
     let mut initial_checked = false;
     for action in &scenario.harness.actions {
         if !initial_checked

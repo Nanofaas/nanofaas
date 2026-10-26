@@ -1,9 +1,0 @@
-{
-  "error": "Target 'freeze' not found",
-  "target": {
-    "name": "freeze"
-  },
-  "direction": "upstream",
-  "impactedCount": null,
-  "risk": "UNKNOWN"
-}

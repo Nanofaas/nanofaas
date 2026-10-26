@@ -1,2 +1,0 @@
-{"BlockIO":"0B / 0B","CPUPerc":"0.00%","Container":"871cad42fc4b5659ebc5ff59689d6f400ccebbdeb4fcfe780fb7289308d6b73b","ID":"871cad42fc4b","MemPerc":"0.29%","MemUsage":"760KiB / 256MiB","Name":"nl-logfn-c1eeb89c47","NetIO":"0B / 0B","PIDs":"3"}
-{"BlockIO":"0B / 123kB","CPUPerc":"0.06%","Container":"d7143d02ca7ae66c15e721032c29d190a528a3473b013429e195ceae0b4e32b8","ID":"d7143d02ca7a","MemPerc":"12.21%","MemUsage":"62.52MiB / 512MiB","Name":"nl-logcp-c1eeb89c47","NetIO":"0B / 0B","PIDs":"21"}

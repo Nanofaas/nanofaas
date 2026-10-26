@@ -1,4 +1,0 @@
-{"executionId":"rust-one","level":"INFO","logger":"logging_fixture","message":"SDK handler caffè\nnext","schemaVersion":1,"service":"function-runtime","timestamp":"2026-10-10T09:48:10.768376Z","traceId":"trace-one"}
-{"executionId":"rust-one","level":"WARN","logger":"nanofaas::dispatcher","message":"callback delivery exhausted","schemaVersion":1,"service":"function-runtime","timestamp":"2026-10-10T09:48:10.768523Z","traceId":"trace-one"}
-{"executionId":"rust-two","level":"INFO","logger":"logging_fixture","message":"SDK handler caffè\nnext","schemaVersion":1,"service":"function-runtime","timestamp":"2026-10-10T09:48:10.768842Z","traceId":"trace-two"}
-{"executionId":"rust-two","level":"WARN","logger":"nanofaas::dispatcher","message":"callback delivery exhausted","schemaVersion":1,"service":"function-runtime","timestamp":"2026-10-10T09:48:10.768907Z","traceId":"trace-two"}

@@ -1,5 +1,9 @@
 # Edge logging qualification, 2026-10-10
 
+> Raw logs, queries and metric snapshots were removed from the current tree.
+> Receipts, summaries and hashes remain; see [artifact recovery](../../generated-artifacts.md#historical-evidence)
+> to restore a complete evidence bundle from revision `550d8f7a`.
+
 This is a technology qualification, **not the heterogeneous one-shot experiment**.
 The statistical campaign still requires its frozen topology/load/calibration protocol.
 
@@ -26,12 +30,12 @@ The statistical campaign still requires its frozen topology/load/calibration pro
 - Separate **3 MiB** output quota test: 821 records explicitly dropped; delivery
   resumed after restoring Loki. Snapshot RSS 13.98 MiB / 64 MiB. These values
   describe the test workload, not a maximum memory guarantee under arbitrary load.
-  [Receipt](recovery/receipt.json), [metrics](recovery/overflow-metrics.txt),
-  [query](recovery/recovery-query.json), [hashes](recovery/sha256.json).
+  [Receipt](recovery/receipt.json), [metrics](https://github.com/Nanofaas/nanofaas/blob/550d8f7a/docs/testing/edge-logging/recovery/overflow-metrics.txt),
+  [query](https://github.com/Nanofaas/nanofaas/blob/550d8f7a/docs/testing/edge-logging/recovery/recovery-query.json), [hashes](recovery/sha256.json).
 - All four additional SDKs pass real HTTP handler smoke (two distinct identities each).
   Their emitted logs and both Java native runtime logs are ingested and queried
   through the real collector, preserving identity/service triples and labels without
-  request IDs: [SDK receipt](sdks/receipt.json), [runtime query](recovery/runtime-query.json).
+  request IDs: [SDK receipt](sdks/receipt.json), [runtime query](https://github.com/Nanofaas/nanofaas/blob/550d8f7a/docs/testing/edge-logging/recovery/runtime-query.json).
 - Cleanup is checked against actual Docker project container and volume inventories,
   not just a zero exit code. Profiles must be included even on `logs` and `down`.
 

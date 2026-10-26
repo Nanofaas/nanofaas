@@ -1,4 +1,0 @@
-09:36:15.453 [main] INFO  i.u.d.n.sdk.lite.NanofaasRuntime [exec= trace=] - nanofaas-lite runtime started on port 8080 for function 'word-stats-lite'
-09:36:15.548 [virtual-77] INFO  i.u.d.n.e.w.WordStatsLite [exec=native-exec trace=native-trace] - Processing word stats for execution native-exec
-09:36:15.549 [nanofaas-lite-callback-1] WARN  i.u.d.n.s.l.callback.CallbackClient [exec=native-exec trace=native-trace] - CALLBACK_URL not configured, skipping callback for execution native-exec
-09:36:15.751 [nanofaas-lite-shutdown-word-stats-lite] INFO  i.u.d.n.sdk.lite.NanofaasRuntime [exec= trace=] - Shutting down nanofaas-lite runtime for function 'word-stats-lite'

@@ -157,25 +157,14 @@ public final class ManagedDeploymentCoordinator implements ManagedReplicaControl
 
     @Override
     public java.util.Optional<ReplicaQuiesceToken> pauseReplicaAdmission(ReplicaControlLease lease, ManagedDeploymentTarget target) {
-        return closeReplicaAdmission(lease, target, null);
-    }
-
-    @Override
-    public java.util.Optional<ReplicaQuiesceToken> quiesceReplicas(ReplicaControlLease lease, ManagedDeploymentTarget target, java.time.Duration timeout) {
-        if (timeout == null || timeout.isZero() || timeout.isNegative()) throw new IllegalArgumentException("positive quiesce timeout required");
-        return closeReplicaAdmission(lease, target, timeout);
-    }
-
-    private java.util.Optional<ReplicaQuiesceToken> closeReplicaAdmission(ReplicaControlLease lease, ManagedDeploymentTarget target, java.time.Duration drainTimeout) {
         return locks.withLock(target.functionName(), () -> {
             if (!currentReplicaWriter(lease, target)) return java.util.Optional.empty();
             var provider = requireProvider(target);
             if (!provider.supportsEpochReplicaControl(target.functionName())) return java.util.Optional.empty();
             registry.applicationState().requireAvailable(target.functionName());
             try {
-                var admission = drainTimeout == null ? provider.pauseReplicaAdmission(target.functionName())
-                        : provider.quiesceReplicas(target.functionName(), drainTimeout);
-                // Waiting for physical work can consume the lease. Expiry still does not release ownership.
+                var admission = provider.pauseReplicaAdmission(target.functionName());
+                // The provider call can consume the lease. Expiry still does not release ownership.
                 if (!currentReplicaWriter(lease, target)) return java.util.Optional.empty();
                 return admission.map(token -> new ReplicaQuiesceToken(lease, target, token));
             } finally {
@@ -185,17 +174,7 @@ public final class ManagedDeploymentCoordinator implements ManagedReplicaControl
     }
 
     @Override
-    public boolean resumeReplicas(ReplicaControlLease lease, ManagedDeploymentTarget target, ReplicaQuiesceToken token, String admissionEpoch) {
-        return reopenReplicaAdmission(lease, target, token, admissionEpoch, false);
-    }
-
-    @Override
     public boolean resumeRetainedReplicas(ReplicaControlLease lease, ManagedDeploymentTarget target, ReplicaQuiesceToken token, String admissionEpoch) {
-        return reopenReplicaAdmission(lease, target, token, admissionEpoch, true);
-    }
-
-    private boolean reopenReplicaAdmission(ReplicaControlLease lease, ManagedDeploymentTarget target, ReplicaQuiesceToken token,
-                                          String admissionEpoch, boolean retained) {
         return locks.withLock(target.functionName(), () -> {
             if (!currentReplicaWriter(lease, target) || token == null || !lease.equals(token.lease())
                     || !target.equals(token.target()) || !token.admissionEpoch().equals(admissionEpoch)) return false;
@@ -203,8 +182,7 @@ public final class ManagedDeploymentCoordinator implements ManagedReplicaControl
             if (!provider.supportsEpochReplicaControl(target.functionName())) return false;
             registry.applicationState().requireAvailable(target.functionName());
             try {
-                boolean resumed = retained ? provider.resumeRetainedReplicas(target.functionName(), token.admission(), admissionEpoch)
-                        : provider.resumeReplicas(target.functionName(), token.admission(), admissionEpoch);
+                boolean resumed = provider.resumeRetainedReplicas(target.functionName(), token.admission(), admissionEpoch);
                 if (!currentReplicaWriter(lease, target)) {
                     // A provider call may outlast ownership. Close again, retaining all physical leases.
                     provider.pauseReplicaAdmission(target.functionName());
