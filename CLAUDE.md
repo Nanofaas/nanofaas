@@ -43,13 +43,6 @@ docker build -f services/java/warm-echo/Dockerfile -t nanofaas/warm-echo .
 
 # Local SonarQube analysis (ephemeral Docker server, on demand — not CI; see docs/sonarqube.md)
 ./scripts/sonar.sh [--rm] [--only java|python|rust]
-
-# Experiments / load tests (see experiments/)
-./experiments/e2e-cold-start-metrics.sh   # Cold start metrics
-./experiments/e2e-runtime-config.sh       # Runtime config hot-update E2E
-./experiments/run.sh                      # Interactive wizard (control-plane experiment)
-# Python tests for experiments
-cd experiments && python -m pytest tests/ -v
 ```
 
 VM-provisioning Ansible playbooks are bundled inside the `workflow_tasks` library in the `nanolab` repo (`packages/workflow-tasks/src/workflow_tasks/infra/ansible_assets/`).
@@ -82,7 +75,7 @@ Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `platfo
 - **container-deployment-provider** - Local managed deployment backend and image validation using a Docker-compatible runtime
 - **containerd-deployment-provider** - Rootless containerd/crun/CNI managed deployment backend; mutually exclusive with the other providers
 - **offload** - Conditional transparent proxy of sync invocations to a remote nanofaas instance (eager per-function policy, or on sync-queue DEPTH/EST_WAIT rejection); single hop, no local fallback (remote failure → 502/504)
-- **forecasting** - Per-function external arrival-rate forecasts (EWMA or uploaded oracle trace); not default-enabled, inert unless `nanofaas.forecasting.enabled=true`
+- **forecasting** - Per-function external arrival-rate forecasts (EWMA, Holt, ARI or uploaded oracle trace), switchable through the runtime-config `forecasting` namespace; not default-enabled, inert unless `nanofaas.forecasting.enabled=true`
 - **p2p-discovery** - SWIM-based node discovery, latency measurement, neighbour selection and messaging; primitives only, not default-enabled
 
 Execution Modes:
@@ -136,7 +129,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 - No authentication/authorization
 - Performance and latency prioritized over features
 - Java 25 toolchain, 4-space indentation, `it.unimib.datai.nanofaas` package root
-- Python 3.12 or newer for every Python project (SDK, tools, functions, experiments); function images use `python:3.12-alpine` in both build stages with dependencies precompiled (`uv pip install --compile-bytecode`), except a function whose dependencies ship only glibc wheels (such as `mlimage` with PyTorch), which uses `python:3.12-slim`
+- Python 3.12 or newer for every Python project (SDK, tools, functions); function images use `python:3.12-alpine` in both build stages with dependencies precompiled (`uv pip install --compile-bytecode`), except a function whose dependencies ship only glibc wheels (such as `mlimage` with PyTorch), which uses `python:3.12-slim`
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

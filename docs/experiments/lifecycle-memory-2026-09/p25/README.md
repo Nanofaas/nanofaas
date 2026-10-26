@@ -95,8 +95,8 @@ not mention the SDK fix.
 ### 2.3 P14 — the measurement in the ledger is not the one in the repository
 
 P14 was decided by real measurement, and the decision (buckets rejected) is
-sound. But the numbers quoted in the ledger match the task report under
-`.superpowers/sdd/2026-09-08-.../task-P14-report.md`, **not** the tracked
+sound. But the numbers quoted in the ledger match the task report
+`../task-reports/task-P14-report.md`, **not**
 `../P14WaitEstimatorMeasurement.out`, which holds a later rerun with different
 values (`exactNs=402/245` for one function and `1125/1038` for 1,000, against the
 `302/202` and `920/990` the ledger quotes; `afterIdleExact=0+0` in every

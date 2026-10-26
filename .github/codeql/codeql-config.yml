@@ -5,6 +5,5 @@ name: NanoFaaS CodeQL configuration
 # duplicate fully-qualified classes cannot replace the active implementation.
 paths-ignore:
   - .claude/**
-  - experiments/**
   - docs/experiments/**
   - "**/build/**"

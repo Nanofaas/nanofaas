@@ -3122,7 +3122,7 @@ Both exited 0. Baseline protected-file SHA-256 audit passed for both dirty overl
 files, the untracked snapshot test and all six GitNexus skill directories. Those
 files remain unstaged; their original patch is retained only outside the repository
 dossier. Production diff against B is empty. Full implementation report:
-`.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`.
+`task-reports/task-P19-report.md`.
 
 ## P19 fix round 1 — 2026-09-11 — BLOCKED
 
@@ -3377,7 +3377,7 @@ by text/diff/hash inventory. Final staged audit/commit receipt follows in the re
 
 H=`docs/experiments/lifecycle-memory-2026-09/p19`, W=`/tmp/nanofaas-p19-r3.QxIGIR`.
 Full commands/results/limits and commit receipts:
-`.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`.
+`task-reports/task-P19-report.md`.
 Round-3 delivery commit: **58c56941aec6487f12a939c935b6aa54371a05ba**,
 `Freeze corrected P19 control`, 663 scoped files including all 654 dossier files;
 protected targets absent. Product B remains **d93b68cdf1cca6e7af17e1c641c8e236c80d0fca**.

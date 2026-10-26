@@ -1,7 +1,7 @@
 # nanofaas paper figures (TikZ)
 
 Standalone, print-ready TikZ figures for the nanofaas paper and for the
-Italian monograph in `paper/nanofaas.tex`. Modern flat
+Italian monograph in `monograph/nanofaas.tex`. Modern flat
 style with a grayscale-safe palette; sans-serif labels.
 
 | File | Figure |

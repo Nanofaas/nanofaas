@@ -160,8 +160,9 @@ Current modules:
   mutually exclusive with the other managed providers
 - `offload` — conditional transparent proxy of sync invocations to a remote
   instance
-- `forecasting` — per-function external arrival-rate forecasts (EWMA or an
-  uploaded oracle trace); inert unless enabled — see [forecasting](forecasting.md)
+- `forecasting` — per-function external arrival-rate forecasts (EWMA, Holt, ARI
+  or an uploaded oracle trace), switchable through the runtime-config
+  `forecasting` namespace; inert unless enabled — see [forecasting](forecasting.md)
 - `p2p-discovery` — node discovery, latency measurement, neighbour selection
   and messaging between NanoFaaS nodes; primitives only, invocations are not
   routed through it — see `platform/modules/p2p-discovery/README.md`

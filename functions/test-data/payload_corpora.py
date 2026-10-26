@@ -1,5 +1,10 @@
-"""Generation-independent validation for shared function payload corpora."""
+#!/usr/bin/env python3
+"""Write, verify and validate the static performance payload corpora.
 
+Run from anywhere: ``python3 functions/test-data/payload_corpora.py [--check]``.
+"""
+
+import argparse
 import json
 import re
 from pathlib import Path
@@ -29,25 +34,6 @@ def generate_all():
                 / f"performance-{profile}.json"
             )
             generated[path] = json.dumps(corpus, indent=2, ensure_ascii=False) + "\n"
-    return generated
-
-
-def generate_catalog_samples(corpora=None):
-    """Return one canonical small input per family for catalog smoke tests."""
-    corpora = generate_all() if corpora is None else corpora
-    generated = {}
-    for family in FAMILIES:
-        corpus_path = (
-            Path("functions/test-data") / family / "performance-small.json"
-        )
-        first_input = json.loads(corpora[corpus_path])["cases"][0]["input"]
-        sample_path = (
-            Path("tools/controlplane/scenarios/payloads")
-            / f"{family}-sample.json"
-        )
-        generated[sample_path] = (
-            json.dumps(first_input, indent=2, ensure_ascii=False) + "\n"
-        )
     return generated
 
 
@@ -203,3 +189,25 @@ def _validate_roman_numeral(cases, profile):
         numbers.append(number)
     if len(numbers) != len(set(numbers)):
         raise ValueError("roman-numeral inputs must be unique")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail when a committed corpus differs from deterministic output",
+    )
+    args = parser.parse_args()
+
+    for relative_path, expected in generate_all().items():
+        path = REPO_ROOT / relative_path
+        if args.check:
+            if not path.exists() or path.read_text(encoding="utf-8") != expected:
+                raise SystemExit(f"corpus differs: {relative_path}")
+        else:
+            path.write_text(expected, encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()
