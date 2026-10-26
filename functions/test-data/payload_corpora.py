@@ -206,6 +206,7 @@ def main():
             if not path.exists() or path.read_text(encoding="utf-8") != expected:
                 raise SystemExit(f"corpus differs: {relative_path}")
         else:
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(expected, encoding="utf-8")
 
 

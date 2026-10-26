@@ -3,6 +3,8 @@ package it.unimib.datai.nanofaas.modules.forecasting;
 import it.unimib.datai.nanofaas.forecastingapi.*;
 import java.time.*;
 import java.util.*;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * Bounded per-generation complete UTC-aligned windows. Only complete windows known to have been
@@ -43,13 +45,6 @@ public abstract class WindowedForecastSource<S> implements ForecastSource, Exter
     protected abstract void add(S state, double rate);
     /** A run of complete windows without arrivals; must not cost more than the state it keeps. */
     protected abstract void addZeros(S state, long count);
-    /**
-     * Requests/s over the query interval, or null before the state can answer. {@code next} is the
-     * index of the first incomplete window, so window {@code next} is one step ahead.
-     */
-    protected abstract Double estimate(S state, long next, ForecastQuery query);
-    /** Name reported in snapshots for the model in use. */
-    protected abstract String provider();
     protected final long windowSeconds() { return windowSeconds; }
     public synchronized void observe(String function, long generation, Instant at) {
         if (function == null || function.isBlank() || generation < 1) throw new IllegalArgumentException("invalid generation");
@@ -97,14 +92,30 @@ public abstract class WindowedForecastSource<S> implements ForecastSource, Exter
         value.revision += count;
         value.producedAt = Instant.ofEpochSecond(Math.multiplyExact(value.next, windowSeconds));
     }
-    @Override public synchronized ForecastSnapshot forecast(ForecastQuery query) {
-        Series value = nodeId.equals(query.nodeId()) ? series.get(new Key(query.function(), query.generation())) : null;
-        if (value == null) return new ForecastSnapshot(query, ForecastSnapshot.Status.MISSING, null, 0, provider(), null);
-        finalizeWindows(value);
-        Double rate = estimate(value.state, value.next, query);
-        if (rate == null) return new ForecastSnapshot(query, ForecastSnapshot.Status.MISSING, null, value.revision, provider(), null);
-        ForecastSnapshot.Status status = Duration.between(value.producedAt, clock.instant()).compareTo(maxAge) > 0
+    /**
+     * Capture detached model state and its identity while holding the observation monitor, then
+     * estimate without blocking arrivals. The snapshot function must not return mutable series state.
+     * The estimator receives the index of the first incomplete window (one step ahead).
+     */
+    protected final <T> ForecastSnapshot forecast(ForecastQuery query, String provider,
+            Function<S, T> snapshotState, BiFunction<T, Long, Double> estimate) {
+        T state;
+        long next;
+        long revision;
+        Instant producedAt;
+        synchronized (this) {
+            Series value = nodeId.equals(query.nodeId()) ? series.get(new Key(query.function(), query.generation())) : null;
+            if (value == null) return new ForecastSnapshot(query, ForecastSnapshot.Status.MISSING, null, 0, provider, null);
+            finalizeWindows(value);
+            state = snapshotState.apply(value.state);
+            next = value.next;
+            revision = value.revision;
+            producedAt = value.producedAt;
+        }
+        Double rate = estimate.apply(state, next);
+        if (rate == null) return new ForecastSnapshot(query, ForecastSnapshot.Status.MISSING, null, revision, provider, null);
+        ForecastSnapshot.Status status = Duration.between(producedAt, clock.instant()).compareTo(maxAge) > 0
                 ? ForecastSnapshot.Status.STALE : ForecastSnapshot.Status.AVAILABLE;
-        return new ForecastSnapshot(query, status, rate, value.revision, provider(), value.producedAt);
+        return new ForecastSnapshot(query, status, rate, revision, provider, producedAt);
     }
 }

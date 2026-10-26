@@ -32,10 +32,13 @@ public class ForecastingConfiguration {
     @Bean @Primary ForecastSource selectedForecastSource(ForecastingProperties props, ForecastSelection selection,
             EwmaForecastSource ewma, TrendForecastSource trend, OracleForecastStore oracle) {
         if(!props.enabled()) return q -> new ForecastSnapshot(q,ForecastSnapshot.Status.MISSING,null,0,"disabled",null);
-        return q -> switch (selection.get().provider()) {
-            case EWMA -> ewma.forecast(q);
-            case ORACLE -> oracle.forecast(q);
-            case HOLT, ARI -> trend.forecast(q);
+        return q -> {
+            var settings = selection.get();
+            return switch (settings.provider()) {
+                case EWMA -> ewma.forecast(q);
+                case ORACLE -> oracle.forecast(q);
+                case HOLT, ARI -> trend.forecast(q, settings.trendModel());
+            };
         };
     }
     // Every windowed source observes whatever is selected, so a switch finds it already warm.

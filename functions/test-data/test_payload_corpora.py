@@ -1,4 +1,8 @@
 import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -178,3 +182,31 @@ def test_roman_profiles_are_unique_and_in_range():
 def test_committed_corpora_match_the_generator():
     for path, serialized in generate_all().items():
         assert (REPO_ROOT / path).read_text(encoding="utf-8") == serialized, path
+
+
+def test_cli_regenerates_missing_directories_and_checks_without_writing(tmp_path):
+    source_dir = Path(__file__).parent
+    output_dir = tmp_path / "functions/test-data"
+    output_dir.mkdir(parents=True)
+    script = output_dir / "payload_corpora.py"
+    shutil.copyfile(source_dir / script.name, script)
+    command = [sys.executable, str(script)]
+
+    missing = subprocess.run(command + ["--check"], capture_output=True, text=True)
+    assert missing.returncode != 0
+    assert "corpus differs:" in missing.stderr
+    assert list(output_dir.iterdir()) == [script]
+
+    generated = subprocess.run(command, capture_output=True, text=True)
+    assert generated.returncode == 0, generated.stderr
+    expected_paths = {
+        Path(family) / f"performance-{profile}.json"
+        for family in ("word-stats", "json-transform", "roman-numeral")
+        for profile in ("small", "medium", "large")
+    }
+    assert {path.relative_to(output_dir) for path in output_dir.rglob("*.json")} == expected_paths
+    for path in expected_paths:
+        assert (output_dir / path).read_bytes() == (source_dir / path).read_bytes()
+
+    checked = subprocess.run(command + ["--check"], capture_output=True, text=True)
+    assert checked.returncode == 0, checked.stderr
