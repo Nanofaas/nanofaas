@@ -26,13 +26,6 @@ def run_script(name: str, *args: str, env: dict[str, str] | None = None) -> str:
     return f"{proc.stdout}\n{proc.stderr}"
 
 
-def test_cold_start_experiment_script_resolves_shared_helpers() -> None:
-    cold_start = (REPO_ROOT / "experiments" / "e2e-cold-start-metrics.sh").read_text(encoding="utf-8")
-    assert 'REMOTE_DIR=${REMOTE_DIR:-$(e2e_get_remote_project_dir)}' in cold_start
-    assert 'e2e_build_control_plane_artifacts "${REMOTE_DIR}"' in cold_start
-    assert 'e2e_build_function_runtime_image "${REMOTE_DIR}" "${RUNTIME_IMAGE}"' in cold_start
-
-
 def test_container_local_shell_backend_is_deleted() -> None:
     assert not (SCRIPTS_DIR / "lib" / "e2e-container-local-backend.sh").exists(), (
         "e2e-container-local-backend.sh still exists — delete it after Python path is green (M9)"

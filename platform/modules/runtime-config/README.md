@@ -64,4 +64,6 @@ curl -X PATCH http://localhost:8080/v1/admin/runtime-config/control-plane \
 
 - The API is unauthenticated like the rest of the control plane (project
   constraint) — enable it only where the admin port is trusted.
-- E2E coverage: `experiments/e2e-runtime-config.sh`.
+- HTTP coverage: `AdminRuntimeConfigIntegrationTest` and
+  `SchedulerRuntimeConfigIntegrationTest` call the endpoints of a running
+  control plane.

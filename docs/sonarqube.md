@@ -73,8 +73,7 @@ What happens:
   resets to `admin/admin`).
 - The port guard uses `lsof` (macOS); on minimal Linux builds without `lsof`
   the check is skipped and Docker's own port error surfaces instead.
-- Python, Rust, Go and JavaScript coverage is not imported (only static analysis); `experiments/`
-  is not analysed.
+- Python, Rust, Go and JavaScript coverage is not imported (only static analysis).
 
 ## Cleaning up
 
