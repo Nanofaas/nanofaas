@@ -104,7 +104,9 @@ public class SyncQueueConfiguration {
      */
     @Bean
     SyncQueueMetrics syncQueueMetrics(MeterRegistry registry, PendingWorkStore store,
-                                      AdmissionProfile profile) {
+                                      AdmissionProfile profile, SyncQueueProperties props) {
+        io.micrometer.core.instrument.Gauge.builder("sync_queue_capacity", props, SyncQueueProperties::maxDepth)
+                .tag("function", "").register(registry);
         return new SyncQueueMetrics(registry,
                 () -> profile == AdmissionProfile.SYNC_QUEUE ? store.reservedCount() : 0,
                 name -> profile == AdmissionProfile.SYNC_QUEUE ? store.reservedCount(name) : 0);
@@ -119,7 +121,7 @@ public class SyncQueueConfiguration {
         return new FunctionRegistrationListener() {
             @Override
             public void onRegister(FunctionSpec spec) {
-                metrics.registerFunction(spec.name());
+                metrics.registerFunction(spec.name(), spec.queueSize() == null ? Integer.MAX_VALUE : spec.queueSize());
             }
 
             @Override

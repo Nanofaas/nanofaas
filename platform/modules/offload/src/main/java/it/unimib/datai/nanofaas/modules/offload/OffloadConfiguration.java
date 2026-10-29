@@ -82,7 +82,7 @@ public class OffloadConfiguration {
         @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter oneShotRouter(
             it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator actuator,it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore configs,
             it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations operations,it.unimib.datai.nanofaas.p2papi.PeerTransport peers) {
-            return new it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter(actuator::activePlan,()->configs.snapshot().map(it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore.Snapshot::settings),operations::settingsFor,peers,System::nanoTime,actuator::transitionQueueNode);
+            return new it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter(actuator::activePlan,()->configs.snapshot().map(it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore.Snapshot::settings),operations::settingsFor,peers,()->java.util.concurrent.ThreadLocalRandom.current().nextDouble(),actuator::transitionQueueNode);
         }
         @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotController oneShotController(
             it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations operations,it.unimib.datai.nanofaas.modules.offload.oneshot.api.ServiceProfileStore profiles,

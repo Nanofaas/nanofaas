@@ -11,44 +11,57 @@ import java.util.function.*;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.MapperFeature;
-/** One active immutable plan, deterministic shares and independent seller-authoritative quotas. */
+/** One immutable plan; original requests draw a destination, neighbors use local admission. */
 public final class PlanRouter {
     public static final class WeightedPicker {
-        private final LinkedHashMap<String,Double> weights=new LinkedHashMap<>(),scores=new LinkedHashMap<>();
-        public WeightedPicker(Map<String,Double> input) {
-            double total=input.values().stream().mapToDouble(Double::doubleValue).sum();
-            if(!Double.isFinite(total) || total<=0) throw new IllegalArgumentException("invalid total weight");
-            input.forEach((id,w)->{if(!Double.isFinite(w) || w<0) throw new IllegalArgumentException("invalid weight");if(w>0) {weights.put(id,w/total);scores.put(id,0.0);}});
+        private final LinkedHashMap<String, Double> weights = new LinkedHashMap<>();
+        public WeightedPicker(Map<String, Double> input) {
+            double total = input.values().stream().mapToDouble(Double::doubleValue).sum();
+            if (!Double.isFinite(total) || total <= 0) throw new IllegalArgumentException("invalid total weight");
+            input.forEach((id, weight) -> {
+                if (!Double.isFinite(weight) || weight < 0) throw new IllegalArgumentException("invalid weight");
+                if (weight > 0) weights.put(id, weight / total);
+            });
         }
-        public synchronized String next() {
-            String best=null;double maximum=Double.NEGATIVE_INFINITY;
-            for(var e:weights.entrySet()) {double value=scores.merge(e.getKey(),e.getValue(),Double::sum);if(value>maximum) {maximum=value;best=e.getKey();}}
-            scores.compute(best,(k,v)->v-1);return best;
+        public String next(double draw) {
+            if (!Double.isFinite(draw) || draw < 0 || draw >= 1) throw new IllegalArgumentException("draw outside [0,1)");
+            double cumulative = 0;
+            for (var entry : weights.entrySet()) {
+                cumulative += entry.getValue();
+                if (draw < cumulative) return entry.getKey();
+            }
+            // Floating point sums can end just below one.
+            return weights.lastEntry().getKey();
         }
     }
     private static final class State {
-        final ActiveRoutingPlan plan;final Map<String,WeightedPicker> picks=new HashMap<>();final Map<String,AssignmentAdmission> quotas=new HashMap<>();
-        State(ActiveRoutingPlan plan,int burst,LongSupplier time) {
-            this.plan=plan;long count=plan.functions().values().stream().mapToLong(f->f.inbound().size()+f.outbound().size()).sum();if(count>4096) throw new IllegalArgumentException("assignment bound exceeded");
-            plan.functions().forEach((name,f)-> {
-                var weights=new LinkedHashMap<String,Double>();weights.put("local",f.localRate());
-                quotas.put("local:"+name,new AssignmentAdmission(f.localRate(),burst,time));
-                for(var a:f.outbound().stream().sorted(Comparator.comparing(Assignment::id)).toList()) {weights.put(a.id(),a.quantity()*plan.flowQuantum());quotas.put("out:"+a.id(),new AssignmentAdmission(a.quantity()*plan.flowQuantum(),burst,time));}
-                for(var a:f.inbound()) quotas.put("in:"+a.id(),new AssignmentAdmission(a.quantity()*plan.flowQuantum(),burst,time));
-                weights.put("cloud",f.cloudRate());if(f.forecastRate()>0) picks.put(name,new WeightedPicker(weights));
+        final ActiveRoutingPlan plan;
+        final Map<String, WeightedPicker> picks = new HashMap<>();
+        State(ActiveRoutingPlan plan) {
+            this.plan = plan;
+            long count = plan.functions().values().stream().mapToLong(f -> f.inbound().size() + f.outbound().size()).sum();
+            if (count > 4096) throw new IllegalArgumentException("assignment bound exceeded");
+            plan.functions().forEach((name, f) -> {
+                var weights = new LinkedHashMap<String, Double>();
+                weights.put("local", f.localRate());
+                for (var a : f.outbound().stream().sorted(Comparator.comparing(Assignment::id)).toList()) {
+                    weights.put(a.id(), a.quantity() * plan.flowQuantum());
+                }
+                weights.put("cloud", f.cloudRate());
+                if (f.forecastRate() > 0) picks.put(name, new WeightedPicker(weights));
             });
         }
     }
     private final Supplier<Optional<ActiveRoutingPlan>> plans;private final Supplier<Optional<OneShotSettings>> current;private final LongFunction<Optional<OneShotSettings>> configurations;
-    private final PeerTransport peers;private final LongSupplier nanoTime;
+    private final PeerTransport peers;private final DoubleSupplier random;
     private final Function<String,Optional<AllocationTransition>> transitionQueueNode;
     private final JsonMapper mapper=JsonMapper.builder().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY).build();
     private State state;
-    public PlanRouter(Supplier<Optional<ActiveRoutingPlan>> plans,Supplier<Optional<OneShotSettings>> current,LongFunction<Optional<OneShotSettings>> configurations,PeerTransport peers,LongSupplier time) {
-        this(plans,current,configurations,peers,time,name->Optional.empty());
+    public PlanRouter(Supplier<Optional<ActiveRoutingPlan>> plans,Supplier<Optional<OneShotSettings>> current,LongFunction<Optional<OneShotSettings>> configurations,PeerTransport peers,DoubleSupplier random) {
+        this(plans,current,configurations,peers,random,name->Optional.empty());
     }
-    public PlanRouter(Supplier<Optional<ActiveRoutingPlan>> plans,Supplier<Optional<OneShotSettings>> current,LongFunction<Optional<OneShotSettings>> configurations,PeerTransport peers,LongSupplier time,Function<String,Optional<AllocationTransition>> transitionQueueNode) {
-        this.plans=plans;this.current=current;this.configurations=configurations;this.peers=peers;nanoTime=time;
+    public PlanRouter(Supplier<Optional<ActiveRoutingPlan>> plans,Supplier<Optional<OneShotSettings>> current,LongFunction<Optional<OneShotSettings>> configurations,PeerTransport peers,DoubleSupplier random,Function<String,Optional<AllocationTransition>> transitionQueueNode) {
+        this.plans=plans;this.current=current;this.configurations=configurations;this.peers=peers;this.random=Objects.requireNonNull(random);
         this.transitionQueueNode=transitionQueueNode;
     }
     public boolean manages(String name) { return current.get().map(s->s.functions().containsKey(name)).orElse(false) || plans.get().map(p->p.functions().containsKey(name)).orElse(false); }
@@ -78,34 +91,20 @@ public final class PlanRouter {
         if(f==null || f.generation()!=configured.generation()) return PlannedInvocationRoute.reject("function generation differs from plan");
         // Delayed neighbor work uses current local admission, not an expired assignment quota.
         if(context.offloadedHop() && metadata.epoch()<plan.epoch()) return PlannedInvocationRoute.local(plan.nodeId());
-        if(state==null || !state.plan.equals(plan)) {
-            var next=new State(plan,settings.get().burst(),nanoTime);
-            if(state!=null && state.plan.epoch()==plan.epoch() && state.plan.nodeId().equals(plan.nodeId())
-                    && state.plan.incarnation().equals(plan.incarnation()) && state.plan.flowQuantum()==plan.flowQuantum()) {
-                // Completing outbound readiness must not refill unchanged seller/local quotas.
-                for(var entry:plan.functions().entrySet()) {
-                    var prior=state.plan.functions().get(entry.getKey());var updated=entry.getValue();
-                    if(prior==null || prior.generation()!=updated.generation() || !prior.version().equals(updated.version())) continue;
-                    if(prior.localRate()==updated.localRate()) next.quotas.put("local:"+entry.getKey(),state.quotas.get("local:"+entry.getKey()));
-                    for(var a:updated.inbound()) if(prior.inbound().contains(a)) next.quotas.put("in:"+a.id(),state.quotas.get("in:"+a.id()));
-                    for(var a:updated.outbound()) if(prior.outbound().contains(a)) next.quotas.put("out:"+a.id(),state.quotas.get("out:"+a.id()));
-                }
-            }
-            state=next;
-        }
         if(context.offloadedHop()) {
             if(metadata.epoch()!=plan.epoch()) return PlannedInvocationRoute.reject("native ready assignment required");
             var inbound=f.inbound().stream().filter(a->a.id().equals(metadata.assignment()) && a.buyerId().equals(metadata.origin()) && a.buyerIncarnation().equals(metadata.originIncarnation()) && a.readyConfirmed()).findFirst();
-            if(inbound.isEmpty() || !state.quotas.get("in:"+inbound.get().id()).tryAdmit()) return PlannedInvocationRoute.reject("inbound assignment absent or quota exhausted");
+            if(inbound.isEmpty()) return PlannedInvocationRoute.reject("inbound assignment absent");
             return PlannedInvocationRoute.local(plan.nodeId());
         }
+        if(state==null || !state.plan.equals(plan)) state=new State(plan);
         var picker=state.picks.get(task.functionName());if(picker==null) return cloud(settings.get(),plan.epoch());
-        var selected=picker.next();
-        if(selected.equals("local")) return state.quotas.get("local:"+task.functionName()).tryAdmit()?PlannedInvocationRoute.local(plan.nodeId()):cloud(settings.get(),plan.epoch());
+        var selected=picker.next(random.getAsDouble());
+        if(selected.equals("local")) return PlannedInvocationRoute.local(plan.nodeId());
         if(selected.equals("cloud")) return cloud(settings.get(),plan.epoch());
         var assignment=f.outbound().stream().filter(a->a.id().equals(selected)).findFirst().orElseThrow();
         var peer=peers.activeNeighbors().stream().filter(p->p.peerId().equals(assignment.sellerId()) && p.incarnation().equals(assignment.sellerIncarnation())).findFirst();
-        if(peer.isEmpty() || !state.quotas.get("out:"+assignment.id()).tryAdmit()) return cloud(settings.get(),plan.epoch());
+        if(peer.isEmpty()) return cloud(settings.get(),plan.epoch());
         return remote(peer.get().invocationUri().toString(),peer.get().peerId(),plan.epoch(),assignment.id(),plan.nodeId(),plan.incarnation());
     }
     private PlannedInvocationRoute cloud(OneShotSettings settings,long epoch) {

@@ -16,7 +16,7 @@ class TransitionQueueRoutingTest {
         var changing = new AtomicBoolean();
         var settings = OneShotHopGuardE2eTest.settings(3, "http://cloud:8080");
         var router = new PlanRouter(Optional::empty, () -> Optional.of(settings), rev -> Optional.of(settings),
-                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 100,
+                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 0,
                 name -> changing.get() ? Optional.of(new AllocationTransition("a", 2)) : Optional.empty());
         var spec = new FunctionSpec("f", "img@" + OneShotHopGuardE2eTest.DIGEST, null, null, null, null,
                 null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
@@ -35,7 +35,7 @@ class TransitionQueueRoutingTest {
     void previousEpochNeighborRequestQueuesDuringTransitionButFutureGrantDoesNot() {
         var settings = OneShotHopGuardE2eTest.settings(3, "http://cloud:8080");
         var router = new PlanRouter(Optional::empty, () -> Optional.of(settings), rev -> Optional.of(settings),
-                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 100,
+                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 0,
                 name -> Optional.of(new AllocationTransition("a", 2)));
         var spec = new FunctionSpec("f", "img@" + OneShotHopGuardE2eTest.DIGEST, null, null, null, null,
                 null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);

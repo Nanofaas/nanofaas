@@ -156,7 +156,7 @@ eligible for ordinary LOCAL admission under the current allocation, even if its
 old grant is absent from the new plan. It does not consume or recreate an expired
 assignment quota. The old assignment records the sender's routing decision; it
 does not reserve capacity in the new epoch. Current-epoch assignments retain
-their ready-grant/quota checks; future-epoch assignments are rejected.
+their ready-grant checks; future-epoch assignments are rejected.
 During a logical physical-allocation transition, new original requests and
 validated previous-epoch neighbor requests for the affected functions select
 LOCAL even while no ready plan is published. They use

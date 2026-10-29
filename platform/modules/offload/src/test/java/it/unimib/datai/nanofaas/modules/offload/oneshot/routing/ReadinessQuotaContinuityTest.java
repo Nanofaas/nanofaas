@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ReadinessQuotaContinuityTest {
     @Test
-    void addingAnOutboundReadyGrantDoesNotRefillAnAlreadySpentLocalQuota() {
+    void addingAnOutboundReadyGrantKeepsLocalAdmissionAvailable() {
         var digest = OneShotHopGuardE2eTest.DIGEST;
         var from = Instant.EPOCH;
         var grant = new Assignment("grant", "a", "a-run", "b", "b-run", "f", digest, 7, 3, 1, 1, true);
@@ -26,7 +26,7 @@ class ReadinessQuotaContinuityTest {
         var current = new AtomicReference<>(initial);
         var config = OneShotHopGuardE2eTest.settings(3, "http://cloud:8080");
         var router = new PlanRouter(() -> Optional.of(current.get()), () -> Optional.of(config), rev -> Optional.of(config),
-                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 100);
+                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 0);
         var spec = new FunctionSpec("f", "img@" + digest, null, null, null, null, null, null, null,
                 null, ExecutionMode.DEPLOYMENT, null, null, null);
         var request = new InvocationRequest(Map.of("nested", List.of(1, 2), "payload", "value"), Map.of());
@@ -34,7 +34,7 @@ class ReadinessQuotaContinuityTest {
         assertThat(router.route(task, OffloadContext.none()).kind()).isEqualTo(PlannedInvocationRoute.Kind.LOCAL);
         current.set(completed);
         var second = router.route(task, OffloadContext.none());
-        assertThat(second.kind()).isEqualTo(PlannedInvocationRoute.Kind.REMOTE);
-        assertThat(second.executionNode()).isEqualTo("cloud");
+        assertThat(second.kind()).isEqualTo(PlannedInvocationRoute.Kind.LOCAL);
+        assertThat(second.executionNode()).isEqualTo("a");
     }
 }

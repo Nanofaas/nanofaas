@@ -101,10 +101,11 @@ and memory overlap behavior, and the phase-A handoff dossier for test commands.
 
 ## Native invocation routing
 
-External arrivals receive a deterministic weighted LOCAL, confirmed peer or cloud
-choice. Local and per-assignment token buckets have the configured finite burst.
-An unavailable/changed peer or exhausted quota goes to terminal cloud before any
-peer dispatch. Accepted quota is not refunded after a timeout. Each execution pins
+External arrivals draw LOCAL, a confirmed peer or cloud with probabilities
+proportional to their planned rates. There are no local, inbound or outbound
+rate token gates. An unavailable/changed peer goes to terminal cloud before any
+peer dispatch. The legacy `burst` field remains validated for payload compatibility
+but has no effect on roulette routing. Each execution pins
 its route once; local pressure and retry never choose another destination, and a
 remote error after sending never produces a second cloud attempt.
 
@@ -113,7 +114,8 @@ The sender sets native HTTP headers `X-NanoFaaS-Offload-Version: 1`,
 `X-NanoFaaS-Offload-Assignment`, plus `X-NanoFaaS-Offload-Hop: 1`. The dedicated
 cloud uses assignment `cloud`; it executes locally and never forwards again. A
 peer accepts only its confirmed assignment, current buyer incarnation and epoch,
-and its own remaining quota. Missing, duplicate or inconsistent native metadata
+then enters ordinary local queue admission without drawing a destination.
+Missing, duplicate or inconsistent native metadata
 is rejected; any hop marker, including malformed legacy values, prevents another
 hop. Function payload headers cannot supply these control-plane fields.
 
@@ -225,3 +227,23 @@ values in `(0, 1]`; auction plus preparation must still fit lead time and period
 Full readiness remains required for timing qualification. The explicitly
 observational NanoLab workflow records partial readiness without treating it as
 a failed experiment procedure.
+
+## Queue admission and experiment measurements
+
+The sync queue enforces both `FunctionSpec.queueSize` for each function and
+`sync-queue.max-depth` for the node, atomically in the existing scheduler.
+These are ceilings, not reserved shares. Local and validated neighbor work
+use the same admission; a full queue rejects without forwarding again.
+Estimated-wait and queue-deadline controls still apply.
+
+`sync_queue_depth{function=...}` counts queue reservations (pending, claimed and
+submitting until dispatch submission settles), not running handlers. The empty
+function label is the global series; do not add it to the per-function values.
+`sync_queue_capacity` exports both ceilings. The existing rejection total is
+preserved; `sync_queue_rejected_by_reason_total{function,reason}` distinguishes
+admission rejection reasons. Counters start at zero and reset on function
+re-registration/process restart. Expiry of already admitted work is a queue
+event, not an admission rejection.
+
+See [roulette validation and telemetry](testing/one-shot-roulette.md) for event
+semantics and the comparison protocol.

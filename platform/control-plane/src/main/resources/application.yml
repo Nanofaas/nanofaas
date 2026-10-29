@@ -209,4 +209,6 @@ sync-queue:
   per-function-min-samples: 50
 
 logging:
+  level:
+    it.unimib.datai.nanofaas.execution.QueueObservation: "OFF"
   config: ${LOGGING_CONFIG:classpath:logback-spring.xml}

@@ -57,7 +57,7 @@ class EngineSyncQueueGatewaySettlementTest {
         EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config, controller, estimator,
                 provider, store, capacity, () -> 0L,
                 EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE,
-                function -> admissions.incrementAndGet(), function -> { },
+                function -> admissions.incrementAndGet(), (function, reason) -> { },
                 Clock.fixed(NOW, ZoneOffset.UTC));
         doAnswer(invocation -> {
             PendingEntry entry = invocation.getArgument(0);
@@ -67,7 +67,7 @@ class EngineSyncQueueGatewaySettlementTest {
             gateway.recordDispatched(entry.task().functionName(), NOW);
             store.finishSubmit(entry.ticket().id());
             return true;
-        }).when(engine).enqueue(any());
+        }).when(engine).enqueue(any(), anyInt());
         InvocationTask task = new InvocationTask("e1", "echo", null, null, null, null,
                 NOW, 1, InvocationKind.SYNC);
 
@@ -89,13 +89,13 @@ class EngineSyncQueueGatewaySettlementTest {
         DispatchCapacity capacity = mock(DispatchCapacity.class);
         when(capacity.activeGeneration("echo")).thenReturn(new FunctionGeneration("echo", 1));
         SchedulerEngine engine = mock(SchedulerEngine.class);
-        when(engine.enqueue(any())).thenReturn(true);
+        when(engine.enqueue(any(), anyInt())).thenReturn(true);
         @SuppressWarnings("unchecked")
         ObjectProvider<SchedulerEngine> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(engine);
         EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config, controller, estimator,
                 provider, new PendingWorkStore(8), capacity, () -> 0L,
-                EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE, function -> {}, function -> {},
+                EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE, function -> {}, (function, reason) -> {},
                 Clock.fixed(NOW, ZoneOffset.UTC));
         InvocationTask task = new InvocationTask("e2", "echo", null, null, null, null,
                 NOW, 2, InvocationKind.SYNC);
@@ -103,7 +103,7 @@ class EngineSyncQueueGatewaySettlementTest {
         assertThat(gateway.enqueue(task, NOW.plusSeconds(1))).isTrue();
 
         var admitted = org.mockito.ArgumentCaptor.forClass(PendingEntry.class);
-        verify(engine).enqueue(admitted.capture());
+        verify(engine).enqueue(admitted.capture(), org.mockito.ArgumentMatchers.eq(Integer.MAX_VALUE));
         assertThat(admitted.getValue().ticket().notBefore()).isEqualTo(NOW.plusSeconds(1));
         assertThat(admitted.getValue().ticket().enqueuedAt()).isEqualTo(NOW);
         assertThat(admitted.getValue().ticket().queueDeadline()).isEqualTo(NOW.plusMillis(100));
@@ -125,7 +125,7 @@ class EngineSyncQueueGatewaySettlementTest {
         EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config, controller, estimator,
                 provider, store, capacity, () -> 0L,
                 EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE,
-                function -> admitted.incrementAndGet(), function -> rejected.incrementAndGet(),
+                function -> admitted.incrementAndGet(), (function, reason) -> rejected.incrementAndGet(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
         InvocationTask task = new InvocationTask("e2", "echo", null, null, null, null,
                 NOW, 1, InvocationKind.SYNC);
@@ -144,19 +144,19 @@ class EngineSyncQueueGatewaySettlementTest {
         FunctionGeneration old = new FunctionGeneration("echo", 1);
         when(capacity.activeGeneration("echo")).thenReturn(new FunctionGeneration("echo", 2));
         SchedulerEngine engine = mock(SchedulerEngine.class);
-        when(engine.enqueue(any())).thenReturn(true);
+        when(engine.enqueue(any(), anyInt())).thenReturn(true);
         @SuppressWarnings("unchecked")
         ObjectProvider<SchedulerEngine> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(engine);
         EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config, controller, estimator,
                 provider, new PendingWorkStore(8), capacity, () -> 0L,
-                EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE, function -> {}, function -> {},
+                EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE, function -> {}, (function, reason) -> {},
                 Clock.fixed(NOW, ZoneOffset.UTC));
         InvocationTask task = new InvocationTask("e2", "echo", null, null, null, null,
                 NOW, 2, InvocationKind.SYNC);
         gateway.enqueue(task, NOW.plusSeconds(1), old);
         var admitted = org.mockito.ArgumentCaptor.forClass(PendingEntry.class);
-        verify(engine).enqueue(admitted.capture());
+        verify(engine).enqueue(admitted.capture(), org.mockito.ArgumentMatchers.eq(Integer.MAX_VALUE));
         assertThat(admitted.getValue().ticket().generation()).isEqualTo(old);
     }
 

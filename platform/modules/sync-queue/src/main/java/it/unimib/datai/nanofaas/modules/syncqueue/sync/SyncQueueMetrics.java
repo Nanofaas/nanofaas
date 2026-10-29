@@ -6,6 +6,9 @@ import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import java.util.Map;
+import java.util.EnumMap;
+import java.util.Locale;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,6 +21,8 @@ public class SyncQueueMetrics {
 
     private final MeterRegistry registry;
     private final Map<String, Counter> rejectedCounters = new ConcurrentHashMap<>();
+    private final Map<String, Map<SyncQueueRejectReason, Counter>> reasonCounters = new ConcurrentHashMap<>();
+    private final Map<String, Meter.Id> capacityGaugeIds = new ConcurrentHashMap<>();
     private final Map<String, Counter> admittedCounters = new ConcurrentHashMap<>();
     private final Map<String, Meter.Id> perFunctionDepthGaugeIds = new ConcurrentHashMap<>();
     /** The currently registered functions, never a tombstone history of removals. */
@@ -38,7 +43,7 @@ public class SyncQueueMetrics {
                 .register(registry);
     }
 
-    public void registerFunction(String functionName) {
+    public void registerFunction(String functionName, int capacity) {
         synchronized (functionStateMonitor) {
             if (!registeredFunctions.add(functionName)) {
                 return;
@@ -48,6 +53,16 @@ public class SyncQueueMetrics {
                     .tag(FUNCTION_TAG, functionName)
                     .register(registry);
             perFunctionDepthGaugeIds.put(functionName, gauge.getId());
+            capacityGaugeIds.put(functionName, Gauge.builder("sync_queue_capacity", () -> capacity)
+                    .tag(FUNCTION_TAG, functionName).register(registry).getId());
+            counter(admittedCounters, "sync_queue_admitted_total", functionName);
+            counter(rejectedCounters, "sync_queue_rejected_total", functionName);
+            var reasons = new EnumMap<SyncQueueRejectReason, Counter>(SyncQueueRejectReason.class);
+            for (var reason : SyncQueueRejectReason.values()) {
+                reasons.put(reason, Counter.builder("sync_queue_rejected_by_reason_total")
+                        .tags(FUNCTION_TAG, functionName, "reason", reason.name().toLowerCase(Locale.ROOT)).register(registry));
+            }
+            reasonCounters.put(functionName, reasons);
         }
     }
 
@@ -62,13 +77,14 @@ public class SyncQueueMetrics {
         admitted.increment();
     }
 
-    public void rejected(String functionName) {
+    public void rejected(String functionName, SyncQueueRejectReason reason) {
         Counter rejected;
         synchronized (functionStateMonitor) {
             if (!registeredFunctions.contains(functionName)) {
                 return;
             }
             rejected = counter(rejectedCounters, "sync_queue_rejected_total", functionName);
+            reasonCounters.get(functionName).get(reason).increment();
         }
         rejected.increment();
     }
@@ -76,6 +92,10 @@ public class SyncQueueMetrics {
     public void removeFunctionState(String functionName) {
         synchronized (functionStateMonitor) {
             registeredFunctions.remove(functionName);
+            var reasons = reasonCounters.remove(functionName);
+            if (reasons != null) reasons.values().forEach(this::remove);
+            var capacityGauge = capacityGaugeIds.remove(functionName);
+            if (capacityGauge != null) registry.remove(capacityGauge);
             Counter rejected = rejectedCounters.remove(functionName);
             Counter admitted = admittedCounters.remove(functionName);
             Meter.Id depthGaugeId = perFunctionDepthGaugeIds.remove(functionName);

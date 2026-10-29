@@ -273,7 +273,7 @@ class RetryBackoffIntegrationTest {
                     var controller = mock(SyncQueueAdmissionController.class);
                     when(controller.evaluate(any(), anyInt(), any())).thenReturn(SyncQueueAdmissionResult.accepted(0));
                     var gateway = new EngineSyncQueueGateway(config, controller, mock(WaitEstimator.class),
-                            provider, pending, capacity, sequence::incrementAndGet, admission, name -> {}, name -> {}, clock);
+                            provider, pending, capacity, sequence::incrementAndGet, admission, name -> {}, (name, reason) -> {}, clock);
                     when(syncProvider.getIfAvailable()).thenReturn(gateway);
                 }
                 retry = new EngineInvocationEnqueuer(provider, capacity, sequence::incrementAndGet,

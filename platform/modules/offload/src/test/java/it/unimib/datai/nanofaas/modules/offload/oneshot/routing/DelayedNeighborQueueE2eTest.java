@@ -47,7 +47,7 @@ class DelayedNeighborQueueE2eTest {
                 var active = new AtomicReference<ActiveRoutingPlan>();
                 var transition = new AtomicReference<>(new AllocationTransition("a", 2));
                 var router = new PlanRouter(() -> Optional.ofNullable(active.get()), () -> Optional.of(config), rev -> Optional.of(config),
-                        OneShotHopGuardE2eTest.peers("a", url, "b", "http://b:8080"), System::nanoTime,
+                        OneShotHopGuardE2eTest.peers("a", url, "b", "http://b:8080"), () -> 0,
                         name -> Optional.ofNullable(transition.get()));
                 ((DefaultOffloadGateway) app.getBean(OffloadGateway.class)).plannedRouting(router);
                 var headers = Map.of("X-NanoFaaS-Offload-Hop", "1", "X-NanoFaaS-Offload-Version", "1",

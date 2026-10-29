@@ -21,6 +21,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import java.util.function.LongSupplier;
 
 /**
@@ -42,7 +43,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
      * than the concrete metrics type, so this class stays free of a compile-time dependency on
      * the sync-queue module. */
     private final Consumer<String> onAdmitted;
-    private final Consumer<String> onRejected;
+    private final BiConsumer<String, SyncQueueRejectReason> onRejected;
     // A provider, not a direct reference: see EngineInvocationEnqueuer for why this must be
     // lazy — the engine's own dispatch calls back into a RetryScheduler, and a direct
     // constructor reference here would put this bean on that same cycle whenever it is the
@@ -63,7 +64,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                                   LongSupplier sequence,
                                   EngineInvocationEnqueuer.AdmissionProfile profile,
                                   Consumer<String> onAdmitted,
-                                  Consumer<String> onRejected) {
+                                  BiConsumer<String, SyncQueueRejectReason> onRejected) {
         this(configSource, admissionController, estimator, engine, store, capacityRegistry,
                 sequence, profile, onAdmitted, onRejected, Clock.systemUTC());
     }
@@ -77,7 +78,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                           LongSupplier sequence,
                           EngineInvocationEnqueuer.AdmissionProfile profile,
                           Consumer<String> onAdmitted,
-                          Consumer<String> onRejected,
+                          BiConsumer<String, SyncQueueRejectReason> onRejected,
                           Clock clock) {
         this.configSource = Objects.requireNonNull(configSource, "configSource must not be null");
         this.admissionController = Objects.requireNonNull(admissionController, "admissionController must not be null");
@@ -111,7 +112,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         try {
             doEnqueueOrThrow(task, clock.instant(), capacityRegistry.activeGeneration(task.functionName()));
         } catch (SyncQueueRejectedException rejected) {
-            onRejected.accept(task.functionName());
+            onRejected.accept(task.functionName(), rejected.reason());
             throw rejected;
         }
         onAdmitted.accept(task.functionName());
@@ -145,7 +146,9 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         // whenever this profile is active (SchedulerConfiguration.pendingWorkStore), and
         // store.offer() runs under the engine's gate, so every admission is serialized against
         // the same atomic cap.
-        if (!engine.getObject().enqueue(new PendingEntry(ticket, task))) {
+        int functionCap = task.functionSpec() != null && task.functionSpec().queueSize() != null
+                ? Math.max(1, task.functionSpec().queueSize()) : Integer.MAX_VALUE;
+        if (!engine.getObject().enqueue(new PendingEntry(ticket, task), functionCap)) {
             // Includes a generation removed after the lookup above: the engine re-checks it under
             // its gate and refuses the ticket before inserting it.
             throw depthRejected();
@@ -180,7 +183,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
             onAdmitted.accept(task.functionName());
             return true;
         } catch (SyncQueueRejectedException rejected) {
-            onRejected.accept(task.functionName());
+            onRejected.accept(task.functionName(), rejected.reason());
             return false;
         }
     }

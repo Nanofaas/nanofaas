@@ -396,6 +396,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         if (perFunctionCap <= 0) {
             throw new IllegalArgumentException("perFunctionCap must be positive");
         }
+        long queuedAt;
         synchronized (gate) {
             // Before any state changes: a stale generation never becomes a reservation, and never
             // recreates cap metadata a removal just cleared. Removal retires the generation before
@@ -416,9 +417,11 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 retire(entry.ticket());
                 throw failure;
             }
+            queuedAt = System.nanoTime();
             wake();
-            return true;
         }
+        QueueObservation.record("QUEUED", entry.task(), queuedAt);
+        return true;
     }
 
     /** Advisory: whether {@code functionName} is at the cap its last admission attempt supplied.
@@ -449,6 +452,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             }
         }
         if (removed != null) {
+            QueueObservation.record("REMOVED", removed.task(), System.nanoTime());
             dispatch.removed(removed.task());
         }
     }
@@ -487,6 +491,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             }
         }
         for (PendingEntry entry : removed) {
+            QueueObservation.record("REMOVED", entry.task(), System.nanoTime());
             dispatch.removed(entry.task());
         }
     }
@@ -568,6 +573,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         }
         close();
         for (PendingEntry entry : removed) {
+            QueueObservation.record("REMOVED", entry.task(), System.nanoTime());
             dispatch.removed(entry.task());
         }
     }
@@ -593,6 +599,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             }
         }
         for (PendingEntry entry : removed) {
+            QueueObservation.record("REMOVED", entry.task(), System.nanoTime());
             dispatch.removed(entry.task());
         }
     }
@@ -727,6 +734,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         } finally {
             // Even a failing promotion must deliver the expiries already removed from the store.
             for (PendingEntry entry : expired) {
+                QueueObservation.record("EXPIRED", entry.task(), System.nanoTime());
                 dispatch.expired(entry.task());
             }
         }
@@ -932,6 +940,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     private void submit(SchedulingTicket ticket, InvocationTask leased, DispatchOwnership lease) {
         boolean inputBackpressured = false;
+        QueueObservation.record("DISPATCH", leased, System.nanoTime());
         try {
             inputBackpressured = dispatchWithFailureCleanup(leased, lease);
         } finally {
@@ -941,6 +950,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             // deadline reap cannot remove it. When the settlement is unknown the reservation is
             // released; concluding that execution is the lifecycle's job, not the queue's.
             if (inputBackpressured) {
+                QueueObservation.record("RETURNED", leased, System.nanoTime());
                 requeue(ticket);
             } else {
                 finishSubmit(ticket);
@@ -972,6 +982,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             }
         }
         if (cancelled != null) {
+            QueueObservation.record("REMOVED", cancelled.task(), System.nanoTime());
             dispatch.removed(cancelled.task());
         }
     }

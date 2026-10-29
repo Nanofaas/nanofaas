@@ -18,7 +18,7 @@ class DelayedNeighborRoutingTest {
         var plan = new ActiveRoutingPlan("a", "a-run", 2, 1, Instant.EPOCH, Instant.EPOCH.plusSeconds(360), 1,
                 Map.of("f", new ActiveRoutingPlan.FunctionPlan(DIGEST, 3, 1, 0, 1, 1, 64, 1, .8, List.of(), List.of())));
         return new PlanRouter(() -> Optional.of(plan), () -> Optional.of(settings), rev -> Optional.of(settings),
-                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 100);
+                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 0);
     }
 
     private InvocationTask task() {
@@ -46,7 +46,7 @@ class DelayedNeighborRoutingTest {
                 Map.of("f", new ActiveRoutingPlan.FunctionPlan(DIGEST, 3, 1, 0, 1, 1, 64, 1, .8, List.of(), List.of())));
         var current = new AtomicReference<ActiveRoutingPlan>();
         var router = new PlanRouter(() -> Optional.ofNullable(current.get()), () -> Optional.of(settings), rev -> Optional.of(settings),
-                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 100,
+                OneShotHopGuardE2eTest.peers("a", "http://a:8080", "b", "http://b:8080"), () -> 0,
                 name -> {
                     // Publication races the router's initial plan read.
                     current.set(ready);

@@ -137,7 +137,7 @@ class OneShotHopGuardE2eTest {
         }
     }
 
-    @Test void confirmedOneHopPreservesNodeOnReplayAndOverflowUsesCloudBeforeSending() throws Exception {
+    @Test void confirmedOneHopPreservesNodeOnReplayAndDoesNotApplyRateQuotas() throws Exception {
         var backend=new MockWebServer();var cloud=new MockWebServer();backend.start();cloud.start();
         backend.setDispatcher(new Dispatcher() { @Override public MockResponse dispatch(RecordedRequest r) {return new MockResponse().setHeader("Content-Type","application/json").setBody("\"executed\"");} });
         cloud.setDispatcher(new Dispatcher() { @Override public MockResponse dispatch(RecordedRequest r) {return new MockResponse().setHeader("Content-Type","application/json").setHeader("X-NanoFaaS-Execution-Node","cloud").setBody("{\"executionId\":\"cloud-id\",\"status\":\"success\",\"output\":\"cloud\"}");} });
@@ -152,19 +152,19 @@ class OneShotHopGuardE2eTest {
             var from=Instant.now().minusSeconds(1);var until=from.plusSeconds(300);
             var ap=new ActiveRoutingPlan("a","a-run",1,1,from,until,1,Map.of("f",new ActiveRoutingPlan.FunctionPlan(DIGEST,ag,0,0,0,1,1,.5,.8,List.of(),List.of(grant))));
             var bp=new ActiveRoutingPlan("b","b-run",1,1,from,until,1,Map.of("f",new ActiveRoutingPlan.FunctionPlan(DIGEST,bg,1,0,0,0,1,.5,.8,List.of(grant),List.of())));
-            var clock=new AtomicLong();var ac=settings(ag,cloudUrl);var bc=settings(bg,cloudUrl);
-            ((DefaultOffloadGateway)a.getBean(OffloadGateway.class)).plannedRouting(new PlanRouter(()->Optional.of(ap),()->Optional.of(ac),rev->Optional.of(ac),peers("a",aUrl,"b",bUrl),clock::get));
-            ((DefaultOffloadGateway)b.getBean(OffloadGateway.class)).plannedRouting(new PlanRouter(()->Optional.of(bp),()->Optional.of(bc),rev->Optional.of(bc),peers("b",bUrl,"a",aUrl),clock::get));
+            var ac=settings(ag,cloudUrl);var bc=settings(bg,cloudUrl);
+            ((DefaultOffloadGateway)a.getBean(OffloadGateway.class)).plannedRouting(new PlanRouter(()->Optional.of(ap),()->Optional.of(ac),rev->Optional.of(ac),peers("a",aUrl,"b",bUrl),() -> 0));
+            ((DefaultOffloadGateway)b.getBean(OffloadGateway.class)).plannedRouting(new PlanRouter(()->Optional.of(bp),()->Optional.of(bc),rev->Optional.of(bc),peers("b",bUrl,"a",aUrl),() -> 0));
             String payload="{\"input\":{\"payload\":\"value\",\"nested\":[1,2]},\"headers\":{\"X-NanoFaaS-Offload-Origin\":\"spoof\",\"X-NanoFaaS-Execution-Node\":\"spoof\"}}";
             var result=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of("Idempotency-Key","replay"));
             assertThat(result.statusCode()).as(result.body()).isEqualTo(200);assertThat(result.headers().firstValue("X-NanoFaaS-Execution-Node")).contains("b");
             var replay=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of("Idempotency-Key","replay"));
             assertThat(replay.headers().firstValue("X-NanoFaaS-Execution-Node")).contains("b");assertThat(backend.getRequestCount()).isEqualTo(1);assertThat(cloud.getRequestCount()).isZero();
             var backendRequest=backend.takeRequest();assertThat(backendRequest.getBody().readUtf8()).doesNotContain("spoof","x-nanofaas-offload-origin");
-            var overflow=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of());assertThat(overflow.headers().firstValue("X-NanoFaaS-Execution-Node")).contains("cloud");
-            assertThat(backend.getRequestCount()).isEqualTo(1);assertThat(cloud.getRequestCount()).isEqualTo(1);
+            var second=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of());assertThat(second.headers().firstValue("X-NanoFaaS-Execution-Node")).contains("b");
+            assertThat(backend.getRequestCount()).isEqualTo(2);assertThat(cloud.getRequestCount()).isZero();
             var denied=send(bUrl+"/v1/functions/f:invoke","POST",payload,Map.of("X-NanoFaaS-Offload-Hop","1","X-NanoFaaS-Offload-Version","1","X-NanoFaaS-Offload-Origin","a@a-run","X-NanoFaaS-Offload-Epoch","1","X-NanoFaaS-Offload-Assignment","grant"));
-            assertThat(denied.statusCode()).isEqualTo(429);assertThat(cloud.getRequestCount()).isEqualTo(1);
+            assertThat(denied.statusCode()).isEqualTo(200);assertThat(backend.getRequestCount()).isEqualTo(3);assertThat(cloud.getRequestCount()).isZero();
         } finally {backend.close();cloud.close();}
     }
 }
