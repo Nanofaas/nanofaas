@@ -22,12 +22,15 @@ policy therefore does not require releasing the Gradle plugin.
 
 `settings.gradle` applies the **settings plugin**
 `io.github.nanofaas.build`. Its version is pinned by
-`nanofaasGradlePluginVersion` in the root `gradle.properties`; the default is `0.1.2`.
+`nanofaasGradlePluginVersion` in the root `gradle.properties`; the default is `0.1.3`.
 Gradle resolves it from the Gradle Plugin Portal, with Maven Central available for
 transitive dependencies. Java package names remain `it.unimib.datai.nanofaas.gradle`.
 
 NanoFaaS needs at least `0.1.2`: `0.1.1` rejects `build.native.maxHeap` and cannot
 build the one-shot Rust functions, whose `Dockerfile` is a symbolic link to a shared one.
+
+Version `0.1.3` records JVM recipes using `-Xint` as `interpreted` in build
+metadata and distribution reports, instead of incorrectly labeling them `c2`.
 
 The old repository-local ID `it.unimib.datai.nanofaas.control-plane-modules` was not
 published and is replaced by the organization-owned Portal namespace.
