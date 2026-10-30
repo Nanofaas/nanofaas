@@ -12,5 +12,6 @@ plugins {
 rootProject.name = 'nanofaas'
 
 include('common')
+include('logging-runtime')
 include(':sdks:java-lite'); project(':sdks:java-lite').projectDir = file('sdks/java-lite')
 include('functions:java:roman-numeral-lite')
