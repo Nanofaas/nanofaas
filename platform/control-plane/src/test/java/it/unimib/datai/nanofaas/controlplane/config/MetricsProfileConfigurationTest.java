@@ -23,6 +23,14 @@ class MetricsProfileConfigurationTest {
     @Test
     void completionHistogramIsAvailableInAdvancedOnly() {
         PrometheusMeterRegistry advanced = prometheusFor(MetricsProfileConfiguration.MetricsProfile.ADVANCED);
+        var idleMetrics = new it.unimib.datai.nanofaas.controlplane.service.Metrics(advanced);
+        idleMetrics.registerFunction("idle");
+        assertThat(advanced.scrape().lines().anyMatch(line ->
+                line.startsWith("function_completion_latency_ms_seconds_count{")
+                        && line.contains("function=\"idle\"")
+                        && line.contains("path=\"async\"")
+                        && line.contains("outcome=\"success\"")
+                        && line.matches(".* 0(?:\\.0)?$"))).isTrue();
         Timer.builder("function_completion_latency_ms")
                 .tags("function", "echo", "path", "async", "outcome", "success")
                 .register(advanced).record(80, TimeUnit.MILLISECONDS);
