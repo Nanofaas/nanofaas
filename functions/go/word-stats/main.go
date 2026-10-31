@@ -3,17 +3,13 @@ package main
 import (
 	"context"
 	"log"
-	"log/slog"
-	"maps"
 	"math"
-	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/miciav/nanofaas/function-sdk-go/nanofaas"
 )
-
-var nonWordPattern = regexp.MustCompile(`[^\p{L}\p{N}\s]`)
 
 func main() {
 	rt := nanofaas.NewRuntime()
@@ -23,23 +19,19 @@ func main() {
 	}
 }
 
-func handleWordStats(ctx context.Context, req nanofaas.InvocationRequest) (any, error) {
-	nanofaas.Logger(ctx, slog.Default()).Info("processing word stats")
-
+func handleWordStats(_ context.Context, req nanofaas.InvocationRequest) (any, error) {
 	input := toMap(req.Input)
 	text, _ := input["text"].(string)
-	if strings.TrimSpace(text) == "" {
+	if text == "" {
 		return map[string]any{"error": "Field 'text' is required and must be non-empty"}, nil
 	}
-
-	topN := 10
-	if raw, ok := input["topN"].(float64); ok {
-		topN = int(raw)
-	}
-	if raw, ok := input["topN"].(int); ok {
+	topN := 10.0
+	if raw, ok := input["topN"].(float64); ok && !math.IsNaN(raw) && !math.IsInf(raw, 0) {
 		topN = raw
 	}
-
+	if raw, ok := input["topN"].(int); ok {
+		topN = float64(raw)
+	}
 	return analyze(text, topN), nil
 }
 
@@ -54,51 +46,47 @@ func toMap(input any) map[string]any {
 	}
 }
 
-func analyze(text string, topN int) map[string]any {
-	normalized := strings.TrimSpace(nonWordPattern.ReplaceAllString(strings.ToLower(text), ""))
-	if normalized == "" {
+// The shared word-stats-runtime-v1 contract; see docs/word-stats-contract.md.
+func analyze(text string, topN float64) map[string]any {
+	frequencies := map[string]int{}
+	var word strings.Builder
+	count, totalLength := 0, 0
+	for _, char := range text {
+		if unicode.IsLetter(char) || unicode.IsNumber(char) {
+			word.WriteRune(unicode.ToLower(char))
+			totalLength++
+		} else if word.Len() > 0 {
+			frequencies[word.String()]++
+			count++
+			word.Reset()
+		}
+	}
+	if word.Len() > 0 {
+		frequencies[word.String()]++
+		count++
+	}
+	if count == 0 {
 		return map[string]any{"error": "No words found in input"}
 	}
-
-	words := strings.Fields(normalized)
-	frequencies := map[string]int{}
-	totalLength := 0
-	for _, word := range words {
-		frequencies[word]++
-		totalLength += len(word)
-	}
-
-	type wordCount struct {
+	type entry struct {
 		word  string
 		count int
 	}
-	counts := make([]wordCount, 0, len(frequencies))
-	for word, count := range maps.All(frequencies) {
-		counts = append(counts, wordCount{word: word, count: count})
+	ordered := make([]entry, 0, len(frequencies))
+	for word, n := range frequencies {
+		ordered = append(ordered, entry{word, n})
 	}
-	slices.SortFunc(counts, func(a, b wordCount) int {
+	slices.SortFunc(ordered, func(a, b entry) int {
 		if a.count != b.count {
 			return b.count - a.count
 		}
 		return strings.Compare(a.word, b.word)
 	})
-	if topN > len(counts) {
-		topN = len(counts)
+	limit := int(math.Min(float64(len(ordered)), math.Max(0, math.Floor(topN))))
+	topWords := make([]map[string]any, 0, limit)
+	for _, item := range ordered[:limit] {
+		topWords = append(topWords, map[string]any{"word": item.word, "count": item.count})
 	}
-
-	topWords := make([]map[string]any, 0, topN)
-	for _, item := range counts[:topN] {
-		topWords = append(topWords, map[string]any{
-			"word":  item.word,
-			"count": item.count,
-		})
-	}
-
-	average := float64(totalLength) / float64(len(words))
-	return map[string]any{
-		"wordCount":         len(words),
-		"uniqueWords":       len(frequencies),
-		"topWords":          topWords,
-		"averageWordLength": math.Round(average*100) / 100,
-	}
+	cents := (200*totalLength + count) / (2 * count)
+	return map[string]any{"wordCount": count, "uniqueWords": len(frequencies), "topWords": topWords, "averageWordLength": float64(cents) / 100}
 }

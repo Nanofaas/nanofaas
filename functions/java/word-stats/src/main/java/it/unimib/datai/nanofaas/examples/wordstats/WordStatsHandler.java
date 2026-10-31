@@ -2,83 +2,69 @@ package it.unimib.datai.nanofaas.examples.wordstats;
 
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
-import it.unimib.datai.nanofaas.sdk.FunctionContext;
 import it.unimib.datai.nanofaas.sdk.NanofaasFunction;
-import org.slf4j.Logger;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
-/**
- * Analyzes text and returns word statistics: total count, unique count,
- * top-N frequencies, and average word length.
- *
- * Input: {@code {"text": "...", "topN": 5}}  (topN defaults to 10)
- */
+/** The shared word-stats-runtime-v1 contract; see docs/word-stats-contract.md. */
 @NanofaasFunction
 public class WordStatsHandler implements FunctionHandler {
-    private static final Logger log = FunctionContext.getLogger(WordStatsHandler.class);
-
     @Override
-    @SuppressWarnings("unchecked")
     public Object handle(InvocationRequest request) {
-        log.info("Processing word stats for execution {}", FunctionContext.getExecutionId());
-
-        Map<String, Object> input = toMap(request.input());
-        String text = (String) input.get("text");
-        if (text == null || text.isBlank()) {
+        Map<?, ?> input = request.input() instanceof Map<?, ?> map ? map : Map.of();
+        Object rawText = request.input() instanceof String ? request.input() : input.get("text");
+        if (!(rawText instanceof String text) || text.isEmpty()) {
             return Map.of("error", "Field 'text' is required and must be non-empty");
         }
-
-        int topN = input.containsKey("topN")
-                ? ((Number) input.get("topN")).intValue()
-                : 10;
-
+        double topN = input.get("topN") instanceof Number value ? value.doubleValue() : 10;
+        if (!Double.isFinite(topN)) topN = 10;
         return analyze(text, topN);
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> toMap(Object input) {
-        if (input instanceof Map) {
-            return (Map<String, Object>) input;
+    private Map<String, Object> analyze(String text, double topN) {
+        Map<String, Long> frequencies = new HashMap<>();
+        StringBuilder word = new StringBuilder();
+        long count = 0, totalLength = 0;
+        for (int offset = 0; offset < text.length();) {
+            int cp = text.codePointAt(offset);
+            offset += Character.charCount(cp);
+            int category = Character.getType(cp);
+            if (Character.isLetter(cp) || category == Character.DECIMAL_DIGIT_NUMBER
+                    || category == Character.LETTER_NUMBER || category == Character.OTHER_NUMBER) {
+                word.appendCodePoint(Character.toLowerCase(cp));
+                totalLength++;
+            } else if (!word.isEmpty()) {
+                frequencies.merge(word.toString(), 1L, Long::sum);
+                count++;
+                word.setLength(0);
+            }
         }
-        if (input instanceof String s) {
-            return Map.of("text", s);
+        if (!word.isEmpty()) {
+            frequencies.merge(word.toString(), 1L, Long::sum);
+            count++;
         }
-        return Map.of();
+        if (count == 0) return Map.of("error", "No words found in input");
+        List<Map.Entry<String, Long>> ordered = new ArrayList<>(frequencies.entrySet());
+        ordered.sort((a, b) -> {
+            int byCount = Long.compare(b.getValue(), a.getValue());
+            return byCount != 0 ? byCount : compareScalars(a.getKey(), b.getKey());
+        });
+        int limit = (int) Math.min(ordered.size(), Math.max(0, Math.floor(topN)));
+        List<Map<String, Object>> topWords = ordered.subList(0, limit).stream()
+                .map(e -> Map.<String, Object>of("word", e.getKey(), "count", e.getValue())).toList();
+        long cents = (200 * totalLength + count) / (2 * count);
+        return Map.of("wordCount", count, "uniqueWords", (long) frequencies.size(),
+                "topWords", topWords, "averageWordLength", cents / 100.0);
     }
 
-    private Map<String, Object> analyze(String text, int topN) {
-        String[] words = text.toLowerCase(Locale.ROOT)
-                .replaceAll("[^\\p{L}\\p{N}\\s]", "")
-                .split("\\s+");
-
-        if (words.length == 1 && words[0].isEmpty()) {
-            return Map.of("error", "No words found in input");
+    private static int compareScalars(String a, String b) {
+        int i = 0, j = 0;
+        while (i < a.length() && j < b.length()) {
+            int left = a.codePointAt(i), right = b.codePointAt(j);
+            if (left != right) return Integer.compare(left, right);
+            i += Character.charCount(left);
+            j += Character.charCount(right);
         }
-
-        Map<String, Long> freq = Arrays.stream(words)
-                .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
-
-        List<Map<String, Object>> topWords = freq.entrySet().stream()
-                .sorted((left, right) -> {
-                    int byCount = Long.compare(right.getValue(), left.getValue());
-                    return byCount != 0 ? byCount : left.getKey().compareTo(right.getKey());
-                })
-                .limit(topN)
-                .map(e -> Map.<String, Object>of("word", e.getKey(), "count", e.getValue()))
-                .toList();
-
-        double avgLen = Arrays.stream(words)
-                .mapToInt(String::length)
-                .average()
-                .orElse(0.0);
-
-        return Map.of(
-                "wordCount", (long) words.length,
-                "uniqueWords", (long) freq.size(),
-                "topWords", topWords,
-                "averageWordLength", Math.round(avgLen * 100.0) / 100.0
-        );
+        return Integer.compare(a.length() - i, b.length() - j);
     }
 }

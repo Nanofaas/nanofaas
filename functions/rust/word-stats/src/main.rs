@@ -33,50 +33,59 @@ fn respond(input: &Value) -> HandlerResponse {
             .unwrap_or_default(),
         _ => "",
     };
-    if text.trim().is_empty() {
+    if text.is_empty() {
         return plain(json!({"error": "Field 'text' is required and must be non-empty"}));
     }
     let top_n = input
         .get("topN")
         .and_then(Value::as_f64)
-        .map_or(DEFAULT_TOP_N, |top_n| top_n.max(0.0) as usize);
+        .filter(|n| n.is_finite())
+        .map_or(DEFAULT_TOP_N, |n| n.max(0.0).floor() as usize);
     plain(analyze(text, top_n))
 }
 
+// The shared word-stats-runtime-v1 contract; see docs/word-stats-contract.md.
 fn analyze(text: &str, top_n: usize) -> Value {
-    // Go's [^\p{L}\p{N}\s] filter; is_alphanumeric also keeps the few marks Unicode counts as
-    // alphabetic, which the regex drops.
-    let normalized: String = text
-        .to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
-        .collect();
-    let words: Vec<&str> = normalized.split_whitespace().collect();
-    if words.is_empty() {
+    use unicode_general_category::{GeneralCategory::*, get_general_category};
+    let mut frequencies: HashMap<String, usize> = HashMap::new();
+    let mut word = String::new();
+    let (mut count, mut total_length) = (0usize, 0usize);
+    for char in text.chars() {
+        if matches!(
+            get_general_category(char),
+            UppercaseLetter
+                | LowercaseLetter
+                | TitlecaseLetter
+                | ModifierLetter
+                | OtherLetter
+                | DecimalNumber
+                | LetterNumber
+                | OtherNumber
+        ) {
+            word.push(char.to_lowercase().next().unwrap());
+            total_length += 1;
+        } else if !word.is_empty() {
+            *frequencies.entry(std::mem::take(&mut word)).or_default() += 1;
+            count += 1;
+        }
+    }
+    if !word.is_empty() {
+        *frequencies.entry(word).or_default() += 1;
+        count += 1;
+    }
+    if count == 0 {
         return json!({"error": "No words found in input"});
     }
-
-    let mut frequencies: HashMap<&str, usize> = HashMap::new();
-    for word in &words {
-        *frequencies.entry(word).or_default() += 1;
-    }
-    let mut counts: Vec<(&str, usize)> = frequencies.iter().map(|(w, c)| (*w, *c)).collect();
-    counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
-    let top_words: Vec<Value> = counts
+    let mut ordered: Vec<_> = frequencies.iter().collect();
+    ordered.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    let top_words: Vec<_> = ordered
         .iter()
         .take(top_n)
-        .map(|(word, count)| json!({"word": word, "count": count}))
+        .map(|(word, n)| json!({"word":word,"count":n}))
         .collect();
-
-    // Byte length, like Go's len(word), so every runtime reports the same average.
-    let total_length: usize = words.iter().map(|word| word.len()).sum();
-    let average = total_length as f64 / words.len() as f64;
-    json!({
-        "wordCount": words.len(),
-        "uniqueWords": frequencies.len(),
-        "topWords": top_words,
-        "averageWordLength": (average * 100.0).round() / 100.0,
-    })
+    let cents = (200 * total_length + count) / (2 * count);
+    json!({"wordCount":count,"uniqueWords":frequencies.len(),
+           "topWords":top_words,"averageWordLength":cents as f64/100.0})
 }
 
 fn plain(output: Value) -> HandlerResponse {
@@ -106,7 +115,7 @@ mod tests {
     fn shared_cases() -> Vec<Case> {
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../test-data/word-stats/correctness.json"
+            "/../../test-data/word-stats/runtime-contract.json"
         );
         let fixture: Fixture =
             serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();

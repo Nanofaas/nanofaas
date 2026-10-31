@@ -8,6 +8,7 @@ publish = false
 nanofaas-sdk = { path = "../../../sdks/rust" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+unicode-general-category = "1.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 # Keep the default panic = "unwind": the runtime turns a handler panic into HANDLER_ERROR,
