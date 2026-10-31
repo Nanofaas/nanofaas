@@ -24,7 +24,8 @@ integer cents: `(200 * total_scalar_length + word_count) // (2 * word_count)`.
 `functions/test-data/word-stats/runtime_contract.py` generates the common fixture
 and checks known rounding/Unicode examples. Every handler's native tests read
 `runtime-contract.json`, including all medium performance inputs with identical
-expected outputs. Generate, then verify with `--check`. Existing correctness and
+expected outputs. Generate, then verify with `--check`. The CI tools job runs
+this check automatically through `test_runtime_contract.py`. Existing correctness and
 performance corpora are not rewritten. Unicode categories follow each runtime's
 Unicode tables; the fixtures cover common assigned characters, not equivalence
 for characters introduced in different Unicode releases. The performance corpus
