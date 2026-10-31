@@ -20,6 +20,32 @@ class MetricsTest {
     }
 
     @Test
+    void completionSeparatesPathAndOutcomeAndRemovesAllSeries() {
+        var sync = it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC;
+        var async = it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.ASYNC;
+        var success = it.unimib.datai.nanofaas.common.model.InvocationResult.success("ok");
+        metrics.completion("echo", sync, success, 10_000_000L);
+        metrics.completion("echo", async, success, 80_000_000L);
+        metrics.completion("echo", async,
+                it.unimib.datai.nanofaas.common.model.InvocationResult.error("TIMEOUT", "deadline"), 120_000_000L);
+        metrics.completion("echo", async,
+                it.unimib.datai.nanofaas.common.model.InvocationResult.error("FAILED", "error"), 30_000_000L);
+        Timer asyncSuccess = registry.get("function_completion_latency_ms")
+                .tags("function", "echo", "path", "async", "outcome", "success").timer();
+        assertThat(asyncSuccess.count()).isEqualTo(1);
+        assertThat(asyncSuccess.totalTime(java.util.concurrent.TimeUnit.MILLISECONDS)).isEqualTo(80);
+        assertThat(registry.get("function_completion_latency_ms")
+                .tags("path", "async", "outcome", "timeout").timer().count()).isEqualTo(1);
+        assertThat(registry.get("function_completion_latency_ms")
+                .tags("path", "async", "outcome", "error").timer().count()).isEqualTo(1);
+        assertThat(registry.get("function_completion_latency_ms")
+                .tags("path", "sync", "outcome", "success").timer().count()).isEqualTo(1);
+        metrics.removeFunction("echo");
+        metrics.completion("echo", async, success, 10_000_000L);
+        assertThat(registry.find("function_completion_latency_ms").timers()).isEmpty();
+    }
+
+    @Test
     void coldStart_incrementsCounter() {
         metrics.coldStart("echo");
         metrics.coldStart("echo");

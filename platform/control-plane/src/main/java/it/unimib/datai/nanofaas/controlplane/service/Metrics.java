@@ -87,6 +87,17 @@ public class Metrics implements InvocationObservations, OffloadMeters {
         }
     }
 
+    /** Original admission to terminal outcome, once per execution rather than per attempt. */
+    public void completion(String function, InvocationKind kind,
+                           it.unimib.datai.nanofaas.common.model.InvocationResult result, long nanos) {
+        FunctionMeters current = metersOrNull(function);
+        if (current == null) return;
+        String code = result.error() == null ? null : result.error().code();
+        String outcome = result.success() ? "success"
+                : code != null && (code.equals("TIMEOUT") || code.endsWith("_TIMEOUT")) ? "timeout" : "error";
+        current.byPath().get(kind).completion().get(outcome).record(nanos, java.util.concurrent.TimeUnit.NANOSECONDS);
+    }
+
     public void enqueue(String function) {
         FunctionMeters metersFor = metersOrNull(function);
         if (metersFor != null) {
@@ -300,7 +311,10 @@ public class Metrics implements InvocationObservations, OffloadMeters {
             byPath.put(kind, new PathMeters(
                     pathCounter("function_admitted_total", function, kind),
                     pathCounter("function_refused_total", function, kind),
-                    pathCounter("function_replayed_total", function, kind)));
+                    pathCounter("function_replayed_total", function, kind),
+                    Map.of("success", completionTimer(function, kind, "success"),
+                           "error", completionTimer(function, kind, "error"),
+                           "timeout", completionTimer(function, kind, "timeout"))));
         }
         return new FunctionMeters(
                 enqueue,
@@ -339,8 +353,15 @@ public class Metrics implements InvocationObservations, OffloadMeters {
             all.add(path.admitted().getId());
             all.add(path.refused().getId());
             all.add(path.replayed().getId());
+            path.completion().values().forEach(timer -> all.add(timer.getId()));
         });
         return List.copyOf(all);
+    }
+
+    private Timer completionTimer(String function, InvocationKind kind, String outcome) {
+        return Timer.builder("function_completion_latency_ms")
+                .tag(FUNCTION_TAG, function).tag("path", kind.tag()).tag("outcome", outcome)
+                .register(registry);
     }
 
     private Counter pathCounter(String name, String function, InvocationKind kind) {
@@ -367,7 +388,7 @@ public class Metrics implements InvocationObservations, OffloadMeters {
                           List<Meter.Id> meterIds) {
     }
 
-    record PathMeters(Counter admitted, Counter refused, Counter replayed) {
+    record PathMeters(Counter admitted, Counter refused, Counter replayed, Map<String, Timer> completion) {
     }
 
     record FunctionTimers(Timer latency, Timer initDuration, Timer queueWait, Timer e2eLatency) {

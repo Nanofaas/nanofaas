@@ -23,6 +23,7 @@ COPY functions/java/json-transform-lite/settings.gradle.docker settings.gradle
 
 # Copy only required modules
 COPY platform/libs/common/ common/
+COPY platform/libs/logging-runtime/ logging-runtime/
 COPY sdks/java-lite/ sdks/java-lite/
 COPY functions/java/json-transform-lite/ functions/java/json-transform-lite/
 

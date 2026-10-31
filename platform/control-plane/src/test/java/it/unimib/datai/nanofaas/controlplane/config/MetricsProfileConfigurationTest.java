@@ -21,6 +21,28 @@ class MetricsProfileConfigurationTest {
     private final MetricsProfileConfiguration configuration = new MetricsProfileConfiguration();
 
     @Test
+    void completionHistogramIsAvailableInAdvancedOnly() {
+        PrometheusMeterRegistry advanced = prometheusFor(MetricsProfileConfiguration.MetricsProfile.ADVANCED);
+        var idleMetrics = new it.unimib.datai.nanofaas.controlplane.service.Metrics(advanced);
+        idleMetrics.registerFunction("idle");
+        assertThat(advanced.scrape().lines().anyMatch(line ->
+                line.startsWith("function_completion_latency_ms_seconds_count{")
+                        && line.contains("function=\"idle\"")
+                        && line.contains("path=\"async\"")
+                        && line.contains("outcome=\"success\"")
+                        && line.matches(".* 0(?:\\.0)?$"))).isTrue();
+        Timer.builder("function_completion_latency_ms")
+                .tags("function", "echo", "path", "async", "outcome", "success")
+                .register(advanced).record(80, TimeUnit.MILLISECONDS);
+        assertThat(advanced.scrape()).contains("function_completion_latency_ms_seconds_bucket");
+        PrometheusMeterRegistry basic = prometheusFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
+        Timer.builder("function_completion_latency_ms")
+                .tags("function", "echo", "path", "async", "outcome", "success")
+                .register(basic).record(80, TimeUnit.MILLISECONDS);
+        assertThat(basic.scrape()).doesNotContain("function_completion_latency_ms_seconds");
+    }
+
+    @Test
     void basicKeepsOperationalMetricsAndDropsAdvancedMetrics() {
         SimpleMeterRegistry registry = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
 
