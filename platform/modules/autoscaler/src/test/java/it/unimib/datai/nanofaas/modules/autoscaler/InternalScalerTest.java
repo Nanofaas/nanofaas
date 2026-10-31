@@ -49,6 +49,7 @@ class InternalScalerTest {
     private ManagedDeploymentCoordinator deploymentCoordinator;
 
     private InternalScaler scaler;
+    private final MutableClock clock = new MutableClock(1_700_000_000_000L);
     private DeploymentWakeUpCoordinator wakeUpCoordinator;
     private final WakeUpTestResources wakeUpResources = new WakeUpTestResources();
 
@@ -62,7 +63,7 @@ class InternalScalerTest {
         lenient().when(deploymentCoordinator.generationOf(any())).thenAnswer(invocation ->
                 wakeUpResources.generation(invocation.getArgument(0, RegisteredFunction.class).name()));
         lenient().when(deploymentCoordinator.setReplicas(any(FunctionGeneration.class), any(), anyInt())).thenReturn(true);
-        scaler = new InternalScaler(registry, metricsReader, deploymentCoordinator, PROPS, coldStartTracker, wakeUpCoordinator);
+        scaler = new InternalScaler(registry, metricsReader, deploymentCoordinator, PROPS, coldStartTracker, wakeUpCoordinator, null, clock.instantSource());
     }
 
     @AfterEach
@@ -224,6 +225,8 @@ class InternalScalerTest {
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
 
         scaler.scalingLoop();
+        clock.advanceMillis(60_000);
+        scaler.scalingLoop();
 
         verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(0));
     }
@@ -239,6 +242,8 @@ class InternalScalerTest {
         wakeUpCoordinator.protectAndScaleUp(wakeUpResources.generation("echo"), target(spec),
                 System.nanoTime() + TimeUnit.SECONDS.toNanos(1), () -> { });
 
+        scaler.scalingLoop();
+        clock.advanceMillis(60_000);
         scaler.scalingLoop();
 
         verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(0));
@@ -256,6 +261,8 @@ class InternalScalerTest {
         wakeUpCoordinator.protectAndScaleUp(wakeUpResources.generation("echo"), target(spec),
                 System.nanoTime() - 1, () -> { });
 
+        scaler.scalingLoop();
+        clock.advanceMillis(60_000);
         scaler.scalingLoop();
 
         verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(0));
@@ -278,6 +285,8 @@ class InternalScalerTest {
         when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(2, 2));
         when(deploymentCoordinator.getFreshReplicaStatus(target))
                 .thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
+        scaler.scalingLoop();
+        clock.advanceMillis(60_000);
         doAnswer(invocation -> {
             if ((int) invocation.getArgument(2) == 0) {
                 zeroEntered.countDown();

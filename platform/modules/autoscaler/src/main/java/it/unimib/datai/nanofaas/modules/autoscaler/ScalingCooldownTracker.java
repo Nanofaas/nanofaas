@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,6 +12,21 @@ public final class ScalingCooldownTracker {
 
     private final Map<String, Instant> lastScaleUp = new ConcurrentHashMap<>();
     private final Map<String, Instant> lastScaleDown = new ConcurrentHashMap<>();
+
+    private final Map<String, ZeroWindow> zeroWindows = new ConcurrentHashMap<>();
+
+    public boolean allowScaleToZero(FunctionGeneration generation, Instant now) {
+        ZeroWindow window = zeroWindows.compute(generation.functionName(), (_, previous) ->
+                previous != null && previous.generation().equals(generation)
+                        ? previous : new ZeroWindow(generation, now));
+        return allow(window.since(), now, SCALE_DOWN_COOLDOWN_MS);
+    }
+
+    public void resetScaleToZero(String functionName) {
+        zeroWindows.remove(functionName);
+    }
+
+    private record ZeroWindow(FunctionGeneration generation, Instant since) { }
 
     public boolean allowScaleUp(String functionName, Instant now) {
         return allow(lastScaleUp.get(functionName), now, SCALE_UP_COOLDOWN_MS);
@@ -30,6 +47,7 @@ public final class ScalingCooldownTracker {
     public void clear(String functionName) {
         lastScaleUp.remove(functionName);
         lastScaleDown.remove(functionName);
+        resetScaleToZero(functionName);
     }
 
     private static boolean allow(Instant last, Instant now, long cooldownMs) {

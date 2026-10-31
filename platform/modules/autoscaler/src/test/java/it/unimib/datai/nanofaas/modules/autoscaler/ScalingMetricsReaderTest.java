@@ -43,6 +43,18 @@ class ScalingMetricsReaderTest {
     }
 
     @Test
+    void pendingWorkIncludesBothQueuedAndExecutingRequests() {
+        assertThat(reader.hasPendingWork("echo")).isFalse();
+        when(scalingMetricsSource.queueDepth("echo")).thenReturn(1);
+        assertThat(reader.hasPendingWork("echo")).isTrue();
+        when(scalingMetricsSource.queueDepth("echo")).thenReturn(0);
+        when(scalingMetricsSource.inFlight("echo")).thenReturn(1);
+        assertThat(reader.hasPendingWork("echo")).isTrue();
+        when(scalingMetricsSource.inFlight("echo")).thenReturn(0);
+        assertThat(reader.hasPendingWork("echo")).isFalse();
+    }
+
+    @Test
     void readMetric_queueDepth() {
         when(scalingMetricsSource.queueDepth("echo")).thenReturn(7);
 

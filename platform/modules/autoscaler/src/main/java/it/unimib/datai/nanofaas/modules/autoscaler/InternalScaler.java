@@ -30,6 +30,7 @@ public class InternalScaler implements SmartLifecycle {
     private final ScalingProperties properties;
     private final ColdStartTracker coldStartTracker;
     private final ScalingDecisionCalculator decisionCalculator;
+    private final ScalingMetricsReader metricsReader;
     private final ScalingCooldownTracker cooldownTracker;
     private final ScalingProgressTracker progressTracker;
     private final DeploymentWakeUpControl wakeUpCoordinator;
@@ -72,6 +73,7 @@ public class InternalScaler implements SmartLifecycle {
         this.deploymentCoordinator = deploymentCoordinator;
         this.properties = properties;
         this.coldStartTracker = coldStartTracker;
+        this.metricsReader = metricsReader;
         this.decisionCalculator = new ScalingDecisionCalculator(metricsReader);
         this.cooldownTracker = new ScalingCooldownTracker();
         this.progressTracker = new ScalingProgressTracker();
@@ -158,6 +160,7 @@ public class InternalScaler implements SmartLifecycle {
         try {
             evaluateAndScale(generation, target, spec);
         } catch (Exception ex) {
+            cooldownTracker.resetScaleToZero(spec.name());
             log.error("Error scaling function {}", spec.name(), ex);
         }
     }
@@ -174,6 +177,7 @@ public class InternalScaler implements SmartLifecycle {
         if (!(observation instanceof ReplicaObservation.Available available)) {
             // No reading at all. Skipping the cycle is the only correct move: treating it as zero
             // replicas would scale a healthy deployment on the strength of a failed GET (I9).
+            cooldownTracker.resetScaleToZero(functionName);
             log.debug("Skipping scaling for {}: no replica reading available ({})",
                     functionName, observation);
             return;
@@ -192,6 +196,19 @@ public class InternalScaler implements SmartLifecycle {
 
         Instant now = instantSource.instant();
         int recommended = decision.desiredReplicas();
+
+        if (recommended == 0 && requestedReplicas > 0) {
+            // A quiet RPS interval alone must not terminate a newly woken or busy pod.
+            if (metricsReader.hasPendingWork(functionName)) {
+                cooldownTracker.resetScaleToZero(functionName);
+                return;
+            }
+            if (!cooldownTracker.allowScaleToZero(generation, now)) {
+                return;
+            }
+        } else {
+            cooldownTracker.resetScaleToZero(functionName);
+        }
 
         if (recommended > requestedReplicas) {
             // Genuine scale-up: the load needs more replicas than we have already asked for.
@@ -232,15 +249,19 @@ public class InternalScaler implements SmartLifecycle {
             return;
         }
         boolean scaled = wakeUpCoordinator.scaleDownIfUnprotected(generation, target, () -> {
+            if (decision.desiredReplicas() == 0 && metricsReader.hasPendingWork(functionName)) {
+                return false;
+            }
             log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
                     functionName, requestedReplicas, decision.desiredReplicas(), decision.maxRatio());
             return deploymentCoordinator.setReplicas(generation, target, decision.desiredReplicas());
         });
+        cooldownTracker.resetScaleToZero(functionName);
         if (scaled) {
             cooldownTracker.recordScaleDown(functionName, now);
             progressTracker.clear(functionName);
         } else {
-            log.debug("Skipping scale-down for {} while deployment wake-up is protected", functionName);
+            log.debug("Scale-down for {} was not applied", functionName);
         }
     }
 

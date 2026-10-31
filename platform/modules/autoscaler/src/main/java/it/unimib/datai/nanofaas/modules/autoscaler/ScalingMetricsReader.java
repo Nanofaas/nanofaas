@@ -34,6 +34,11 @@ public class ScalingMetricsReader {
         };
     }
 
+    public boolean hasPendingWork(String functionName) {
+        return scalingMetricsSource.queueDepth(functionName) > 0
+                || scalingMetricsSource.inFlight(functionName) > 0;
+    }
+
     private double readQueueDepth(String functionName) {
         return scalingMetricsSource.queueDepth(functionName);
     }

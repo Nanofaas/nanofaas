@@ -45,6 +45,27 @@ snapshot with a 5 s TTL and a staleness bound deliberately shorter than this
 window, so a failing read path makes the scaler skip a cycle rather than mistake
 a frozen observation for a stuck rollout.
 
+### Scale-to-zero stabilization
+
+For `INTERNAL` scaling with `minReplicas: 0`, a zero recommendation must
+persist for 60 seconds before the scaler requests zero replicas. The window
+starts at the first zero recommendation while the requested replica count is
+positive. Every poll must observe no queued or in-flight requests, regardless of
+the selected scaling metric. A positive recommendation, pending work, an
+unavailable replica observation, an evaluation failure, or an already-zero target
+resets the window. A replacement function generation starts its own window.
+
+The scaler checks pending work again inside the wake-up coordinator's protected
+scale-down callback. A blocked or unsuccessful scale-down starts a new window.
+The existing 60-second scale-down cooldown and wake-up leases still apply;
+positive replica targets retain their existing scaling policy. The window uses
+the existing scale-down duration and adds no configuration setting.
+
+This is an observed quiet window at the configured polling interval, not an
+atomic admission barrier. A request arriving after the final pending-work check
+can still race a scale-down; wake-up coordination and normal dispatch recovery
+remain responsible for that race.
+
 Functions opt in through the `scalingConfig` block of the `FunctionSpec`
 (strategy `INTERNAL`, min/max replicas, metrics such as `queue_depth`,
 `in_flight`, `rps`).

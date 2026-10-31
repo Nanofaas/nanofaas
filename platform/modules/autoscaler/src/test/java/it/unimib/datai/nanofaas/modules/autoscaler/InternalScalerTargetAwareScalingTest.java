@@ -18,6 +18,8 @@ import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -150,9 +152,100 @@ class InternalScalerTargetAwareScalingTest {
     }
 
     @Test
+    void wakeUpWithAnEmptyRpsInterval_requiresAQuietWindowBeforeReturningToZero() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 1,
+                List.of(new ScalingMetric("rps", "100", null)));
+        RegisteredFunction fn = function("echo", scaling);
+        ManagedDeploymentTarget target = target(fn);
+        when(registry.listRegistered()).thenReturn(List.of(fn));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(1, 1));
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+        InternalScaler scaler = scaler();
+
+        scaler.scalingLoop();
+        clock.advanceMillis(59_999);
+        scaler.scalingLoop();
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
+
+        clock.advanceMillis(1);
+        scaler.scalingLoop();
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"pending", "load", "unavailable", "failure", "zero", "removed", "replaced"})
+    void interruptedQuietWindow_mustStartAgain(String interruption) {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 1,
+                List.of(new ScalingMetric("rps", "100", null)));
+        RegisteredFunction fn = function("echo", scaling);
+        ManagedDeploymentTarget target = target(fn);
+        when(registry.listRegistered()).thenReturn(List.of(fn));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(1, 1));
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+        InternalScaler scaler = scaler();
+        scaler.scalingLoop();
+        clock.advanceMillis(60_000);
+
+        switch (interruption) {
+            case "pending" -> when(metricsReader.hasPendingWork("echo")).thenReturn(true);
+            case "load" -> when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(1.0);
+            case "unavailable" -> when(deploymentCoordinator.observeReplicaStatus(target))
+                    .thenReturn(ReplicaObservation.unavailable(clock.instant(), "provider unavailable"));
+            case "failure" -> when(deploymentCoordinator.observeReplicaStatus(target))
+                    .thenThrow(new IllegalStateException("provider failure"));
+            case "zero" -> when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(0, 0));
+            case "removed" -> {
+                scaler.removeFunctionState("echo");
+                wakeUpResources.generations().remove("echo");
+                wakeUpResources.generations().register("echo", 1);
+            }
+            case "replaced" -> {
+                wakeUpResources.generations().remove("echo");
+                wakeUpResources.generations().register("echo", 1);
+            }
+            default -> throw new AssertionError(interruption);
+        }
+        scaler.scalingLoop();
+        // doReturn also replaces the deliberately throwing provider stub.
+        org.mockito.Mockito.doReturn(observed(1, 1)).when(deploymentCoordinator).observeReplicaStatus(target);
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+        if (interruption.equals("pending")) {
+            when(metricsReader.hasPendingWork("echo")).thenReturn(false);
+        }
+        scaler.scalingLoop();
+        clock.advanceMillis(59_999);
+        scaler.scalingLoop();
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
+        clock.advanceMillis(1);
+        scaler.scalingLoop();
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
+    }
+
+    @Test
+    void workArrivingBeforeTheDownscaleCallback_blocksZeroAndRestartsTheWindow() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 1,
+                List.of(new ScalingMetric("rps", "100", null)));
+        RegisteredFunction fn = function("echo", scaling);
+        ManagedDeploymentTarget target = target(fn);
+        when(registry.listRegistered()).thenReturn(List.of(fn));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(1, 1));
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+        InternalScaler scaler = scaler();
+        scaler.scalingLoop();
+        clock.advanceMillis(60_000);
+        when(metricsReader.hasPendingWork("echo")).thenReturn(false, true, false);
+        scaler.scalingLoop();
+        scaler.scalingLoop();
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
+        clock.advanceMillis(60_000);
+        scaler.scalingLoop();
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
+    }
+
+    @Test
     void stuckReplicas_doNotBlockAGenuineLoadDrivenDownscale() {
         // 10 requested, but the rollout is stuck at 2 ready. Load drops to zero: the downscale
-        // to 0 must fire immediately, not wait for the 8 never-ready replicas to catch up.
+        // to 0 must wait for quiet, but not for the 8 never-ready replicas to catch up.
         ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 10,
                 List.of(new ScalingMetric("in_flight", "2", null)));
         RegisteredFunction fn = function("echo", scaling);
@@ -161,7 +254,10 @@ class InternalScalerTargetAwareScalingTest {
         when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 2));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
 
-        scaler().scalingLoop();
+        InternalScaler scaler = scaler();
+        scaler.scalingLoop();
+        clock.advanceMillis(60_000);
+        scaler.scalingLoop();
 
         verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
     }
@@ -220,7 +316,10 @@ class InternalScalerTargetAwareScalingTest {
         when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(2, 2));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
 
-        scaler().scalingLoop();
+        InternalScaler scaler = scaler();
+        scaler.scalingLoop();
+        clock.advanceMillis(60_000);
+        scaler.scalingLoop();
 
         verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
     }

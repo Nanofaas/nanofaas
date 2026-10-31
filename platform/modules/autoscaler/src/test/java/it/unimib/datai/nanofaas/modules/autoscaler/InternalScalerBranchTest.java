@@ -105,7 +105,7 @@ class InternalScalerBranchTest {
 
     @Test
     void scalingLoop_scaleDownCooldown_preventsSecondScaleDown() {
-        RegisteredFunction spec = spec("echo", 0, 10, List.of(new ScalingMetric("in_flight", "2", null)));
+        RegisteredFunction spec = spec("echo", 1, 10, List.of(new ScalingMetric("in_flight", "2", null)));
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
         when(deploymentCoordinator.observeReplicaStatus(target(spec))).thenReturn(observed(3, 3));
@@ -114,7 +114,7 @@ class InternalScalerBranchTest {
         scaler.scalingLoop();
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, times(1)).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(0));
+        verify(deploymentCoordinator, times(1)).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(1));
     }
 
     @Test
