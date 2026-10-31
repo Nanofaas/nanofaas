@@ -46,6 +46,7 @@ class MetricsProfileConfiguration {
             "function_init_duration_ms",
             "function_queue_wait_ms",
             "function_e2e_latency_ms",
+            "function_completion_latency_ms",
             "scheduler_switch_duration"
     );
 
@@ -72,7 +73,8 @@ class MetricsProfileConfiguration {
      */
     private static final Set<String> ADVANCED_ONLY_TIMERS = Set.of(
             "function_init_duration_ms",
-            "function_queue_wait_ms"
+            "function_queue_wait_ms",
+            "function_completion_latency_ms"
     );
 
     private static final Set<String> ADVANCED_METRICS = Set.of(

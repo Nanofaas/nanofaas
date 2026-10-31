@@ -216,6 +216,7 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
     public void terminal(InvocationTask task, InvocationResult result, long endToEndNanos) {
         String functionName = task.functionName();
         bestEffort(() -> metrics.timers(functionName).e2eLatency().record(endToEndNanos, TimeUnit.NANOSECONDS));
+        bestEffort(() -> metrics.completion(functionName, task.kind(), result, endToEndNanos));
     }
 
     private static void bestEffort(Runnable observer) {

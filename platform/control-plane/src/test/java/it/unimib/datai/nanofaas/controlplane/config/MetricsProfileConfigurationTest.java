@@ -21,6 +21,20 @@ class MetricsProfileConfigurationTest {
     private final MetricsProfileConfiguration configuration = new MetricsProfileConfiguration();
 
     @Test
+    void completionHistogramIsAvailableInAdvancedOnly() {
+        PrometheusMeterRegistry advanced = prometheusFor(MetricsProfileConfiguration.MetricsProfile.ADVANCED);
+        Timer.builder("function_completion_latency_ms")
+                .tags("function", "echo", "path", "async", "outcome", "success")
+                .register(advanced).record(80, TimeUnit.MILLISECONDS);
+        assertThat(advanced.scrape()).contains("function_completion_latency_ms_seconds_bucket");
+        PrometheusMeterRegistry basic = prometheusFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
+        Timer.builder("function_completion_latency_ms")
+                .tags("function", "echo", "path", "async", "outcome", "success")
+                .register(basic).record(80, TimeUnit.MILLISECONDS);
+        assertThat(basic.scrape()).doesNotContain("function_completion_latency_ms_seconds");
+    }
+
+    @Test
     void basicKeepsOperationalMetricsAndDropsAdvancedMetrics() {
         SimpleMeterRegistry registry = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
 

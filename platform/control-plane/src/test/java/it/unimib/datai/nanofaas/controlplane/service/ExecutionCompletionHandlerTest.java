@@ -81,6 +81,14 @@ class ExecutionCompletionHandlerTest {
     // ─── dispatch tests ────────────────────────────────────────────────────────
 
     @Test
+    void terminalRecordsTheOriginalPathAndTerminalResult() {
+        InvocationTask task = task("terminal-observation", "testFunc", ExecutionMode.LOCAL);
+        InvocationResult result = InvocationResult.success("ok");
+        completionHandler.terminal(task, result, 80_000_000L);
+        verify(metrics).completion("testFunc", task.kind(), result, 80_000_000L);
+    }
+
+    @Test
     void dispatch_whenExecutionRecordMissing_releasesSlotAndSkipsRouter() {
         InvocationTask missingTask = new InvocationTask(
                 "missing-exec", "fn",

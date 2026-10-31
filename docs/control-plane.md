@@ -640,3 +640,21 @@ Scaling publishes the actual remaining replica set even when a container operati
 The CLI backend propagates failed managed-container discovery instead of treating it as an empty inventory. Failed `rm -f` retains ownership unless a separate successful container-name inventory proves that exact container is absent; daemon errors, timeouts and error text alone do not confirm removal. Partial deprovision remains pending until discovery and cleanup succeed.
 
 External invocation failures use meaningful HTTP statuses: unmarked upstream429 and503 retain those statuses; an upstream timeout uses504; other upstream protocol or transport failures use502. Canonical SDK saturation/stopping errors retain RUNTIME_HANDLER_SATURATED, RUNTIME_CALLBACK_SATURATED or RUNTIME_STOPPING and their messages. Valid Retry-After hints survive terminal publication and idempotent replay, as well as peer forwarding. These error envelopes have status error and never carry X-NanoFaaS-Function-Status; handler-selected responses still carry that marker. Configured retries occur before the terminal response. A504 does not establish the physical outcome.
+
+### Completion latency by invocation path
+
+With the `advanced` or `soak` metrics profile,
+`function_completion_latency_ms` records the original admission-to-terminal
+execution duration, including queue wait and retries, once per execution.
+Prometheus exports `_seconds_bucket`, `_seconds_count`, and `_seconds_sum` with
+bounded `function`, `path` (`sync`/`async`) and `outcome`
+(`success`/`error`/`timeout`) labels. Timeout outcomes use the engine's `TIMEOUT`
+or `*_TIMEOUT` error codes. The existing terminal duration has millisecond
+resolution. The timer is diagnostic and is denied by the `basic` profile.
+
+This is server-side conclusion latency, not async ACK latency or client-observed
+network latency. Rejected admissions and idempotent replays do not create new
+completion observations. Histogram percentiles are bucket-based estimates;
+keep outcome populations separate and retain counts for unfinished/error work.
+Function removal removes these meters too. Existing aggregate latency timers
+used by control loops retain their original names, tags and recording behavior.
