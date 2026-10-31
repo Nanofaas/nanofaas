@@ -143,6 +143,14 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
     }
 
     @Override
+    public boolean scaleToZeroIfUnprotected(FunctionGeneration generation,
+                                            ManagedDeploymentTarget target,
+                                            BooleanSupplier scaleDown) {
+        return scaleDownIfUnprotected(generation, target,
+                () -> generations.runIfIdle(generation, scaleDown));
+    }
+
+    @Override
     public void removeFunctionState(String functionName) {
         synchronized (stateLifecycle) {
             pruneRemovalFences();

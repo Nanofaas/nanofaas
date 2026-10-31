@@ -248,14 +248,17 @@ public class InternalScaler implements SmartLifecycle {
             log.debug("Skipping scale-down for {} (cooldown)", functionName);
             return;
         }
-        boolean scaled = wakeUpCoordinator.scaleDownIfUnprotected(generation, target, () -> {
+        java.util.function.BooleanSupplier apply = () -> {
             if (decision.desiredReplicas() == 0 && metricsReader.hasPendingWork(functionName)) {
                 return false;
             }
             log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
                     functionName, requestedReplicas, decision.desiredReplicas(), decision.maxRatio());
             return deploymentCoordinator.setReplicas(generation, target, decision.desiredReplicas());
-        });
+        };
+        boolean scaled = decision.desiredReplicas() == 0
+                ? wakeUpCoordinator.scaleToZeroIfUnprotected(generation, target, apply)
+                : wakeUpCoordinator.scaleDownIfUnprotected(generation, target, apply);
         cooldownTracker.resetScaleToZero(functionName);
         if (scaled) {
             cooldownTracker.recordScaleDown(functionName, now);

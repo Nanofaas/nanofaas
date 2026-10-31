@@ -311,6 +311,10 @@ public class KubernetesResourceManager {
         }
         Integer desired = deployment.getSpec() == null ? null : deployment.getSpec().getReplicas();
         Integer ready = deployment.getStatus() == null ? null : deployment.getStatus().getReadyReplicas();
+        Long generation = deployment.getMetadata() == null ? null : deployment.getMetadata().getGeneration();
+        Long observed = deployment.getStatus() == null ? null : deployment.getStatus().getObservedGeneration();
+        // A successful scale PATCH can precede the controller's readiness update.
+        if (generation != null && (observed == null || observed < generation)) ready = 0;
         return new ReplicaStatus(desired == null ? 0 : desired, ready == null ? 0 : ready);
     }
 

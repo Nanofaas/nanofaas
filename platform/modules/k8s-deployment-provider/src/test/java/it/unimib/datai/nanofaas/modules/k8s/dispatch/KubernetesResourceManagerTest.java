@@ -223,13 +223,27 @@ class KubernetesResourceManagerTest {
                 .withName("fn-echo")
                 .get();
         deployment.getSpec().setReplicas(4);
-        deployment.setStatus(new DeploymentStatusBuilder().withReadyReplicas(2).build());
-        client.apps().deployments()
-                .inNamespace("default")
-                .resource(deployment)
-                .update();
+        deployment = client.apps().deployments().inNamespace("default").resource(deployment).update();
+        deployment.setStatus(new DeploymentStatusBuilder().withReadyReplicas(2)
+                .withObservedGeneration(deployment.getMetadata().getGeneration()).build());
+        client.apps().deployments().inNamespace("default").resource(deployment).updateStatus();
 
         assertEquals(new ReplicaStatus(4, 2), resourceManager.getReplicaStatus("echo"));
+    }
+
+    @Test
+    void readinessWaitsForTheDeploymentControllerToObserveTheNewTarget() {
+        for (Long observed : new Long[] {2L, null, 3L}) {
+            Deployment deployment = new io.fabric8.kubernetes.api.model.apps.DeploymentBuilder()
+                    .withNewMetadata().withName("fn-echo").withGeneration(3L).endMetadata()
+                    .withNewSpec().withReplicas(1).endSpec()
+                    .withNewStatus().withObservedGeneration(observed).withReadyReplicas(1).endStatus()
+                    .build();
+            server.expect().get().withPath("/apis/apps/v1/namespaces/default/deployments/fn-echo")
+                    .andReturn(200, deployment).once();
+            assertEquals(new ReplicaStatus(1, Long.valueOf(3).equals(observed) ? 1 : 0),
+                    resourceManager.getReplicaStatus("echo"));
+        }
     }
 
     @Test

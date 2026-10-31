@@ -58,13 +58,22 @@ resets the window. A replacement function generation starts its own window.
 The scaler checks pending work again inside the wake-up coordinator's protected
 scale-down callback. A blocked or unsuccessful scale-down starts a new window.
 The existing 60-second scale-down cooldown and wake-up leases still apply;
-positive replica targets retain their existing scaling policy. The window uses
-the existing scale-down duration and adds no configuration setting.
+positive replica targets retain their existing scaling policy. The idle duration is a separate constant from the scale-down cooldown,
+although both currently default to 60 seconds; no new setting is added.
 
-This is an observed quiet window at the configured polling interval, not an
-atomic admission barrier. A request arriving after the final pending-work check
-can still race a scale-down; wake-up coordination and normal dispatch recovery
-remain responsible for that race.
+For a zero target, the core capacity registry atomically checks that no dispatch
+lease exists and temporarily prevents new leases while the provider mutation is
+applied. It releases all capacity locks before provider I/O. New queued requests
+wait; other functions remain dispatchable. The pause is released in `finally`,
+after the deployment snapshot is invalidated, and the scheduler is notified.
+Concurrent governor updates are preserved. A direct invocation without a queue
+retains the existing no-capacity rejection behavior during this short pause.
+
+Wake-up readiness requires both a positive desired target and ready replicas.
+The Kubernetes provider does not expose an old ready count until the controller
+has observed the deployment's current generation. These guards provide dispatch
+ordering independently of the quiet-window duration. Manual replica commands
+and external pod eviction are outside the internal autoscaler's guard.
 
 Functions opt in through the `scalingConfig` block of the `FunctionSpec`
 (strategy `INTERNAL`, min/max replicas, metrics such as `queue_depth`,

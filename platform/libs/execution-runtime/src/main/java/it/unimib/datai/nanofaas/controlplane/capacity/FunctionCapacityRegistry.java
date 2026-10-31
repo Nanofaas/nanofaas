@@ -9,6 +9,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -199,6 +200,27 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
     }
 
     /**
+     * Excludes new dispatch leases while an idle generation changes its deployment.
+     * Provider I/O runs outside capacity locks, so other functions and the scheduler
+     * remain live. The captured state is resumed even on failure or replacement.
+     */
+    public boolean runIfIdle(FunctionGeneration generation, BooleanSupplier operation) {
+        FunctionCapacityState paused = withActiveGeneration(generation, () -> {
+            FunctionCapacityState state = entries.get(generation.functionName()).state;
+            return state.tryPauseDispatchIfIdle() ? state : null;
+        });
+        if (paused == null) return false;
+        try {
+            return operation.getAsBoolean();
+        } finally {
+            paused.resumeDispatch();
+            if (state(generation.functionName()) == paused && paused.canDispatch()) {
+                notifyCapacityAvailable(generation.functionName());
+            }
+        }
+    }
+
+    /**
      * Attempt-scoped acquisition used by the core dispatch path. Auto-registers the
      * function for standalone callers on first use. In production the core registration
      * listener owns configuration, so an old task cannot override an update or governor.
@@ -287,13 +309,15 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
             entry.lock.unlock();
         }
         // Fire outside the entry lock: listeners may take other locks.
-        if (opened) {
-            for (Consumer<String> listener : capacityListeners) {
-                try {
-                    listener.accept(functionName);
-                } catch (RuntimeException ex) {
-                    log.warn("Capacity listener failed for function {}", functionName, ex);
-                }
+        if (opened) notifyCapacityAvailable(functionName);
+    }
+
+    private void notifyCapacityAvailable(String functionName) {
+        for (Consumer<String> listener : capacityListeners) {
+            try {
+                listener.accept(functionName);
+            } catch (RuntimeException ex) {
+                log.warn("Capacity listener failed for function {}", functionName, ex);
             }
         }
     }

@@ -15,8 +15,108 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FunctionCapacityRegistryTest {
+    @Test
+    void idleOperationPausesBothAcquisitionPathsWithoutHoldingCapacityLocks() throws Exception {
+        var registry = new FunctionCapacityRegistry();
+        var state = registry.register("echo", 2);
+        var other = registry.register("other", 1);
+        var entered = new CountDownLatch(1);
+        var finish = new CountDownLatch(1);
+        var notifications = new AtomicInteger();
+        registry.addCapacityListener(_ -> notifications.incrementAndGet());
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var mutation = executor.submit(() -> registry.runIfIdle(state.generation(), () -> {
+                entered.countDown();
+                try {
+                    if (!finish.await(5, TimeUnit.SECONDS)) throw new AssertionError("release mutation");
+                } catch (InterruptedException e) {
+                    throw new AssertionError(e);
+                }
+                return true;
+            }));
+            try {
+                assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
+                executor.submit(() -> {
+                    assertThat(state.canDispatch()).isFalse();
+                    assertThat(registry.tryAcquireLease(state.generation(), _ -> { })).isNull();
+                    assertThat(registry.tryAcquireLease("echo", 2)).isNull();
+                    assertThat(registry.runIfIdle(state.generation(), () -> {
+                        throw new AssertionError("overlapping idle operation");
+                    })).isFalse();
+                    var lease = registry.tryAcquireLease(other.generation(), _ -> { });
+                    assertThat(lease).isNotNull();
+                    lease.release();
+                    registry.setEffectiveConcurrency("echo", 1);
+                }).get(1, TimeUnit.SECONDS);
+            } finally {
+                finish.countDown();
+            }
+            assertThat(mutation.get(1, TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat(notifications).hasValue(1);
+        assertThat(registry.effectiveConcurrency("echo")).isEqualTo(1);
+        var resumed = registry.tryAcquireLease(state.generation(), _ -> { });
+        assertThat(resumed).isNotNull();
+        assertThat(registry.tryAcquireLease(state.generation(), _ -> { })).isNull();
+        resumed.release();
+    }
+
+    @Test
+    void acquiredDispatchPreventsIdleOperation() {
+        var registry = new FunctionCapacityRegistry();
+        var generation = registry.register("echo", 1).generation();
+        var lease = registry.tryAcquireLease(generation, _ -> { });
+        try {
+            assertThat(registry.runIfIdle(generation, () -> {
+                throw new AssertionError("must not remove a busy replica");
+            })).isFalse();
+        } finally {
+            lease.release();
+        }
+        assertThat(registry.runIfIdle(generation, () -> true)).isTrue();
+    }
+
+    @Test
+    void failedIdleOperationsRestoreDispatchAndPreserveGovernorPause() {
+        var registry = new FunctionCapacityRegistry();
+        var state = registry.register("echo", 2);
+        assertThat(registry.runIfIdle(state.generation(), () -> false)).isFalse();
+        assertThat(state.canDispatch()).isTrue();
+        assertThatThrownBy(() -> registry.runIfIdle(state.generation(), () -> {
+            throw new IllegalStateException("provider failed");
+        })).isInstanceOf(IllegalStateException.class).hasMessage("provider failed");
+        assertThat(state.canDispatch()).isTrue();
+        registry.runIfIdle(state.generation(), () -> {
+            registry.setEffectiveConcurrency("echo", 0);
+            return false;
+        });
+        assertThat(state.canDispatch()).isFalse();
+        registry.setEffectiveConcurrency("echo", 1);
+        assertThat(state.canDispatch()).isTrue();
+    }
+
+    @Test
+    void retiringAPausedGenerationCannotResumeOrNotifyItsReplacement() {
+        var registry = new FunctionCapacityRegistry();
+        var state = registry.register("echo", 1);
+        var notifications = new AtomicInteger();
+        registry.addCapacityListener(_ -> notifications.incrementAndGet());
+        registry.runIfIdle(state.generation(), () -> {
+            registry.remove("echo");
+            var replacement = registry.register("echo", 1);
+            assertThat(replacement.generation()).isNotEqualTo(state.generation());
+            assertThat(replacement.canDispatch()).isTrue();
+            registry.setEffectiveConcurrency("echo", 0);
+            return false;
+        });
+        assertThat(registry.state("echo").canDispatch()).isFalse();
+        assertThat(notifications).hasValue(0);
+        assertThat(registry.runIfIdle(state.generation(), () -> true)).isFalse();
+    }
+
     @Test
     void capacityIsBoundedAndReleaseReturnsHoldDuration() {
         AtomicLong clock = new AtomicLong(10);

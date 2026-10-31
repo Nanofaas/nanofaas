@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ScalingCooldownTracker {
     private static final long SCALE_UP_COOLDOWN_MS = 30_000;
     private static final long SCALE_DOWN_COOLDOWN_MS = 60_000;
+    private static final long SCALE_TO_ZERO_IDLE_MS = 60_000;
 
     private final Map<String, Instant> lastScaleUp = new ConcurrentHashMap<>();
     private final Map<String, Instant> lastScaleDown = new ConcurrentHashMap<>();
@@ -19,7 +20,7 @@ public final class ScalingCooldownTracker {
         ZeroWindow window = zeroWindows.compute(generation.functionName(), (_, previous) ->
                 previous != null && previous.generation().equals(generation)
                         ? previous : new ZeroWindow(generation, now));
-        return allow(window.since(), now, SCALE_DOWN_COOLDOWN_MS);
+        return allow(window.since(), now, SCALE_TO_ZERO_IDLE_MS);
     }
 
     public void resetScaleToZero(String functionName) {

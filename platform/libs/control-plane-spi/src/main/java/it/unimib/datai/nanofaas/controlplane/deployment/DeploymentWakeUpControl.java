@@ -22,6 +22,11 @@ public interface DeploymentWakeUpControl {
                                    ManagedDeploymentTarget target,
                                    BooleanSupplier scaleDown);
 
+    /** Also excludes dispatch acquisition while applying a zero-replica target. */
+    boolean scaleToZeroIfUnprotected(FunctionGeneration generation,
+                                     ManagedDeploymentTarget target,
+                                     BooleanSupplier scaleDown);
+
     /** Drops the wake-up state a removed function owned. A late wake-up must not recreate it. */
     void removeFunctionState(String functionName);
 }

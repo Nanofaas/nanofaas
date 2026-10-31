@@ -243,6 +243,66 @@ class InternalScalerTargetAwareScalingTest {
     }
 
     @Test
+    void zeroMutationExcludesNewDispatchLeasesWithoutBlockingOtherFunctions() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 1,
+                List.of(new ScalingMetric("rps", "100", null)));
+        RegisteredFunction fn = function("echo", scaling);
+        ManagedDeploymentTarget target = target(fn);
+        when(registry.listRegistered()).thenReturn(List.of(fn));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(1, 1));
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+        var capacity = wakeUpResources.generations();
+        var other = capacity.register("other", 1).generation();
+        var acquired = new java.util.concurrent.atomic.AtomicReference<
+                it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership>();
+        var otherAcquired = new java.util.concurrent.atomic.AtomicBoolean();
+        when(deploymentCoordinator.setReplicas(any(FunctionGeneration.class), eq(target), eq(0)))
+                .thenAnswer(invocation -> {
+                    acquired.set(capacity.tryAcquireLease(wakeUpResources.generation("echo"), _ -> { }));
+                    var lease = capacity.tryAcquireLease(other, _ -> { });
+                    otherAcquired.set(lease != null);
+                    if (lease != null) lease.release();
+                    return true;
+                });
+        InternalScaler scaler = scaler();
+        scaler.scalingLoop();
+        clock.advanceMillis(60_000);
+        scaler.scalingLoop();
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
+        var accidentalLease = acquired.get();
+        if (accidentalLease != null) accidentalLease.release();
+        org.assertj.core.api.Assertions.assertThat(accidentalLease).isNull();
+        org.assertj.core.api.Assertions.assertThat(otherAcquired).isTrue();
+        var resumed = capacity.tryAcquireLease(wakeUpResources.generation("echo"), _ -> { });
+        org.assertj.core.api.Assertions.assertThat(resumed).isNotNull();
+        resumed.release();
+    }
+
+    @Test
+    void dispatchAcquiredAfterTheMetricCheckPreventsZero() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 0, 1,
+                List.of(new ScalingMetric("rps", "100", null)));
+        RegisteredFunction fn = function("echo", scaling);
+        ManagedDeploymentTarget target = target(fn);
+        when(registry.listRegistered()).thenReturn(List.of(fn));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(1, 1));
+        when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+        InternalScaler scaler = scaler();
+        scaler.scalingLoop();
+        clock.advanceMillis(60_000);
+        var lease = wakeUpResources.generations().tryAcquireLease(
+                wakeUpResources.generation("echo"), _ -> { });
+        org.assertj.core.api.Assertions.assertThat(lease).isNotNull();
+        try {
+            // A stale empty metric reading cannot override actual dispatch ownership.
+            scaler.scalingLoop();
+            verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
+        } finally {
+            lease.release();
+        }
+    }
+
+    @Test
     void stuckReplicas_doNotBlockAGenuineLoadDrivenDownscale() {
         // 10 requested, but the rollout is stuck at 2 ready. Load drops to zero: the downscale
         // to 0 must wait for quiet, but not for the 8 never-ready replicas to catch up.

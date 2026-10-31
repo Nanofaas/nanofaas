@@ -218,6 +218,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
     private boolean isReadyWithinPolicy(ReplicaObservation observation, Instant now) {
         return observation instanceof ReplicaObservation.Available(var status, var state, var observedAt)
                 && state == ReplicaObservation.State.FRESH
+                && status.desiredReplicas() > 0
                 && status.readyReplicas() > 0
                 && !observedAt.isBefore(now.minus(readyObservationMaxAge));
     }
@@ -304,7 +305,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             try {
                 ReplicaStatus status = coordinator.getFreshReplicaStatus(target);
                 if (!canContinue()) return;
-                if (status.readyReplicas() > 0) {
+                if (status.desiredReplicas() > 0 && status.readyReplicas() > 0) {
                     result.complete(null);
                     return;
                 }
@@ -326,7 +327,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             try {
                 ReplicaStatus status = coordinator.getFreshReplicaStatus(target);
                 if (!canContinue()) return;
-                if (status.readyReplicas() > 0) result.complete(null);
+                if (status.desiredReplicas() > 0 && status.readyReplicas() > 0) result.complete(null);
                 else schedulePoll(deadline);
             } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);

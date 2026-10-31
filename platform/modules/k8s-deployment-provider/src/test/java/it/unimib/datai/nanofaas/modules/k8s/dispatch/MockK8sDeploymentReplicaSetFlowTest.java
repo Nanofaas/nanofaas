@@ -91,6 +91,7 @@ class MockK8sDeploymentReplicaSetFlowTest {
         Deployment readyTwo = new DeploymentBuilder(deployment)
                 .editOrNewStatus()
                 .withReadyReplicas(2)
+                .withObservedGeneration(deployment.getMetadata().getGeneration())
                 .endStatus()
                 .build();
         client.apps().deployments().inNamespace("default").resource(readyTwo).updateStatus();
@@ -105,6 +106,7 @@ class MockK8sDeploymentReplicaSetFlowTest {
         Deployment readyOne = new DeploymentBuilder(scaled)
                 .editOrNewStatus()
                 .withReadyReplicas(1)
+                .withObservedGeneration(scaled.getMetadata().getGeneration())
                 .endStatus()
                 .build();
         client.apps().deployments().inNamespace("default").resource(readyOne).updateStatus();
@@ -133,6 +135,7 @@ class MockK8sDeploymentReplicaSetFlowTest {
                 .resource(new DeploymentBuilder(scaled)
                         .editOrNewStatus()
                         .withReadyReplicas(1)
+                .withObservedGeneration(scaled.getMetadata().getGeneration())
                         .endStatus()
                         .build())
                 .updateStatus();

@@ -649,6 +649,24 @@ class DeploymentWakeUpGateTest {
         verify(coordinator, times(3)).getFreshReplicaStatus(target);
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void zeroTargetWithLingeringReadyPodsMustWakeBeforeDispatch(boolean cached) {
+        InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(
+                deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
+        if (cached) when(coordinator.observeReplicaStatus(target)).thenReturn(
+                ReplicaObservation.fresh(new ReplicaStatus(0, 1), Instant.now()));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(
+                new ReplicaStatus(0, 1), new ReplicaStatus(0, 1), new ReplicaStatus(1, 1));
+
+        gate().ensureReady(task).join();
+
+        verify(coordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
+        verify(coordinator, times(3)).getFreshReplicaStatus(target);
+    }
+
     @Test
     void ensureReady_scalesEligibleZeroReplicaDeploymentToOneAndWaitsForReadiness() {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
