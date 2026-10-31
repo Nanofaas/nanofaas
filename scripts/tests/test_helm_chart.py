@@ -151,3 +151,21 @@ def test_raw_manifest_io_worker_count_matches_its_cpu_limit():
 def test_no_rendered_number_uses_scientific_notation():
     """The guard for whatever capacity the chart grows next."""
     assert re.search(r"[0-9]e[+-][0-9]", render_all()) is None
+
+
+def test_cadvisor_scrape_keeps_resident_memory_in_both_modes():
+    import yaml
+
+    for mode, job_name in (("kubelet", "kubernetes-cadvisor"), ("daemonset", "nanofaas-cadvisor")):
+        document = yaml.safe_load(render(
+            "templates/prometheus-configmap.yaml",
+            "--set", "prometheus.create=true",
+            "--set", "prometheus.containerMetrics.enabled=true",
+            "--set", f"prometheus.containerMetrics.mode={mode}",
+        ))
+        config = yaml.safe_load(document['data']['prometheus.yml'])
+        job = next(job for job in config['scrape_configs'] if job['job_name'] == job_name)
+        keep_rules = [rule for rule in job['metric_relabel_configs']
+                      if rule.get('action') == 'keep' and rule.get('source_labels') == ['__name__']]
+        assert keep_rules
+        assert all(re.fullmatch(rule['regex'], 'container_memory_rss') for rule in keep_rules), mode
