@@ -83,6 +83,9 @@ Physical preparation owns a generation-fenced replica lease. Every other replica
 writer and function PATCH receives an ownership conflict while this lease exists.
 Renewal changes the capability token; expiry invalidates mutations and never frees
 occupied resources. Only a positive physical drain to zero releases ownership.
+When a skipped epoch lets the lease lapse, the next preparation drains it to zero
+and acquires a fresh lease; until that drain is proven, the preparation fails and
+the following one retries, so one late epoch cannot block every later epoch.
 
 The function concurrency setting is a node-wide ceiling sufficient for all ready
 replicas. Each physical replica uses SDK `NANOFAAS_MAX_CONCURRENT_HANDLERS=1` and

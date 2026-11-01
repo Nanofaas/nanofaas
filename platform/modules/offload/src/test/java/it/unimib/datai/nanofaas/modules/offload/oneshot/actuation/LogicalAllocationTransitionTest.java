@@ -131,6 +131,43 @@ class LogicalAllocationTransitionTest {
     }
 
     @Test
+    void lapsedLeaseAfterASkippedEpochIsDrainedAndAcquiredAgain() {
+        try (var f = new Fixture()) {
+            f.firstAllocation();
+            doReturn(Optional.empty()).when(f.control).renewReplicaLease(any(), any());
+            doAnswer(a -> {
+                String name = ((ManagedDeploymentTarget) a.getArgument(1)).functionName();
+                f.counts.put(name, 0);
+                f.mutations.add(name + "=0");
+                return true;
+            }).when(f.control).drainAndReleaseReplicaLease(any(), any());
+            assertThat(f.actuator.prepare(f.outcome(3, 2, 0)).block().status().name()).isEqualTo("NEGOTIATED");
+            var result = f.actuator.activate("session", 3).block();
+            assertThat(result.status()).as(result.reason()).isEqualTo(PlanActivation.Status.PREPARED);
+            assertThat(f.counts).containsEntry("f", 2).containsEntry("g", 0);
+            assertThat(f.mutations).containsExactly("f=2", "f=0", "g=0", "f=2");
+            verify(f.control, times(4)).acquireReplicaLease(any(), anyString(), any());
+        }
+    }
+
+    @Test
+    void lapsedLeaseThatCannotDrainFailsTheEpochAndIsRetriedByTheNext() {
+        try (var f = new Fixture()) {
+            f.firstAllocation();
+            doReturn(Optional.empty()).when(f.control).renewReplicaLease(any(), any());
+            f.actuator.prepare(f.outcome(3, 2, 0)).block();
+            var failed = f.actuator.activate("session", 3).block();
+            assertThat(failed.status()).isEqualTo(PlanActivation.Status.FAILED);
+            assertThat(failed.reason()).startsWith("replica ownership unavailable");
+            verify(f.control, times(2)).acquireReplicaLease(any(), anyString(), any());
+            doReturn(true).when(f.control).drainAndReleaseReplicaLease(any(), any());
+            f.actuator.prepare(f.outcome(4, 2, 0)).block();
+            var recovered = f.actuator.activate("session", 4).block();
+            assertThat(recovered.status()).as(recovered.reason()).isEqualTo(PlanActivation.Status.PREPARED);
+        }
+    }
+
+    @Test
     void stopAndRestartDuringFinalValidationCannotPublishTheRetiredPlan() {
         try (var f = new Fixture()) {
             f.healthyClock = true;

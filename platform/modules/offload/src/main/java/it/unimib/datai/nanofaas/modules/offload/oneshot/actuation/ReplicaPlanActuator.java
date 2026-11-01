@@ -236,14 +236,27 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
                 leases.remove(row.id(), existing);
                 existing = null;
             }
+            var generation = new FunctionGeneration(row.id(), id.generation());
             var acquired = existing == null
-                    ? control.acquireReplicaLease(new FunctionGeneration(row.id(), id.generation()), owner, ttl)
+                    ? control.acquireReplicaLease(generation, owner, ttl)
                     : control.renewReplicaLease(existing, ttl);
+            // A skipped epoch lets the lease lapse: renewal refuses it, yet it still blocks a new
+            // acquisition. Drain it as a catch-up would, then start again from a fresh lease.
+            if (acquired.isEmpty() && existing != null && releaseLapsed(row.id(), existing)) {
+                acquired = control.acquireReplicaLease(generation, owner, ttl);
+            }
             leases.put(row.id(), acquired.orElseThrow(() -> new IllegalStateException("replica ownership unavailable: " + row.id())));
             targets.put(row.id(), function(row.id()).managedDeploymentTarget().orElseThrow());
             leaseTargets.put(row.id(), targets.get(row.id()));
         }
         return targets;
+    }
+    private boolean releaseLapsed(String function, ReplicaControlLease lease) {
+        var target = leaseTargets.get(function);
+        if (target == null || !control.drainAndReleaseReplicaLease(lease, target)) return false;
+        leases.remove(function, lease);
+        leaseTargets.remove(function);
+        return true;
     }
     private void pauseDispatch(Preparation p, Map<String, ManagedDeploymentTarget> targets) {
         if (p.outcome.timing() == null) return;
