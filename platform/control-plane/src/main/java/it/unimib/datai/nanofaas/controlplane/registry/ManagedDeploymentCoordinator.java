@@ -126,20 +126,48 @@ public final class ManagedDeploymentCoordinator implements ManagedReplicaControl
             if(!lease.generation().equals(generations.activeGeneration(target.functionName()))) {
                 replicaOwners.remove(target.functionName(),lease); return true;
             }
-            // The expired owner may drain, but cannot grow or reuse the expired capability.
-            if(!setReplicasLocked(target,0,lease)) return false;
-            var status=getFreshReplicaStatus(target);
-            if(status.desiredReplicas()!=0 || status.readyReplicas()!=0) return false;
-            replicaOwners.remove(target.functionName(),lease); return true;
+            if (!drainReplicaLease(lease, target)) return false;
+            replicaOwners.remove(target.functionName(), lease);
+            generations.setReplicaDispatchPaused(lease.generation(), false);
+            return true;
         });
     }
+
+    @Override
+    public java.util.Optional<ReplicaControlLease> recoverReplicaLease(
+            ReplicaControlLease lease, ManagedDeploymentTarget target, java.time.Duration ttl) {
+        long deadline = leaseDeadline(ttl);
+        if (!lease.generation().functionName().equals(target.functionName())) throw new IllegalArgumentException("invalid leased target");
+        return locks.withLock(target.functionName(), () -> {
+            if (!drainReplicaLease(lease, target) || nanoTime.getAsLong() >= deadline) return java.util.Optional.empty();
+            var recovered = new ReplicaControlLease(lease.generation(), java.util.UUID.randomUUID().toString(), lease.owner(), deadline);
+            replicaOwners.put(target.functionName(), recovered);
+            return java.util.Optional.of(recovered);
+        });
+    }
+
+    private boolean drainReplicaLease(ReplicaControlLease lease, ManagedDeploymentTarget target) {
+        if (!lease.equals(replicaOwners.get(target.functionName()))
+                || !lease.generation().equals(generations.activeGeneration(target.functionName()))
+                || registry.getRegistered(target.functionName()).flatMap(RegisteredFunction::managedDeploymentTarget)
+                        .filter(target::equals).isEmpty()) return false;
+        // Expiry permits draining, never new work; keep the fence on failure and through recovery.
+        if (!generations.setReplicaDispatchPaused(lease.generation(), true)
+                || generations.inFlight(target.functionName()) != 0) return false;
+        if (!setReplicasLocked(target, 0, lease)) return false;
+        var status = getFreshReplicaStatus(target);
+        return status.desiredReplicas() == 0 && status.readyReplicas() == 0;
+    }
+
     @Override public boolean setReadyConcurrency(ReplicaControlLease lease,int readyReplicas) {
         if(readyReplicas<0) throw new IllegalArgumentException("negative ready replicas");
         var name=lease.generation().functionName();
         return locks.withLock(name,()-> {
             if(!lease.equals(ownerOf(name)) || nanoTime.getAsLong()>=lease.deadlineNanos() || readyReplicas>generations.configuredConcurrency(name)) return false;
             // Zero pauses queued dispatch without revoking work that already owns a slot.
+            if (!generations.setReplicaDispatchPaused(lease.generation(), true)) return false;
             generations.setEffectiveConcurrency(name,readyReplicas);
+            if (readyReplicas > 0) generations.setReplicaDispatchPaused(lease.generation(), false);
             return true;
         });
     }

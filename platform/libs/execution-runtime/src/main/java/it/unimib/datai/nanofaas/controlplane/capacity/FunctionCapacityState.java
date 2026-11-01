@@ -28,6 +28,7 @@ public final class FunctionCapacityState implements CapacityView {
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
     private volatile boolean dispatchPaused;
+    private volatile boolean replicaDispatchPaused;
 
     FunctionCapacityState(FunctionGeneration generation, int concurrency, LongSupplier nanoTime, Runnable onDrained) {
         this.generation = generation;
@@ -41,7 +42,7 @@ public final class FunctionCapacityState implements CapacityView {
     public FunctionGeneration generation() { return generation; }
 
     synchronized boolean tryAcquireSlot() {
-        if (dispatchPaused || !lifecycle.retainIfBelow(effectiveConcurrency)) {
+        if (dispatchPaused || replicaDispatchPaused || !lifecycle.retainIfBelow(effectiveConcurrency)) {
             return false;
         }
         acquiredAt.addLast(nanoTime.getAsLong());
@@ -56,6 +57,10 @@ public final class FunctionCapacityState implements CapacityView {
 
     synchronized void resumeDispatch() {
         dispatchPaused = false;
+    }
+
+    synchronized void setReplicaDispatchPaused(boolean paused) {
+        replicaDispatchPaused = paused;
     }
 
     long releaseSlotAndGetHoldNanos() {
@@ -106,7 +111,7 @@ public final class FunctionCapacityState implements CapacityView {
     }
 
     public boolean canDispatch() {
-        return !dispatchPaused && lifecycle.isActive() && lifecycle.retained() < effectiveConcurrency;
+        return !dispatchPaused && !replicaDispatchPaused && lifecycle.isActive() && lifecycle.retained() < effectiveConcurrency;
     }
 
     public boolean isActive() {

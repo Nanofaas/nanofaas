@@ -137,16 +137,21 @@ class LogicalAllocationTransitionTest {
             doReturn(Optional.empty()).when(f.control).renewReplicaLease(any(), any());
             doAnswer(a -> {
                 String name = ((ManagedDeploymentTarget) a.getArgument(1)).functionName();
+                f.admission.put(name, 0);
                 f.counts.put(name, 0);
                 f.mutations.add(name + "=0");
-                return true;
-            }).when(f.control).drainAndReleaseReplicaLease(any(), any());
+                var expired = (ReplicaControlLease) a.getArgument(0);
+                return Optional.of(new ReplicaControlLease(expired.generation(), UUID.randomUUID().toString(),
+                        expired.owner(), Long.MAX_VALUE));
+            }).when(f.control).recoverReplicaLease(any(), any(), any());
             assertThat(f.actuator.prepare(f.outcome(3, 2, 0)).block().status().name()).isEqualTo("NEGOTIATED");
             var result = f.actuator.activate("session", 3).block();
             assertThat(result.status()).as(result.reason()).isEqualTo(PlanActivation.Status.PREPARED);
             assertThat(f.counts).containsEntry("f", 2).containsEntry("g", 0);
             assertThat(f.mutations).containsExactly("f=2", "f=0", "g=0", "f=2");
-            verify(f.control, times(4)).acquireReplicaLease(any(), anyString(), any());
+            verify(f.control, times(2)).acquireReplicaLease(any(), anyString(), any());
+            verify(f.control, times(2)).recoverReplicaLease(any(), any(), any());
+            verify(f.control, never()).drainAndReleaseReplicaLease(any(), any());
         }
     }
 
@@ -160,7 +165,7 @@ class LogicalAllocationTransitionTest {
             assertThat(failed.status()).isEqualTo(PlanActivation.Status.FAILED);
             assertThat(failed.reason()).startsWith("replica ownership unavailable");
             verify(f.control, times(2)).acquireReplicaLease(any(), anyString(), any());
-            doReturn(true).when(f.control).drainAndReleaseReplicaLease(any(), any());
+            doAnswer(a -> Optional.of(a.getArgument(0))).when(f.control).recoverReplicaLease(any(), any(), any());
             f.actuator.prepare(f.outcome(4, 2, 0)).block();
             var recovered = f.actuator.activate("session", 4).block();
             assertThat(recovered.status()).as(recovered.reason()).isEqualTo(PlanActivation.Status.PREPARED);

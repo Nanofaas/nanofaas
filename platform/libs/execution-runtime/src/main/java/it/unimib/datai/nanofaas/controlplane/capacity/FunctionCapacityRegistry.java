@@ -312,6 +312,19 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
         if (opened) notifyCapacityAvailable(functionName);
     }
 
+    /** Replica lifecycle fence, independent of governor limits and temporary idle-operation pauses. */
+    public boolean setReplicaDispatchPaused(FunctionGeneration generation, boolean paused) {
+        Boolean opened = withActiveGeneration(generation, () -> {
+            FunctionCapacityState state = entries.get(generation.functionName()).state;
+            boolean wasDispatchable = state.canDispatch();
+            state.setReplicaDispatchPaused(paused);
+            return !wasDispatchable && state.canDispatch();
+        });
+        if (opened == null) return false;
+        if (opened) notifyCapacityAvailable(generation.functionName());
+        return true;
+    }
+
     private void notifyCapacityAvailable(String functionName) {
         for (Consumer<String> listener : capacityListeners) {
             try {

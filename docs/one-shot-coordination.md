@@ -83,9 +83,19 @@ Physical preparation owns a generation-fenced replica lease. Every other replica
 writer and function PATCH receives an ownership conflict while this lease exists.
 Renewal changes the capability token; expiry invalidates mutations and never frees
 occupied resources. Only a positive physical drain to zero releases ownership.
-When a skipped epoch lets the lease lapse, the next preparation drains it to zero
-and acquires a fresh lease; until that drain is proven, the preparation fails and
-the following one retries, so one late epoch cannot block every later epoch.
+When a skipped epoch lets the lease lapse, the next preparation suspends new
+dispatch, waits for already-owned dispatch slots to drain, and drains the physical
+pool to zero. It then replaces the lease atomically under the function lock,
+without making ownership available to another writer. Until that drain is proven,
+the preparation fails and the following one retries with the retained lease, so
+one late epoch cannot block every later epoch.
+
+The dispatch suspension is independent of governor concurrency updates and stays
+in place on provider failure and after lease recovery. Only readiness published
+with the current lease reopens dispatch. Explicit release uses the same protected
+drain, then returns dispatch to ordinary capacity and deployment-readiness control.
+This ordering matters: the transition route already accepts local queued work
+while recovery runs, before the normal preparation pause is reached.
 
 The function concurrency setting is a node-wide ceiling sufficient for all ready
 replicas. Each physical replica uses SDK `NANOFAAS_MAX_CONCURRENT_HANDLERS=1` and

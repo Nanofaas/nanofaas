@@ -20,7 +20,10 @@ public interface ManagedReplicaControl {
 
     default java.util.Optional<ReplicaControlLease> acquireReplicaLease(FunctionGeneration generation,String owner,java.time.Duration ttl) { return java.util.Optional.empty(); }
     default java.util.Optional<ReplicaControlLease> renewReplicaLease(ReplicaControlLease lease,java.time.Duration ttl) { return java.util.Optional.empty(); }
+    /** Drains the retained owner's pool and replaces its lease without reopening dispatch before readiness. */
+    default java.util.Optional<ReplicaControlLease> recoverReplicaLease(ReplicaControlLease lease,ManagedDeploymentTarget target,java.time.Duration ttl) { return java.util.Optional.empty(); }
     default boolean setReplicas(ReplicaControlLease lease,ManagedDeploymentTarget target,int replicas) { return false; }
+    /** Excludes new dispatch while draining; incomplete drain retains ownership and suspension for retry. */
     default boolean drainAndReleaseReplicaLease(ReplicaControlLease lease,ManagedDeploymentTarget target) { return false; }
     /** Sets the node-wide admission cap from physically ready replicas, under the same generation fence. */
     default boolean setReadyConcurrency(ReplicaControlLease lease,int readyReplicas) { return false; }
