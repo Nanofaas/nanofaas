@@ -151,6 +151,9 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         return s.schemaVersion()+":"+hash+":"+s.environmentFingerprint()+":"+s.functions()+":"+s.memoryCapacityMiB()+":"+s.flowQuantum()+":"+s.negotiation()+":"+s.maxSolverStates()+":"+s.maxSolverBytes()+":"+s.preparationBudget()+":"+peers.activeNeighbors().stream().map(p->p.peerId()+":"+p.incarnation()).sorted().toList();
     }
     private synchronized boolean qualified(OneShotSettings s) {
+        // A logical epoch activates after it starts: a slow activation only delays its plan, while
+        // refusing the epoch would leave it with none. Its timing is recorded, not a gate.
+        if(s.schemaVersion()==2) return true;
         if(!key(s).equals(qualificationKey) || qualified.size()<20) return false;
         var samples=qualified.stream().mapToLong(Long::longValue).sorted().toArray();long p99=samples[(int)Math.ceil(samples.length*.99)-1];
         return p99*2.0<s.period().toNanos()*s.maxOperationalFraction() && p99*2.0<s.leadTime().toNanos();

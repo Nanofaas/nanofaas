@@ -45,6 +45,15 @@ class LogicalOperationsTest {
                     .hasMessageContaining("full operational budget");
         }
     }
+    @Test void aLogicalSessionSchedulesWithoutTimingSamplesButALegacyOneDoesNot() {
+        try (var f=new Fixture()) {
+            assertThat(f.operations.configure(0,logical(OneShotConfigurationTest.config(),true)).revision()).isEqualTo(1);
+        }
+        try (var f=new Fixture()) {
+            var legacy=withLead(logical(OneShotConfigurationTest.config(),true),1,OneShotConfigurationTest.config().leadTime());
+            assertThatThrownBy(()->f.operations.configure(0,legacy)).hasMessageContaining("timing samples");
+        }
+    }
     static final class Fixture implements AutoCloseable {
         final AtomicLong nano = new AtomicLong(100);
         final OneShotConfigurationStore configs = new OneShotConfigurationStore(()->true,()->true);
