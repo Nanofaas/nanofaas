@@ -44,6 +44,14 @@
         <Bug pattern="EI_EXPOSE_REP2"/>
     </Match>
 
+    <!-- The injected metrics reader is shared with the decision calculator to observe live workload state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.autoscaler.InternalScaler"/>
+        <Field name="metricsReader"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
     <!-- Injected live collaborators; copying would detach catalog, observations or shared state. -->
     <Match>
         <Class name="it.unimib.datai.nanofaas.controlplane.api.InvocationController"/>
