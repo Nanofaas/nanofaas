@@ -27,16 +27,19 @@ public final class ForecastObservationLifecycle implements SmartLifecycle {
     synchronized void refresh() {
         if (catalog == null || replicas == null) return;
         var active = new HashSet<String>();
+        // A registered function whose generation cannot be read now (its registry entry was
+        // replaced since the listing, as a replica change does) keeps its history.
+        var unresolved = new HashSet<String>();
         var generations = new java.util.ArrayList<it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration>();
         for (var function : catalog.listRegistered()) {
             var generation = replicas.generationOf(function);
-            if (generation == null) continue;
+            if (generation == null) { unresolved.add(function.name()); continue; }
             active.add(generation.functionName() + "#" + generation.id());
             generations.add(generation);
         }
         var now = clock.instant();
         for (var source : sources) {
-            source.retain(active);
+            source.retain(active, unresolved);
             for (var generation : generations) source.observe(generation.functionName(), generation.id(), now);
         }
     }
