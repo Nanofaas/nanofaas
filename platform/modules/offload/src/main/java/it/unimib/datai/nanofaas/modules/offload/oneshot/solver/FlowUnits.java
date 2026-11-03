@@ -1,7 +1,13 @@
 package it.unimib.datai.nanofaas.modules.offload.oneshot.solver;
 import java.math.BigDecimal;
-/** Decimal grid conversion; only dimensional rates/demand change, utility coefficients do not. */
+import java.math.RoundingMode;
+/**
+ * Decimal grid conversion; only dimensional rates/demand change, utility coefficients do not.
+ * A forecast is rounded to the nearest quantum (half up): flooring it left up to a whole quantum
+ * of every forecast unplanned, and that remainder was routed to the cloud on every node and epoch.
+ */
 public final class FlowUnits {
+    /** {@code residualRate} is signed: positive below the forecast, negative where the grid rounds above it. */
     public record Quantity(long units, double residualRate, double solverDemandSeconds) {}
     private final BigDecimal quantum;
     public FlowUnits(double quantum) {
@@ -13,7 +19,7 @@ public final class FlowUnits {
             throw new IllegalArgumentException("valid load and demand required");
         try {
             BigDecimal load = BigDecimal.valueOf(rate);
-            long units = load.divideToIntegralValue(quantum).longValueExact();
+            long units = load.divide(quantum, 0, RoundingMode.HALF_UP).longValueExact();
             if (units > 9007199254740991L) throw new IllegalArgumentException("flow units exceed exact numeric range");
             BigDecimal residual = load.subtract(quantum.multiply(BigDecimal.valueOf(units)));
             if (exactOracle && residual.signum() != 0) throw new IllegalArgumentException("oracle load is not on q grid");

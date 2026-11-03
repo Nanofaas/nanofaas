@@ -20,7 +20,8 @@ public record ActiveRoutingPlan(String nodeId,String incarnation,long epoch,long
             var f=entry.getValue();
             double inbound=f.inbound().stream().mapToLong(Assignment::quantity).sum()*flowQuantum;
             double outbound=f.outbound().stream().mapToLong(Assignment::quantity).sum()*flowQuantum;
-            if(inbound+f.localRate()>f.readyReplicas()*f.utilization()/f.demandSeconds()+1e-9 || f.localRate()+outbound+f.cloudRate()>f.forecastRate()+1e-9) throw new IllegalArgumentException("infeasible ready plan");
+            // Forecasts are rounded to the nearest quantum, so a plan may cover up to half a quantum more.
+            if(inbound+f.localRate()>f.readyReplicas()*f.utilization()/f.demandSeconds()+1e-9 || f.localRate()+outbound+f.cloudRate()>f.forecastRate()+flowQuantum/2+1e-9) throw new IllegalArgumentException("infeasible ready plan");
             for(var a:f.inbound()) if(a.epoch()!=epoch || !a.function().equals(entry.getKey()) || !a.version().equals(f.version()) || !a.sellerId().equals(nodeId) || !a.sellerIncarnation().equals(incarnation) || a.sellerGeneration()!=f.generation()) throw new IllegalArgumentException("inbound identity mismatch");
             for(var a:f.outbound()) if(a.epoch()!=epoch || !a.function().equals(entry.getKey()) || !a.version().equals(f.version()) || !a.buyerId().equals(nodeId) || !a.buyerIncarnation().equals(incarnation) || a.buyerGeneration()!=f.generation()) throw new IllegalArgumentException("outbound identity mismatch");
         }

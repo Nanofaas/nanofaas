@@ -39,6 +39,19 @@ class LocalReplicaSolverTest {
         assertThat(new FlowUnits(0.1).convert(0.31, 0.1, false).residualRate()).isCloseTo(0.01, org.assertj.core.data.Offset.offset(1e-12));
         assertThatThrownBy(() -> new FlowUnits(0.1).convert(0.31, 0.1, true)).isInstanceOf(IllegalArgumentException.class);
     }
+    @Test void forecastRoundsToTheNearestQuantum() {
+        var grid = new FlowUnits(0.05);
+        var below = grid.convert(0.21, 0.1, false);
+        assertThat(below.units()).isEqualTo(4);
+        assertThat(below.residualRate()).isCloseTo(0.01, org.assertj.core.data.Offset.offset(1e-12));
+        // Flooring 0.24 left 0.04 of it for the cloud; it now plans the whole forecast.
+        var above = grid.convert(0.24, 0.1, false);
+        assertThat(above.units()).isEqualTo(5);
+        assertThat(above.residualRate()).isCloseTo(-0.01, org.assertj.core.data.Offset.offset(1e-12));
+        assertThat(grid.convert(0.225, 0.1, false).units()).isEqualTo(5);
+        assertThat(grid.convert(0.024, 0.1, false).units()).isZero();
+        assertThat(grid.convert(0.2, 0.1, true).residualRate()).isZero();
+    }
     @Test void deadlineReachedDuringWorkNeverReturnsPartialOptimalAllocation() {
         var ticks = new java.util.concurrent.atomic.AtomicLong();
         var timed = new LocalReplicaSolver(ticks::getAndIncrement);
