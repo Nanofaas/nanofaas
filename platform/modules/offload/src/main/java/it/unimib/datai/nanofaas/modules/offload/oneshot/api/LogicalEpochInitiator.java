@@ -184,7 +184,8 @@ public final class LogicalEpochInitiator {
         return new OneShotOperations.Window(from,from.plus(settings.period()));
     }
     private static void validateDelay(OneShotSettings settings,Duration delay) {
-        if(delay==null || delay.compareTo(settings.negotiation().auctionBudget().plus(settings.preparationBudget()))<0 || delay.compareTo(Duration.ofDays(1))>0)
+        // Preparation starts at activation; only the auction must end before it.
+        if(delay==null || delay.compareTo(settings.negotiation().auctionBudget())<0 || delay.compareTo(Duration.ofDays(1))>0)
             throw new IllegalArgumentException("invalid logical initiation delay");
     }
 }

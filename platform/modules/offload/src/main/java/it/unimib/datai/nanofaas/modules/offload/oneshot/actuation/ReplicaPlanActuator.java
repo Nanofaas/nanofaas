@@ -93,13 +93,24 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
     }
     public Optional<ActiveRoutingPlan> activePlan() {
         var logical=logicalReady.get();
-        if(logical!=null) return !logical.timing().expired(logical.timing().expiryDeadline()) && validOwnership(logical.plan())?Optional.of(logical.plan()):Optional.empty();
+        if(logical!=null) return routable(logical) && validOwnership(logical.plan())?Optional.of(logical.plan()):Optional.empty();
         if(logicalEpoch.get()!=null) return Optional.empty();
         var next=pending.get();var time=now.get();
         if(next!=null && next.validAt(time) && validOwnership(next)) {
             if(pending.compareAndSet(next,null)) active.set(next);
         }
         var plan=active.get(); return plan!=null && plan.validAt(time) && validOwnership(plan)?Optional.of(plan):Optional.empty();
+    }
+    /**
+     * A logical plan routes through its epoch and then until the next activation retires it, for at
+     * most half a period more. A node whose next preparation was triggered late would otherwise have
+     * no plan between its epochs and send every original to the cloud; no allocation changes before
+     * that activation, so the previous plan still describes the replicas in place.
+     */
+    private static boolean routable(LogicalReady logical) {
+        var timing=logical.timing();
+        long grace=(timing.expiryDeadline()-timing.activationDeadline())/2;
+        return !timing.expired(timing.expiryDeadline()+grace);
     }
     private boolean validOwnership(ActiveRoutingPlan plan) {
         if(!running || logicalEpoch.get()==null && !clockHealthy.getAsBoolean() || peers.localEndpoint().filter(e->e.peerId().equals(plan.nodeId()) && e.incarnation().equals(plan.incarnation())).isEmpty()) return false;

@@ -25,6 +25,26 @@ class LogicalOperationsTest {
                 s.anchor(),s.preparationBudget(),s.maxOperationalFraction(),s.burst(),s.functions(),
                 s.negotiation(),s.maxSolverStates(),s.maxSolverBytes(),"session");
     }
+    static OneShotSettings withLead(OneShotSettings s, int version, Duration lead) {
+        return new OneShotSettings(version,s.profileId(),s.environmentFingerprint(),s.purpose(),s.allowSynthetic(),
+                s.cloudUri(),s.memoryCapacityMiB(),s.flowQuantum(),s.period(),lead,s.scheduled(),
+                s.anchor(),s.preparationBudget(),s.maxOperationalFraction(),s.burst(),s.functions(),
+                s.negotiation(),s.maxSolverStates(),s.maxSolverBytes(),version==2?"session":null);
+    }
+    @Test void aLogicalLeadCoversTheAuctionAloneButALegacyOneTheWholeBudget() {
+        // The fixture's auction budget is 5 s and its preparation budget 2 s.
+        try (var f=new Fixture()) {
+            assertThat(f.operations.configure(0,withLead(f.settings,2,Duration.ofSeconds(5))).revision()).isEqualTo(1);
+        }
+        try (var f=new Fixture()) {
+            assertThatThrownBy(()->f.operations.configure(0,withLead(f.settings,2,Duration.ofMillis(4999))))
+                    .hasMessageContaining("full operational budget");
+        }
+        try (var f=new Fixture()) {
+            assertThatThrownBy(()->f.operations.configure(0,withLead(f.settings,1,Duration.ofSeconds(6))))
+                    .hasMessageContaining("full operational budget");
+        }
+    }
     static final class Fixture implements AutoCloseable {
         final AtomicLong nano = new AtomicLong(100);
         final OneShotConfigurationStore configs = new OneShotConfigurationStore(()->true,()->true);

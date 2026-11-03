@@ -76,6 +76,35 @@ class LogicalAllocationTransitionTest {
     }
 
     @Test
+    void theLastPlanRoutesPastItsEpochUntilHalfAPeriodLater() {
+        try (var f = new Fixture()) {
+            f.firstAllocation();
+            var plan = f.actuator.activePlan().orElseThrow();
+            // Activation 5 s after the preparation started at 100 ns, then a 300 s epoch.
+            long expiry = 100 + Duration.ofSeconds(305).toNanos();
+            f.nano.set(expiry + 1);
+            assertThat(f.actuator.activePlan()).contains(plan);
+            f.nano.set(expiry + Duration.ofSeconds(150).toNanos() - 1);
+            assertThat(f.actuator.activePlan()).contains(plan);
+            f.nano.set(expiry + Duration.ofSeconds(150).toNanos());
+            assertThat(f.actuator.activePlan()).isEmpty();
+        }
+    }
+
+    @Test
+    void theNextActivationRetiresTheExtendedPlan() {
+        try (var f = new Fixture()) {
+            f.firstAllocation();
+            var first = f.actuator.activePlan().orElseThrow();
+            f.nano.set(100 + Duration.ofSeconds(306).toNanos());
+            assertThat(f.actuator.activePlan()).contains(first);
+            assertThat(f.actuator.prepare(f.outcome(2, 0, 2)).block().status().name()).isEqualTo("NEGOTIATED");
+            assertThat(f.actuator.activate("session", 2).block().status()).isEqualTo(PlanActivation.Status.PREPARED);
+            assertThat(f.actuator.activePlan().orElseThrow().epoch()).isEqualTo(2);
+        }
+    }
+
+    @Test
     void fullMemoryChangesAllocationAtItsOwnActivationWithoutWaitingAnotherEpoch() {
         try (var f = new Fixture()) {
             f.firstAllocation();

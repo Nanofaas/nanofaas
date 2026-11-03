@@ -127,7 +127,9 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         if(!actuator.ownedFunctions().isEmpty() && !actuator.ownedFunctions().equals(settings.functions().keySet())) throw new IllegalStateException("drain owned function scope before changing selection");
         inputs.validate(settings);
         long budget=settings.negotiation().auctionBudget().plus(settings.preparationBudget()).toNanos();
-        if(budget>settings.period().toNanos()*settings.maxOperationalFraction() || budget>settings.leadTime().toNanos()) throw new IllegalArgumentException("full operational budget must fit lead time and a small period fraction");
+        // Logical epochs change their allocation only once activated, so their lead covers the auction alone.
+        long beforeActivation=settings.schemaVersion()==2?settings.negotiation().auctionBudget().toNanos():budget;
+        if(budget>settings.period().toNanos()*settings.maxOperationalFraction() || beforeActivation>settings.leadTime().toNanos()) throw new IllegalArgumentException("full operational budget must fit lead time and a small period fraction");
         if(settings.scheduled() && !qualified(settings)) throw new IllegalArgumentException("scheduled mode requires at least 20 complete timing samples with p99 and margin");
         if(settings.scheduled()) {
             if(current.map(s->!s.settings().scheduled()).orElse(true) && busy.get()) throw new IllegalStateException("manual preparation must finish before enabling scheduling");
@@ -185,8 +187,9 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                 if(!canonical.startsAt().equals(window.startsAt()) || !canonical.endsAt().equals(window.endsAt()))
                     throw new IllegalArgumentException("canonical epoch labels differ from configuration");
                 timing=acceptedTiming==null?EpochTiming.capture(sessionId,window.startsAt(),window.endsAt(),window.activationDelay(),nanos):acceptedTiming;
-                if(window.activationDelay().compareTo(settings.negotiation().auctionBudget().plus(settings.preparationBudget()))<0)
-                    throw new IllegalArgumentException("activation delay is smaller than operational budget");
+                // Preparation starts at activation; only the auction must end before it.
+                if(window.activationDelay().compareTo(settings.negotiation().auctionBudget())<0)
+                    throw new IllegalArgumentException("activation delay is smaller than the auction budget");
                 if(logicalPreparation!=null && epoch<=logicalPreparation.epoch || !busy.compareAndSet(false,true))
                     return Mono.error(new IllegalStateException("epoch is not monotonic or preparation active"));
                 claimedSession=sessionId;claimedGrid=new Grid(settings.anchor(),settings.period());token=lifecycle;
