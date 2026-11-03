@@ -26,6 +26,41 @@ class ForecastObservationLifecycleTest {
         assertThat(source.forecast(query("first",1,clock)).status()).isEqualTo(ForecastSnapshot.Status.MISSING);
         assertThat(source.forecast(query("second",2,clock)).status()).isEqualTo(ForecastSnapshot.Status.AVAILABLE);
     }
+    @Test void aGenerationUnreadableForOneRefreshKeepsTheHistory() {
+        var clock=new EwmaForecastSourceTest.MutableClock();var start=clock.instant();
+        var source=new EwmaForecastSource("edge",.5,Duration.ofSeconds(1),Duration.ofSeconds(30),4,clock);
+        var catalog=mock(FunctionCatalogView.class);var replicas=mock(ManagedReplicaControl.class);
+        var function=mock(RegisteredFunction.class);when(function.name()).thenReturn("f");
+        when(catalog.listRegistered()).thenReturn(List.of(function));
+        when(replicas.generationOf(function)).thenReturn(new FunctionGeneration("f",1));
+        var lifecycle=new ForecastObservationLifecycle(source,catalog,replicas,clock);
+        lifecycle.refresh();
+        clock.now=start.plusSeconds(1);source.record(new ExternalArrival("f",1,clock.instant(),"a"));
+        clock.now=start.plusSeconds(3);lifecycle.refresh();
+        var before=source.forecast(query("f",1,clock));
+        // A replica change replaced the registry entry between the listing and the generation read.
+        when(replicas.generationOf(function)).thenReturn(null);
+        lifecycle.refresh();
+        when(replicas.generationOf(function)).thenReturn(new FunctionGeneration("f",1));
+        lifecycle.refresh();
+        var after=source.forecast(query("f",1,clock));
+        assertThat(after.status()).isEqualTo(ForecastSnapshot.Status.AVAILABLE);
+        assertThat(after.rate()).isEqualTo(before.rate());
+        assertThat(after.revision()).isEqualTo(before.revision());
+    }
+    @Test void aNewGenerationStillReplacesTheOldHistory() {
+        var clock=new EwmaForecastSourceTest.MutableClock();var start=clock.instant();
+        var source=new EwmaForecastSource("edge",.5,Duration.ofSeconds(1),Duration.ofSeconds(30),4,clock);
+        var catalog=mock(FunctionCatalogView.class);var replicas=mock(ManagedReplicaControl.class);
+        var function=mock(RegisteredFunction.class);when(function.name()).thenReturn("f");
+        when(catalog.listRegistered()).thenReturn(List.of(function));
+        when(replicas.generationOf(function)).thenReturn(new FunctionGeneration("f",1));
+        var lifecycle=new ForecastObservationLifecycle(source,catalog,replicas,clock);
+        lifecycle.refresh();clock.now=start.plusSeconds(2);lifecycle.refresh();
+        when(replicas.generationOf(function)).thenReturn(new FunctionGeneration("f",2));
+        lifecycle.refresh();
+        assertThat(source.forecast(query("f",1,clock)).status()).isEqualTo(ForecastSnapshot.Status.MISSING);
+    }
     private static ForecastQuery query(String f,long generation,Clock clock) {
         return new ForecastQuery("edge",f,generation,clock.instant(),clock.instant().plusSeconds(60));
     }

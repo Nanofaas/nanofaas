@@ -57,8 +57,10 @@ public abstract class WindowedForecastSource<S> implements ForecastSource, Exter
         if (at.getEpochSecond() % windowSeconds != 0 || at.getNano() != 0) first++;
         series.put(key, new Series(first));
     }
-    public synchronized void retain(Set<String> activeIdentities) {
-        series.keySet().removeIf(k -> !activeIdentities.contains(k.function() + "#" + k.generation()));
+    /** Drops every series except the active identities and those of functions not resolved this time. */
+    public synchronized void retain(Set<String> activeIdentities, Set<String> unresolvedFunctions) {
+        series.keySet().removeIf(k -> !unresolvedFunctions.contains(k.function())
+                && !activeIdentities.contains(k.function() + "#" + k.generation()));
     }
     @Override public synchronized void record(ExternalArrival arrival) {
         Series value = series.get(new Key(arrival.function(), arrival.generation()));
