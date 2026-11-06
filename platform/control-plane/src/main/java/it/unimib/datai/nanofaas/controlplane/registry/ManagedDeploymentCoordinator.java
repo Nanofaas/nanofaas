@@ -26,6 +26,41 @@ import java.time.InstantSource;
  */
 public final class ManagedDeploymentCoordinator implements ManagedReplicaControl, AutoCloseable {
 
+    public it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution acquireInvocationTarget(
+            it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask task) {
+        var unsupported = it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.UNSUPPORTED;
+        var unavailable = it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.UNAVAILABLE;
+        if (task.functionSpec().executionMode() != it.unimib.datai.nanofaas.common.model.ExecutionMode.DEPLOYMENT) {
+            return unsupported;
+        }
+        return locks.withLock(task.functionName(), () -> {
+            var ownership = task.dispatchLease();
+            if (ownership == null || ownership.isReleased()
+                    || !ownership.generation().equals(generations.activeGeneration(task.functionName()))) return unavailable;
+            var function = registry.getRegistered(task.functionName()).orElse(null);
+            if (function == null) return unavailable;
+            var target = function.managedDeploymentTarget().orElse(null);
+            if (target == null) return unavailable;
+            registry.applicationState().requireAvailable(task.functionName());
+            var resolution = requireProvider(target).acquireInvocationTarget(function.name(), function.deploymentMetadata().deploymentObjects(), task.executionId(), String.valueOf(task.attempt()));
+            if (resolution.target() == null) return resolution;
+            var reserved = resolution.target();
+            return it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.reserved(
+                    new it.unimib.datai.nanofaas.controlplane.deployment.ManagedInvocationTarget() {
+                        @Override public java.util.concurrent.CompletionStage<Void> ready() { return reserved.ready(); }
+                        @Override public String endpointUrl() { return reserved.endpointUrl(); }
+                        @Override public String replicaId() { return reserved.replicaId(); }
+                        @Override public boolean markDispatched() {
+                            return locks.withLock(task.functionName(), () -> !ownership.isReleased()
+                                    && ownership.generation().equals(generations.activeGeneration(task.functionName()))
+                                    && reserved.markDispatched());
+                        }
+                        @Override public java.util.concurrent.CompletionStage<Boolean> executionEvidence() { return reserved.executionEvidence(); }
+                        @Override public void close() { reserved.close(); }
+                    });
+        });
+    }
+
     private final DeploymentProviderResolver deploymentProviderResolver;
     private final FunctionRegistry registry;
     private final FunctionOperationLocks locks;

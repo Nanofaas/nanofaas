@@ -17,7 +17,7 @@ class RustPhysicalProxyTest {
         builder.environment().put("NANOFAAS_MAX_INPUT_BYTES", "128");
         var process = builder.redirectError(ProcessBuilder.Redirect.DISCARD).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
         var backend = URI.create("http://127.0.0.1:" + port);
-        try (var client = HttpClient.newHttpClient(); var proxy = new RoundRobinFunctionProxy("127.0.0.1", 2, Duration.ofSeconds(2))) {
+        try (var client = HttpClient.newHttpClient(); var proxy = new DirectReplicaFixture(client, 2, Duration.ofSeconds(2))) {
             var probe = new HttpRuntimeExecutionProbe(client, Duration.ofMillis(200));
             long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
             while (true) {
@@ -33,7 +33,7 @@ class RustPhysicalProxyTest {
                 var request = HttpRequest.newBuilder(URI.create(proxy.endpointUrl()))
                         .header("X-Execution-Id", id).header("X-Dispatch-Attempt", "1")
                         .POST(HttpRequest.BodyPublishers.ofString(body)).build();
-                var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                var response = proxy.send(request);
                 assertThat(response.statusCode()).isEqualTo(body.length() > 128 ? 413 : 400);
                 assertThat(response.headers().firstValue("X-NanoFaaS-Handler-Executed")).isEmpty();
                 assertThat(probe.observe(backend, id).handlerStarted()).isFalse();
@@ -42,7 +42,7 @@ class RustPhysicalProxyTest {
             var request = HttpRequest.newBuilder(URI.create(proxy.endpointUrl()))
                     .header("X-Execution-Id", "accepted").header("X-Dispatch-Attempt", "1")
                     .POST(HttpRequest.BodyPublishers.ofString(valid)).build();
-            assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+            assertThat(proxy.send(request).statusCode()).isEqualTo(200);
             assertThat(probe.observe(backend, "accepted").handlerStarted()).isTrue();
         } finally { process.destroy(); if (!process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly(); }
     }
@@ -54,7 +54,7 @@ class RustPhysicalProxyTest {
         builder.environment().put("NANOFAAS_HANDLER_TIMEOUT","10");
         var process=builder.redirectError(ProcessBuilder.Redirect.DISCARD).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
         var backend="http://127.0.0.1:"+port;
-        try(var client=HttpClient.newHttpClient(); var proxy=new RoundRobinFunctionProxy("127.0.0.1",2,Duration.ofSeconds(2))) {
+        try(var client=HttpClient.newHttpClient(); var proxy=new DirectReplicaFixture(client,2,Duration.ofSeconds(2))) {
             long deadline=System.nanoTime()+Duration.ofSeconds(5).toNanos();
             while(true) {
                 try { new HttpRuntimeExecutionProbe(client,Duration.ofMillis(200)).eligibleIncarnation(URI.create(backend)); break; }
@@ -63,7 +63,7 @@ class RustPhysicalProxyTest {
             proxy.enablePhysicalSlots(); proxy.updateBackends(List.of(backend));
             var request=HttpRequest.newBuilder(URI.create(proxy.endpointUrl())).header("X-Execution-Id","physical").header("X-Dispatch-Attempt","1")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"input\":{\"iterations\":200000000,\"working_set_bytes\":1048576,\"seed\":42}}")).build();
-            assertThat(client.send(request,HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(504);
+            assertThat(proxy.send(request).statusCode()).isEqualTo(504);
             var probe=new HttpRuntimeExecutionProbe(client,Duration.ofSeconds(1));
             assertThat(probe.observe(URI.create(backend),"physical").state()).isEqualTo("ACTIVE");
             assertThat(proxy.awaitDrained(backend,Duration.ofMillis(50))).isFalse();
@@ -79,7 +79,7 @@ class RustPhysicalProxyTest {
         builder.environment().put("NANOFAAS_MAX_CONCURRENT_HANDLERS","1");
         var process=builder.redirectError(ProcessBuilder.Redirect.DISCARD).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
         var backend="http://127.0.0.1:"+port;
-        try(var client=HttpClient.newHttpClient(); var proxy=new RoundRobinFunctionProxy("127.0.0.1",2,Duration.ofSeconds(2))) {
+        try(var client=HttpClient.newHttpClient(); var proxy=new DirectReplicaFixture(client,2,Duration.ofSeconds(2))) {
             long deadline=System.nanoTime()+Duration.ofSeconds(5).toNanos();
             while(true) {
                 try { new HttpRuntimeExecutionProbe(client,Duration.ofMillis(200)).eligibleIncarnation(URI.create(backend)); break; }
@@ -88,7 +88,7 @@ class RustPhysicalProxyTest {
             proxy.enablePhysicalSlots(); proxy.updateBackends(List.of(backend));
             var request=HttpRequest.newBuilder(URI.create(proxy.endpointUrl())).header("X-Execution-Id","handler-error").header("X-Dispatch-Attempt","1")
                     .POST(HttpRequest.BodyPublishers.ofString("{\"input\":{\"iterations\":1000000001,\"working_set_bytes\":4096,\"seed\":42}}")).build();
-            var response=client.send(request,HttpResponse.BodyHandlers.ofString());
+            var response=proxy.send(request);
             assertThat(response.statusCode()).isEqualTo(500);
             assertThat(response.body()).contains("HANDLER_ERROR");
             assertThat(response.headers().firstValue("X-NanoFaaS-Handler-Executed")).contains("true");

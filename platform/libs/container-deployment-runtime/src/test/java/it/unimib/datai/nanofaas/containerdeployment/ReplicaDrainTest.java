@@ -19,14 +19,14 @@ class ReplicaDrainTest {
                     "{\"state\":\"RELEASED\",\"incarnation\":\"run-1\",\"executionId\":\"work\",\"dispatchAttempt\":\"1\",\"occupancySeconds\":0.001" + evidence + "}"));
             server.start();
             String backend = "http://127.0.0.1:" + server.getAddress().getPort();
-            try (var client = HttpClient.newHttpClient(); var proxy = new RoundRobinFunctionProxy("127.0.0.1", 2, Duration.ofSeconds(2))) {
+            try (var client = HttpClient.newHttpClient(); var proxy = new DirectReplicaFixture(client, 2, Duration.ofSeconds(2))) {
                 proxy.enablePhysicalSlots();
                 proxy.updateBackends(List.of(backend));
-                var response = invoke(client, proxy.endpointUrl(), "work");
+                var response = invoke(client, proxy, "work");
                 assertThat(response.statusCode()).isEqualTo(413);
                 assertThat(response.headers().firstValue("X-NanoFaaS-Handler-Executed")).isEmpty();
                 assertThat(proxy.awaitDrained(backend, Duration.ofSeconds(1))).isTrue();
-                assertThat(invoke(client, proxy.endpointUrl(), "work").statusCode()).isEqualTo(413);
+                assertThat(invoke(client, proxy, "work").statusCode()).isEqualTo(413);
             } finally { server.stop(0); }
         }
     }
@@ -37,17 +37,17 @@ class ReplicaDrainTest {
         server.createContext("/invoke", e -> reply(e,504,"timeout"));
         server.createContext("/runtime/executions/work", e -> reply(e,200,"{\"state\":\""+(released.get()?"RELEASED":"ACTIVE")+"\",\"incarnation\":\"run-1\",\"executionId\":\"work\",\"dispatchAttempt\":\"1\",\"occupancySeconds\":1.0,\"handlerStarted\":true}"));
         server.start(); String backend="http://127.0.0.1:"+server.getAddress().getPort();
-        try(var client=HttpClient.newHttpClient(); var proxy=new RoundRobinFunctionProxy("127.0.0.1",2,Duration.ofSeconds(2))) {
+        try(var client=HttpClient.newHttpClient(); var proxy=new DirectReplicaFixture(client,2,Duration.ofSeconds(2))) {
             proxy.enablePhysicalSlots(); proxy.updateBackends(List.of(backend));
-            var timeout = invoke(client,proxy.endpointUrl(),"work");
+            var timeout = invoke(client,proxy,"work");
             assertThat(timeout.statusCode()).isEqualTo(504);
             assertThat(timeout.headers().firstValue("X-NanoFaaS-Handler-Executed")).contains("true");
-            assertThat(invoke(client,proxy.endpointUrl(),"other").statusCode()).isEqualTo(503);
+            assertThat(invoke(client,proxy,"other").statusCode()).isEqualTo(503);
             proxy.beginDrain(backend);
             assertThat(proxy.awaitDrained(backend,Duration.ofMillis(100))).isFalse();
             released.set(true);
             assertThat(proxy.awaitDrained(backend,Duration.ofSeconds(2))).isTrue();
-            assertThat(invoke(client,proxy.endpointUrl(),"other").statusCode()).isEqualTo(503);
+            assertThat(invoke(client,proxy,"other").statusCode()).isEqualTo(503);
         } finally { server.stop(0); }
     }
     @Test void handlerHeadersCannotInventExecutionWithoutMatchingPhysicalProof() throws Exception {
@@ -60,9 +60,9 @@ class ReplicaDrainTest {
             server.createContext("/invoke",e->{e.getResponseHeaders().set("X-NanoFaaS-Handler-Executed","true");reply(e,500,"handler failed");});
             server.createContext("/runtime/executions/work",e->reply(e,200,proof));
             server.start();
-            try(var client=HttpClient.newHttpClient();var proxy=new RoundRobinFunctionProxy("127.0.0.1",2,Duration.ofSeconds(2))) {
+            try(var client=HttpClient.newHttpClient();var proxy=new DirectReplicaFixture(client,2,Duration.ofSeconds(2))) {
                 proxy.enablePhysicalSlots();proxy.updateBackends(List.of("http://127.0.0.1:"+server.getAddress().getPort()));
-                var response=invoke(client,proxy.endpointUrl(),"work");
+                var response=invoke(client,proxy,"work");
                 assertThat(response.statusCode()).isEqualTo(500);
                 assertThat(response.headers().firstValue("X-NanoFaaS-Handler-Executed")).isEmpty();
             } finally {server.stop(0);}
@@ -72,11 +72,11 @@ class ReplicaDrainTest {
     @Test void occupiedReplicaAForcesNextRequestToFreeReplicaB() throws Exception {
         var callsA=new java.util.concurrent.atomic.AtomicInteger(); var callsB=new java.util.concurrent.atomic.AtomicInteger();
         var a=activeBackend("a",callsA); var b=activeBackend("b",callsB);
-        try(var client=HttpClient.newHttpClient(); var proxy=new RoundRobinFunctionProxy("127.0.0.1",3,Duration.ofSeconds(2))) {
+        try(var client=HttpClient.newHttpClient(); var proxy=new DirectReplicaFixture(client,3,Duration.ofSeconds(2))) {
             proxy.enablePhysicalSlots(); proxy.updateBackends(List.of("http://127.0.0.1:"+a.getAddress().getPort(),"http://127.0.0.1:"+b.getAddress().getPort()));
-            assertThat(invoke(client,proxy.endpointUrl(),"first").statusCode()).isEqualTo(504);
-            assertThat(invoke(client,proxy.endpointUrl(),"second").statusCode()).isEqualTo(504);
-            assertThat(invoke(client,proxy.endpointUrl(),"third").statusCode()).isEqualTo(503);
+            assertThat(invoke(client,proxy,"first").statusCode()).isEqualTo(504);
+            assertThat(invoke(client,proxy,"second").statusCode()).isEqualTo(504);
+            assertThat(invoke(client,proxy,"third").statusCode()).isEqualTo(503);
             assertThat(callsA.get()).isEqualTo(1); assertThat(callsB.get()).isEqualTo(1);
         } finally { a.stop(0); b.stop(0); }
     }
@@ -87,8 +87,8 @@ class ReplicaDrainTest {
         server.createContext("/runtime/executions/", e -> reply(e,200,"{\"state\":\"ACTIVE\",\"incarnation\":\""+incarnation+"\"}"));
         server.start(); return server;
     }
-    private static HttpResponse<String> invoke(HttpClient client,String url,String id) throws Exception {
-        return client.send(HttpRequest.newBuilder(URI.create(url)).header("X-Execution-Id",id).header("X-Dispatch-Attempt","1").POST(HttpRequest.BodyPublishers.ofString("{\"input\":null}")).build(),HttpResponse.BodyHandlers.ofString());
+    private static HttpResponse<String> invoke(HttpClient client,DirectReplicaFixture proxy,String id) throws Exception {
+        return proxy.send(HttpRequest.newBuilder(URI.create(proxy.endpointUrl())).header("X-Execution-Id",id).header("X-Dispatch-Attempt","1").POST(HttpRequest.BodyPublishers.ofString("{\"input\":null}")).build());
     }
     private static void reply(com.sun.net.httpserver.HttpExchange e,int status,String json) throws java.io.IOException {
         byte[] bytes=json.getBytes(StandardCharsets.UTF_8); e.sendResponseHeaders(status,bytes.length);

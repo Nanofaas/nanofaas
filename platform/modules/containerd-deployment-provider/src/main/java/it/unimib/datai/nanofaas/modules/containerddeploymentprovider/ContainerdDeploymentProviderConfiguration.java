@@ -4,8 +4,7 @@ import io.nanofaas.containerd.spi.ContainerdClient;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
 import it.unimib.datai.nanofaas.containerdeployment.HttpEndpointProbe;
-import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
-import it.unimib.datai.nanofaas.containerdeployment.ProxySettings;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -40,15 +39,15 @@ public class ContainerdDeploymentProviderConfiguration {
     }
 
     @Bean
-    RoundRobinFunctionProxyFactory containerdManagedFunctionProxyFactory(ContainerdProperties properties) {
-        return new RoundRobinFunctionProxyFactory(properties.bindHost(), ProxySettings.defaults());
+    ManagedReplicaPoolFactory containerdManagedFunctionProxyFactory() {
+        return new ManagedReplicaPoolFactory();
     }
 
     @Bean
     ContainerdDeploymentProvider containerdDeploymentProvider(ContainerRuntimeAdapter adapter,
                                                                ContainerdProperties properties,
                                                                EndpointProbe endpointProbe,
-                                                               RoundRobinFunctionProxyFactory proxyFactory) {
+                                                               ManagedReplicaPoolFactory proxyFactory) {
         return new ContainerdDeploymentProvider(adapter, properties, endpointProbe, proxyFactory);
     }
 

@@ -97,11 +97,11 @@ final class RecoveryFixture {
                 true, "/run/user/1000/containerd/containerd.sock", java.time.Duration.ofSeconds(1));
         EndpointProbe probe = mock(EndpointProbe.class);
         when(probe.isReady(anyString())).thenReturn(true);
-        List<ManagedFunctionProxy> proxies = new ArrayList<>();
-        RoundRobinFunctionProxyFactory realFactory = new RoundRobinFunctionProxyFactory("127.0.0.1");
-        RoundRobinFunctionProxyFactory proxyFactory = mock(RoundRobinFunctionProxyFactory.class);
+        List<ManagedReplicaSet> proxies = new ArrayList<>();
+        ManagedReplicaPoolFactory realFactory = new ManagedReplicaPoolFactory();
+        ManagedReplicaPoolFactory proxyFactory = mock(ManagedReplicaPoolFactory.class);
         when(proxyFactory.create(anyString())).thenAnswer(invocation -> {
-            ManagedFunctionProxy proxy = realFactory.create(invocation.getArgument(0));
+            ManagedReplicaSet proxy = realFactory.create(invocation.getArgument(0));
             proxies.add(proxy);
             return proxy;
         });
@@ -142,7 +142,7 @@ final class RecoveryFixture {
     }
 
     record Session(ContainerdClient client, ContainerdRuntimeAdapter adapter,
-                   ContainerdDeploymentProvider provider, List<ManagedFunctionProxy> proxies) implements AutoCloseable {
+                   ContainerdDeploymentProvider provider, List<ManagedReplicaSet> proxies) implements AutoCloseable {
         @Override public void close() { provider.close(); client.close(); }
     }
 }

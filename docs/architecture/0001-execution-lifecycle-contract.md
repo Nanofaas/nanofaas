@@ -304,7 +304,7 @@ must make its row true.
 | **Dispatch / transport future + HTTP acquisition** | dispatcher (`dispatcherRouter.dispatch*`) or offload gateway (`invokeRemote`) | normal completion; cancellation on shutdown/expiry (P06: keep the real cancellable handle) | dispatch throwing synchronously → `completeExecution` with a warm error result (release the lease already acquired on that path) |
 | **Waiter subscription** (reactive subscriber + timer) | `ReactiveInvocationCoordinator.invoke` (`Mono.fromFuture(...).timeout(...)`) | waiter timeout, client cancel, or shared terminal completes the future | timeout/cancel releases only that waiter's subscription/timer; the shared future and record are untouched (I1) |
 | **Function capacity/generation state** (`FunctionCapacityState`, `ReplicaStatusSnapshot.Entry`) | core function-registration listener (also without queue modules); optional modules consume the same registry | function removal, after its in-flight work drains | remove under load deactivates rather than deletes while slots are held; drain-then-delete (P09/P10) |
-| **Deployment resources** (proxy, `FunctionState`, HttpServer, executor, HttpClient) | `ContainerLocalDeploymentProvider` at provision | `deprovision` (proxy closed first, then every container attempted) + context shutdown, which closes the proxies and leaves the containers recoverable | ownership is kept until the cleanup completes: the proxy is released on a guaranteed path, a replica leaves the map only once its container is confirmed gone, and what could not be removed is reported as `PartialDeprovisionException` (P08, R6) |
+| **Deployment resources** (replica pool, `FunctionState`, container identities) | `ContainerLocalDeploymentProvider` at provision | `deprovision` (pool closed first, then every container attempted) + context shutdown, which closes the pools and leaves the containers recoverable | ownership is kept until the cleanup completes: the replica pool is closed on a guaranteed path, a replica leaves the map only once its container is confirmed gone, and what could not be removed is reported as `PartialDeprovisionException` (P08, R6) |
 | **Executor/thread resources** (scheduler executor, replica-refresh pool) | `Scheduler`/`SyncScheduler.start`, `ReplicaStatusSnapshot` refresh pool | `SmartLifecycle.stop` (`shutdownNow` + shutdown); context shutdown | a `start` that throws shuts down the executor and clears the reference before rethrowing |
 | **Metrics / meters** (Micrometer meters per function) | function register (`Metrics.registerFunction`, queue managers) | `Metrics.removeFunction` / queue removal listeners | a removed function's late event must not re-register meters (R8 → P09); removed-name sets retire with the generation |
 
@@ -388,13 +388,12 @@ can trust.
    `DELETE` resume the cleanup), the registration listeners are **not** replayed — capacity, queues
    and meters retire with the generation that owns those resources (I7) — and every path into the
    function is refused with `409 FUNCTION_REMOVAL_PENDING`: invoke, enqueue, patch, replicas and
-   re-registration. The endpoint is already closed, so admitting anything would only produce a
-   transport error the caller cannot interpret.
+   re-registration. The replica pool is already closed, so admitting further work would target an unavailable deployment.
 3. **Operational rollback.** Allowed only when nothing needed was lost: either the deployment was
    never touched, or it was fully deprovisioned and `reconcile` rebuilt it against the persisted
    backend and replica target — a rebuild that probes the resources back before the function is
-   declared live again. Closing the proxy and then declaring an operational rollback is forbidden;
-   that is why the container backend closes the proxy *first* on the removal path and reports every
+   declared live again. Closing the replica pool and then declaring an operational rollback is forbidden;
+   that is why the container backend closes the pool *first* on the removal path and reports every
    later failure as pending removal.
 
 The distinction lives in one place per side: `ContainerLocalDeploymentProvider.deprovision` decides

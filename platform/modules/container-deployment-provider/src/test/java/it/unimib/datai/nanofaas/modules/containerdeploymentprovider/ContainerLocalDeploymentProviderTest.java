@@ -3,8 +3,8 @@ package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
-import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
-import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaSet;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -61,7 +61,9 @@ class ContainerLocalDeploymentProviderTest {
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(), new FixedPortAllocator(19003), name -> proxy);
         var recovered = restarted.reconcile(spec("echo", 2), 2, result.deploymentObjects());
-        assertThat(recovered.deploymentObjects()).isEqualTo(result.deploymentObjects());
+        assertThat(recovered.deploymentObjects()).containsEntry(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo");
+        assertThat(recovered.deploymentObjects().get("invocationTargetInstance"))
+                .isNotEqualTo(result.deploymentObjects().get("invocationTargetInstance"));
         assertThat(adapter.startedSpecs()).hasSize(1);
     }
 
@@ -94,7 +96,7 @@ class ContainerLocalDeploymentProviderTest {
         ProvisionResult result = provider.provision(spec("echo", 2));
 
         assertThat(result.backendId()).isEqualTo("container-local");
-        assertThat(result.endpointUrl()).isEqualTo("http://127.0.0.1:19090/invoke");
+        assertThat(result.endpointUrl()).isNull();
         assertThat(adapter.startedPorts()).containsExactly(19001, 19002);
         assertThat(proxy.backends()).containsExactly(
                 "http://127.0.0.1:19001",
@@ -306,7 +308,7 @@ class ContainerLocalDeploymentProviderTest {
 
         ProvisionResult result = provider.provision(spec("echo", 0));
 
-        assertThat(result.endpointUrl()).isEqualTo("http://127.0.0.1:19090/invoke");
+        assertThat(result.endpointUrl()).isNull();
         assertThat(adapter.startedSpecs()).isEmpty();
         assertThat(proxy.backends()).isEmpty();
         assertThat(proxy.isClosed()).isFalse();
@@ -391,7 +393,7 @@ class ContainerLocalDeploymentProviderTest {
                 .hasMessageContaining("boom");
 
         assertThat(firstProxy.isClosed()).isTrue();
-        assertThat(provider.provision(spec("echo", 1)).endpointUrl()).isEqualTo("http://127.0.0.1:19091/invoke");
+        assertThat(provider.provision(spec("echo", 1)).endpointUrl()).isNull();
         assertThat(proxyCreations.get()).isEqualTo(2);
     }
 
@@ -459,8 +461,7 @@ class ContainerLocalDeploymentProviderTest {
         assertThat(adapter.removedContainers())
                 .containsExactly("nanofaas-echo-092c79e8f80e559e-r2", "nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(firstProxy.isClosed()).isTrue();
-        assertThat(provider.provision(spec("echo", 2)).endpointUrl())
-                .isEqualTo("http://127.0.0.1:19091/invoke");
+        assertThat(provider.provision(spec("echo", 2)).endpointUrl()).isNull();
         assertThat(proxyCreations.get()).isEqualTo(2);
     }
 
@@ -531,7 +532,7 @@ class ContainerLocalDeploymentProviderTest {
         assertThat(adapter.removedContainers()).isEmpty();
         assertThat(adapter.startedSpecs()).isEmpty();
         assertThat(provider.getReplicaStatus("echo").readyReplicas()).isEqualTo(2);
-        assertThat(result.endpointUrl()).isNotBlank();
+        assertThat(result.endpointUrl()).isNull();
         assertThat(proxy.backends()).containsExactly(
                 "http://127.0.0.1:31001",
                 "http://127.0.0.1:31002"
@@ -686,10 +687,10 @@ class ContainerLocalDeploymentProviderTest {
 
     private static ContainerLocalDeploymentProvider provider(RecordingContainerRuntimeAdapter adapter,
             ContainerLocalProperties properties, EndpointProbe probe, PortAllocator ports,
-            Function<String, ManagedFunctionProxy> proxies) {
+            Function<String, ManagedReplicaSet> proxies) {
         adapter.ports = ports;
         adapter.properties = properties;
-        RoundRobinFunctionProxyFactory factory = mock(RoundRobinFunctionProxyFactory.class);
+        ManagedReplicaPoolFactory factory = mock(ManagedReplicaPoolFactory.class);
         when(factory.create(anyString())).thenAnswer(invocation -> proxies.apply(invocation.getArgument(0)));
         return new ContainerLocalDeploymentProvider(adapter, properties, probe, factory);
     }
@@ -989,7 +990,7 @@ class ContainerLocalDeploymentProviderTest {
         }
     }
 
-    private static final class RecordingProxy implements ManagedFunctionProxy {
+    private static final class RecordingProxy implements ManagedReplicaSet {
         private final String endpointUrl;
         private List<String> backends = List.of();
         private boolean closed;
@@ -998,11 +999,6 @@ class ContainerLocalDeploymentProviderTest {
 
         private RecordingProxy(String endpointUrl) {
             this.endpointUrl = endpointUrl;
-        }
-
-        @Override
-        public String endpointUrl() {
-            return endpointUrl;
         }
 
         @Override

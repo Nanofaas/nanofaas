@@ -25,6 +25,7 @@ public final class ReplicaSlots {
     private final Map<String, Slot> slots = new LinkedHashMap<>();
     private Map<String, String> readyMembership = Map.of();
     private long membershipRevision;
+    private int cursor;
     private boolean quiescing;
     private String admissionEpoch;
     private QuiesceToken quiesceToken;
@@ -55,12 +56,21 @@ public final class ReplicaSlots {
     public synchronized Optional<ReplicaLease> tryAcquire(String executionId, String attempt) {
         if(executionId==null || executionId.isBlank() || executionId.length()>256) throw new IllegalArgumentException("execution identity required");
         if (quiescing) return Optional.empty();
-        for(var entry: slots.entrySet()) if(!entry.getValue().draining && entry.getValue().lease==null) {
-            var slot=entry.getValue(); slot.lease=new ReplicaLease(this,entry.getKey(),slot.incarnation,executionId,attempt);
-            return Optional.of(slot.lease);
+        var candidates = new ArrayList<>(slots.entrySet());
+        for (int i = 0; i < candidates.size(); i++) {
+            int index = Math.floorMod(cursor + i, candidates.size());
+            var entry = candidates.get(index);
+            var slot = entry.getValue();
+            if (!slot.draining && slot.lease == null) {
+                slot.lease = new ReplicaLease(this, entry.getKey(), slot.incarnation, executionId, attempt);
+                cursor = (index + 1) % candidates.size();
+                return Optional.of(slot.lease);
+            }
         }
         return Optional.empty();
     }
+    public synchronized boolean awaitingAllocation() { return quiescing || admissionEpoch != null && slots.isEmpty(); }
+
     /** Preserve an already accepted dispatch while its allocation is temporarily closed. */
     public synchronized Optional<ReplicaLease> acquireWhenResumed(String executionId,String attempt,Duration timeout)
             throws InterruptedException,TimeoutException {

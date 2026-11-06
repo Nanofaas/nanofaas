@@ -1,0 +1,51 @@
+{
+  "gracefulStopSeconds": 40,
+  "httpTimeoutSeconds": 30,
+  "maxVUs": 6000,
+  "phases": [
+    {
+      "durationSeconds": 120,
+      "name": "idle",
+      "rate": 0.0,
+      "startSeconds": 0
+    },
+    {
+      "durationSeconds": 60,
+      "name": "warmup",
+      "rate": 20,
+      "startSeconds": 120
+    },
+    {
+      "durationSeconds": 120,
+      "name": "step-01",
+      "rate": 25,
+      "startSeconds": 180
+    },
+    {
+      "durationSeconds": 120,
+      "name": "step-02",
+      "rate": 50,
+      "startSeconds": 300
+    },
+    {
+      "durationSeconds": 120,
+      "name": "step-03",
+      "rate": 100,
+      "startSeconds": 420
+    },
+    {
+      "durationSeconds": 120,
+      "name": "step-04",
+      "rate": 300,
+      "startSeconds": 540
+    },
+    {
+      "durationSeconds": 40,
+      "name": "drain",
+      "rate": 0.0,
+      "startSeconds": 660
+    }
+  ],
+  "preAllocatedVUs": 100,
+  "size": 1024
+}

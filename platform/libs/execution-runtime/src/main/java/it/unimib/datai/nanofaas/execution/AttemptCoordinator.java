@@ -196,7 +196,7 @@ public final class AttemptCoordinator {
     /** Submits the attempt, or concludes it and returns null when no transport was created. */
     private AttemptHandle submitOrConclude(InvocationTask task, ExecutionRecord.PhysicalInput attemptInput,
                                            DispatchAttempt ownership, ExecutionMode mode) {
-        InvocationTask physicalTask = attemptInput.task();
+        InvocationTask physicalTask = attemptInput.task().withDispatchLease(ownership.lease());
         try {
             return transport.submit(physicalTask);
         } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too

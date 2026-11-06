@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.dispatch;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedInvocationTarget;
 import io.netty.handler.timeout.ReadTimeoutException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -47,10 +48,33 @@ public class ExternalDispatcher implements Dispatcher {
 
     @Override
     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
+        return dispatch(task, null);
+    }
+
+    public CompletableFuture<DispatchResult> dispatch(InvocationTask task, ManagedInvocationTarget target) {
         InvocationLogs.event(LOG, task, "dispatch-external-started");
-        String endpoint = task.functionSpec().endpointUrl();
+        long timeoutMs = task.functionSpec().timeoutMs();
+        return Mono.defer(() -> target == null ? send(task, null)
+                        : Mono.fromCompletionStage(target.ready()).then(Mono.defer(() -> send(task, target))))
+                .flatMap(result -> target == null || result.result().success() ? Mono.just(result)
+                        : Mono.fromCompletionStage(target.executionEvidence())
+                            .onErrorReturn(false)
+                            .map(executed -> new DispatchResult(result.result(), result.coldStart(),
+                                    result.initDurationMs(), result.retryNotBefore(), executed)))
+                .timeout(Duration.ofMillis(timeoutMs))
+                .onErrorResume(ExternalDispatcher::isTimeout, ex -> Mono.just(
+                        DispatchResult.warm(platformFailure(504, "EXTERNAL_TIMEOUT", "External request timed out after " + timeoutMs + "ms", null))))
+                .onErrorResume(ex -> Mono.just(
+                        DispatchResult.warm(platformFailure(502, "EXTERNAL_ERROR", ex.getMessage(), null))))
+                .doOnNext(ignored -> InvocationLogs.event(LOG, task, "dispatch-external-completed"))
+                .doFinally(ignored -> { if (target != null) target.close(); })
+                .toFuture();
+    }
+
+    private Mono<DispatchResult> send(InvocationTask task, ManagedInvocationTarget target) {
+        String endpoint = target == null ? task.functionSpec().endpointUrl() : target.endpointUrl();
         if (endpoint == null || endpoint.isBlank()) {
-            return CompletableFuture.completedFuture(
+            return Mono.just(
                     DispatchResult.warm(InvocationResult.error("EXTERNAL_ENDPOINT_MISSING", "endpointUrl is required for EXTERNAL mode")));
         }
 
@@ -69,6 +93,7 @@ public class ExternalDispatcher implements Dispatcher {
         }
 
         request.httpRequest(clientHttpRequest -> {
+            if (target != null && !target.markDispatched()) throw new IllegalStateException("Managed target no longer admissible");
             reactor.netty.http.client.HttpClientRequest reactorRequest = clientHttpRequest.getNativeRequest();
             reactorRequest.responseTimeout(Duration.ofMillis(timeoutMs));
         });
@@ -78,9 +103,7 @@ public class ExternalDispatcher implements Dispatcher {
                     // One adapter for the whole response: asHttpHeaders() was called six
                     // times over the same headers, on every dispatch.
                     org.springframework.http.HttpHeaders responseHeaders = response.headers().asHttpHeaders();
-                    boolean handlerExecuted = task.functionSpec().env()!=null
-                            && "true".equals(task.functionSpec().env().get("NANOFAAS_ONE_SHOT_PROFILE"))
-                            && "true".equalsIgnoreCase(responseHeaders.getFirst(ResponseHeaderPolicy.HANDLER_EXECUTED_HEADER));
+                    boolean handlerExecuted = false;
                     boolean isCold = "true".equalsIgnoreCase(responseHeaders.getFirst("X-Cold-Start"));
                     Long initMs = parseInitDuration(responseHeaders.getFirst("X-Init-Duration-Ms"));
                     boolean isFunctionDecided = "true".equalsIgnoreCase(
@@ -122,14 +145,7 @@ public class ExternalDispatcher implements Dispatcher {
                             .onErrorResume(ex -> isTimeout(ex) ? Mono.error(ex) : Mono.just(new DispatchResult(
                                     externalFailure(status, ex.getMessage(), responseHeaders, retryAt),
                                     isCold, initMs, retryAt, handlerExecuted)));
-                })
-                .timeout(Duration.ofMillis(timeoutMs))
-                .onErrorResume(ExternalDispatcher::isTimeout, ex -> reactor.core.publisher.Mono.just(
-                        DispatchResult.warm(platformFailure(504, "EXTERNAL_TIMEOUT", "External request timed out after " + timeoutMs + "ms", null))))
-                .onErrorResume(ex -> reactor.core.publisher.Mono.just(
-                        DispatchResult.warm(platformFailure(502, "EXTERNAL_ERROR", ex.getMessage(), null))))
-                .doOnNext(ignored -> InvocationLogs.event(LOG, task, "dispatch-external-completed"))
-                .toFuture();
+                });
     }
 
     private static InvocationResult platformFailure(int status, String code, String message, Map<String, String> headers) {

@@ -25,18 +25,18 @@ class ReplicaRetainedEpochProxyTest {
         var first = backend(calls, released);
         var second = backend(calls, released);
         try (var client = HttpClient.newHttpClient();
-             var proxy = new RoundRobinFunctionProxy("127.0.0.1", 2, Duration.ofSeconds(2))) {
+             var proxy = new DirectReplicaFixture(client, 2, Duration.ofSeconds(2))) {
             proxy.enablePhysicalSlots();
             proxy.updateBackends(List.of(url(first), url(second)));
             var initial = proxy.beginQuiesce();
             assertThat(proxy.resume(initial, initial.admissionEpoch())).isTrue();
-            assertThat(invoke(client, proxy.endpointUrl(), "old", initial.admissionEpoch()).statusCode()).isEqualTo(504);
+            assertThat(invoke(client, proxy, "old", initial.admissionEpoch()).statusCode()).isEqualTo(504);
             var next = proxy.beginQuiesce();
             assertThat(proxy.awaitQuiesced(Duration.ofMillis(100))).isFalse();
             assertThat(proxy.resume(next, next.admissionEpoch())).isFalse();
             assertThat(proxy.resumeRetained(next, next.admissionEpoch())).isTrue();
             // Work accepted before rotation may use the free replica of the current pool.
-            assertThat(invoke(client, proxy.endpointUrl(), "queued-before-rotation", initial.admissionEpoch()).statusCode()).isEqualTo(200);
+            assertThat(invoke(client, proxy, "queued-before-rotation", initial.admissionEpoch()).statusCode()).isEqualTo(200);
             assertThat(calls.get()).isEqualTo(2);
             var retirement = proxy.beginQuiesce();
             assertThat(proxy.awaitQuiesced(Duration.ofMillis(100))).isFalse();
@@ -72,11 +72,10 @@ class ReplicaRetainedEpochProxyTest {
         return server;
     }
 
-    private static HttpResponse<String> invoke(HttpClient client, String url, String id, String epoch) throws Exception {
-        var request = HttpRequest.newBuilder(URI.create(url)).header("X-Execution-Id", id)
+    private static HttpResponse<String> invoke(HttpClient client, DirectReplicaFixture proxy, String id, String epoch) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(proxy.endpointUrl())).header("X-Execution-Id", id)
                 .header("X-Dispatch-Attempt", "1").header("X-NanoFaaS-Replica-Epoch", epoch);
-        return client.send(request.POST(HttpRequest.BodyPublishers.ofString("{\"input\":null}")).build(),
-                HttpResponse.BodyHandlers.ofString());
+        return proxy.send(request.POST(HttpRequest.BodyPublishers.ofString("{\"input\":null}")).build());
     }
 
     private static void reply(HttpExchange exchange, int status, String body) throws java.io.IOException {

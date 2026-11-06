@@ -3,9 +3,9 @@ package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
-import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaSet;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
-import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -224,7 +224,7 @@ class ContainerLocalDeprovisionRecoveryTest {
         ProvisionResult rebuilt = provider.reconcile(spec("echo", 1), 1,
                 Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo-092c79e8f80e559e"));
 
-        assertThat(rebuilt.endpointUrl()).isEqualTo("http://127.0.0.1:19090/invoke");
+        assertThat(rebuilt.endpointUrl()).isNull();
         assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(trackedContainers(provider, "echo")).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(rebuiltProxy.closes()).isZero();
@@ -254,9 +254,9 @@ class ContainerLocalDeprovisionRecoveryTest {
 
     /** Hands out the given proxies in order, repeating the last one once they run out. */
     private static ContainerLocalDeploymentProvider provider(ContainerRuntimeAdapter adapter,
-                                                             ManagedFunctionProxy... proxies) {
+                                                             ManagedReplicaSet... proxies) {
         AtomicInteger created = new AtomicInteger();
-        RoundRobinFunctionProxyFactory proxyFactory = mock(RoundRobinFunctionProxyFactory.class);
+        ManagedReplicaPoolFactory proxyFactory = mock(ManagedReplicaPoolFactory.class);
         when(proxyFactory.create(anyString())).thenAnswer(
                 invocation -> proxies[Math.min(created.getAndIncrement(), proxies.length - 1)]);
         return new ContainerLocalDeploymentProvider(
@@ -400,16 +400,11 @@ class ContainerLocalDeprovisionRecoveryTest {
         }
     }
 
-    private static class RecordingProxy implements ManagedFunctionProxy {
+    private static class RecordingProxy implements ManagedReplicaSet {
         private int closes;
 
         int closes() {
             return closes;
-        }
-
-        @Override
-        public String endpointUrl() {
-            return "http://127.0.0.1:19090/invoke";
         }
 
         @Override

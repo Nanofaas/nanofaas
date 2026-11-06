@@ -1,0 +1,18 @@
+schemaVersion: 2
+name: p1-direct-dispatch-native
+registry:
+  repository: 127.0.0.1:5000/nanofaas
+  tag: p1-direct-dispatch-20261105
+controlPlane:
+  modules:
+  - container-deployment-provider
+  - async-queue
+  - build-metadata
+  build:
+    mode: native
+    builder: container
+    native:
+      gc: serial
+      maxHeap: 64m
+  container:
+    image: control-plane-e02-p1-native

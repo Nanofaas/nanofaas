@@ -30,15 +30,18 @@ class ContainerIdentityHttpTest {
                      new EndpointProbe() {
                          public void awaitReady(String url, Duration timeout, Duration interval) { }
                          public boolean isReady(String url) { return true; }
-                     }, new RoundRobinFunctionProxyFactory("127.0.0.1"));
+                     }, new ManagedReplicaPoolFactory());
              var client = HttpClient.newHttpClient()) {
             var a = provider.provision(spec(first));
             var b = provider.provision(spec(second));
-            for (String endpoint : List.of(a.endpointUrl(), b.endpointUrl())) {
+            for (var deployment : Map.of(first, a, second, b).entrySet()) {
                 for (int i = 0; i < 6; i++) {
-                    var request = HttpRequest.newBuilder(URI.create(endpoint))
-                            .timeout(Duration.ofSeconds(2)).POST(HttpRequest.BodyPublishers.ofString("{}" )).build();
-                    assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+                    try (var target = provider.acquireInvocationTarget(deployment.getKey(), deployment.getValue().deploymentObjects(), "work" + i, "1").target()) {
+                        assertThat(target.markDispatched()).isTrue();
+                        var request = HttpRequest.newBuilder(URI.create(target.endpointUrl()))
+                                .timeout(Duration.ofSeconds(2)).POST(HttpRequest.BodyPublishers.ofString("{}")).build();
+                        assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+                    }
                 }
             }
             assertThat(adapter.servers).hasSize(2);

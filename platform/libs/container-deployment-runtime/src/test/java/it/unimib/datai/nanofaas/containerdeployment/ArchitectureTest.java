@@ -18,6 +18,8 @@ class ArchitectureTest {
                     "org.slf4j..", "tools.jackson..", "it.unimib.datai.nanofaas.common..",
                     "it.unimib.datai.nanofaas.containerdeployment..")
                     .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider.class))
+                    .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ManagedInvocationTarget.class))
+                    .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.class))
                     .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.PartialDeprovisionException.class))
                     .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult.class))
                     .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus.class))

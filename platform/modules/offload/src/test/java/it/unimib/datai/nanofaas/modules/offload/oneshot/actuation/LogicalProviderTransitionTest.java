@@ -17,7 +17,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class LogicalProviderTransitionTest {
-    private static final class PhysicalProxy implements ManagedFunctionProxy {
+    private static final class PhysicalProxy implements ManagedReplicaSet {
         final ReplicaSlots slots = new ReplicaSlots();
         public String endpointUrl() { return "http://proxy/invoke"; }
         public void updateBackends(List<String> urls) { slots.update(urls.stream().collect(Collectors.toMap(url -> url, url -> "inc:" + url))); }
@@ -33,7 +33,7 @@ class LogicalProviderTransitionTest {
     @Test
     void providerReadinessAndRemovalRespectThePhysicalPoolAcrossTransitions() {
         var proxies = new HashMap<String, PhysicalProxy>();
-        var factory = mock(RoundRobinFunctionProxyFactory.class);
+        var factory = mock(ManagedReplicaPoolFactory.class);
         when(factory.create(anyString())).thenAnswer(a -> {
             var proxy = new PhysicalProxy();proxies.put(a.getArgument(0), proxy);return proxy;
         });

@@ -629,13 +629,38 @@ Runtime `/invoke` errors and execution/callback result envelopes are distinct:
 their error value remains an object with `code` and `message`. Application output
 and function-selected status codes are not converted to a management error.
 
+### Direct managed dispatch
+
+For `container-local` and `containerd`, the control plane reserves a ready replica
+in memory and invokes its SDK directly with the shared `WebClient`. Round-robin
+selection enforces per-replica capacity; the execution runtime retains the global
+function admission limit. There is no per-function listening socket, HTTP client,
+or executor. Runtime observation uses one client and executor shared by the provider.
+Kubernetes continues to use its Service; `EXTERNAL` and `LOCAL` keep their paths.
+
+Local managed registrations now return `endpointUrl: null`. Clients must use
+`POST /v1/functions/{name}:invoke` (or the asynchronous public API), not a saved
+proxy URL. The CLI already invokes through these public routes. During catalog
+restore the provider replaces the old proxy endpoint with null and refreshes the
+internal deployment-instance identity while retaining healthy containers and their
+persisted prefix. Old-generation attempts cannot acquire a replacement deployment.
+
+The removed `nanofaas.container-local.proxy.*` settings no longer apply. Request
+size validation remains at `nanofaas.invocation-capacity.ingress-body-bytes` and
+response buffering remains bounded by `nanofaas.http-client.max-in-memory-size-mb`.
+The single invocation timeout covers allocation waiting, transmission and response
+decoding. Accepted one-shot attempts retain their deadline through quiescence;
+cancellation before sending returns their reservation. After sending, a physical
+slot is reusable only after a correlated SDK release observation. An uncertain
+execution cannot be sent to another replica by an internal retry.
+
 ### Local container ownership and recovery
 
 New container-local replica names contain a bounded readable slug and a digest of the original function name. Names that differ by case, punctuation or Unicode therefore have distinct container identities. A preexisting name is a creation conflict: the adapters never remove it merely to make room for a new container. Failed startup cleanup is limited to resources whose ownership is positively established.
 
 Catalog recovery also accepts the previous container-local prefix when discovery confirms the exact function and namespace labels. The recovered prefix remains attached to that deployment, including later scale-up, so upgrading the control plane does not rename or replace healthy replicas. Containerd retains its existing naming scheme.
 
-Scaling publishes the actual remaining replica set even when a container operation fails. Successfully removed replicas immediately leave the proxy; failed removals remain tracked for a retry. A retry resumes from this state rather than rolling back completed operations. Occupied or quarantined one-shot replicas keep their physical leases and drain state across proxy refreshes. The original scaling error remains primary; a proxy publication error is attached as a suppressed exception.
+Scaling publishes the actual remaining replica set even when a container operation fails. Successfully removed replicas immediately leave the replica pool; failed removals remain tracked for a retry. A retry resumes from this state rather than rolling back completed operations. Occupied or quarantined one-shot replicas keep their physical leases and drain state across replica-pool refreshes. The original scaling error remains primary; a replica-set publication error is attached as a suppressed exception.
 
 The CLI backend propagates failed managed-container discovery instead of treating it as an empty inventory. Failed `rm -f` retains ownership unless a separate successful container-name inventory proves that exact container is absent; daemon errors, timeouts and error text alone do not confirm removal. Partial deprovision remains pending until discovery and cleanup succeed.
 

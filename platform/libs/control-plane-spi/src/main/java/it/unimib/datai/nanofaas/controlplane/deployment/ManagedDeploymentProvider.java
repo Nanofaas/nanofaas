@@ -5,6 +5,13 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import java.util.Map;
 
 public interface ManagedDeploymentProvider {
+    /** Called under the coordinator lifecycle/generation fence; the provider fences its replica set. */
+    default ManagedTargetResolution acquireInvocationTarget(
+            String functionName, Map<String, String> deploymentObjects,
+            String executionId, String dispatchAttempt) {
+        return ManagedTargetResolution.UNSUPPORTED;
+    }
+
     String backendId();
 
     boolean isAvailable();

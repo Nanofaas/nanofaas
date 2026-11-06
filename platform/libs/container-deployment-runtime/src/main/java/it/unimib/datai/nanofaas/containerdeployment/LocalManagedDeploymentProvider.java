@@ -29,6 +29,8 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     private static final Logger log = LoggerFactory.getLogger(LocalManagedDeploymentProvider.class);
 
     /** What the partial outcome names when the proxy itself could not be released. */
+    private static final String DEPLOYMENT_INSTANCE = "invocationTargetInstance";
+
     private static final String PROXY_RESOURCE = "local invocation proxy";
 
     public static final String MANAGED_LABEL = "io.nanofaas.managed";
@@ -50,18 +52,35 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     private final String backendId;
     private final LocalDeploymentSettings settings;
     private final EndpointProbe endpointProbe;
-    private final RoundRobinFunctionProxyFactory proxyFactory;
+    private final ManagedReplicaPoolFactory proxyFactory;
     private final Map<String, FunctionState> states = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     public LocalManagedDeploymentProvider(String backendId, LocalDeploymentSettings settings,
                                           ContainerRuntimeAdapter adapter, EndpointProbe endpointProbe,
-                                          RoundRobinFunctionProxyFactory proxyFactory) {
+                                          ManagedReplicaPoolFactory proxyFactory) {
         this.backendId = backendId;
         this.settings = settings;
         this.adapter = adapter;
         this.endpointProbe = endpointProbe;
         this.proxyFactory = proxyFactory;
+    }
+
+    @Override
+    public it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution acquireInvocationTarget(
+            String functionName, Map<String, String> objects, String executionId, String attempt) {
+        var unavailable = it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.UNAVAILABLE;
+        var lock = locks.get(functionName);
+        if (lock == null) return unavailable;
+        lock.lock();
+        try {
+            var state = states.get(functionName);
+            if (state == null || state.pendingRemoval || objects == null
+                    || !state.instance.equals(objects.get(DEPLOYMENT_INSTANCE))) return unavailable;
+            var target = state.proxy.acquire(executionId, attempt);
+            return target == null ? unavailable
+                    : it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.reserved(target);
+        } finally { lock.unlock(); }
     }
 
     @Override
@@ -95,15 +114,15 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                             + "' has a pending removal on backend '" + backendId()
                             + "'; finish the deprovision before provisioning it again");
                 }
-                return new ProvisionResult(existing.proxy.endpointUrl(), backendId(), deploymentObjects(states.get(spec.name())));
+                return new ProvisionResult(null, backendId(), deploymentObjects(states.get(spec.name())));
             }
 
-            ManagedFunctionProxy proxy = proxyFactory.create(spec.name());
+            ManagedReplicaSet proxy = proxyFactory.create(spec.name());
             FunctionState state = new FunctionState(spec, proxy, containerNamePrefix(spec.name()));
             states.put(spec.name(), state);
             try {
                 scaleTo(state, desiredReplicas(spec));
-                return new ProvisionResult(proxy.endpointUrl(), backendId(), deploymentObjects(states.get(spec.name())));
+                return new ProvisionResult(null, backendId(), deploymentObjects(states.get(spec.name())));
             } catch (RuntimeException e) {
                 for (int replicaIndex : List.copyOf(state.replicas.keySet()).reversed()) {
                     suppressCleanupFailure(e, () -> removeReplica(state, replicaIndex));
@@ -139,7 +158,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                 }
             }
 
-            ManagedFunctionProxy proxy = proxyFactory.create(spec.name());
+            ManagedReplicaSet proxy = proxyFactory.create(spec.name());
             FunctionState state = new FunctionState(spec, proxy, prefix);
             Set<String> createdDuringReconcile = new HashSet<>();
             try {
@@ -165,7 +184,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                 if (replaced != null && replaced.proxy != proxy) {
                     safeClose(replaced.proxy);
                 }
-                return new ProvisionResult(proxy.endpointUrl(), backendId(), deploymentObjects(states.get(spec.name())));
+                return new ProvisionResult(null, backendId(), deploymentObjects(states.get(spec.name())));
             } catch (RuntimeException failure) {
                 for (String createdName : createdDuringReconcile) {
                     suppressCleanupFailure(failure, () -> adapter.removeContainer(createdName));
@@ -415,10 +434,12 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
             if (state == null) {
                 return new ReplicaStatus(0, 0);
             }
-            int readyReplicas = (int) state.replicas.values().stream()
-                    .filter(replica -> (!isOneShot(state.spec) || state.proxy.backendReady(replica.baseUrl())) && endpointProbe.isReady(replica.baseUrl()))
-                    .count();
-            return new ReplicaStatus(state.replicas.size(), readyReplicas);
+            var ready = state.replicas.values().stream()
+                    .filter(replica -> endpointProbe.isReady(replica.baseUrl()))
+                    .map(ReplicaState::baseUrl).toList();
+            state.proxy.updateReadyBackends(ready);
+            int admissible = (int) ready.stream().filter(backend -> !isOneShot(state.spec) || state.proxy.backendReady(backend)).count();
+            return new ReplicaStatus(state.replicas.size(), admissible);
         } finally {
             lock.unlock();
         }
@@ -463,7 +484,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                 : Math.max(1, state.spec.concurrency());
         int maxInFlight = Math.max(1, state.replicas.size() * perReplicaConcurrency);
         long timeoutMs = state.spec.timeoutMs() == null ? DEFAULT_TIMEOUT_MS : state.spec.timeoutMs();
-        state.proxy.updateLimits(maxInFlight, Duration.ofMillis(timeoutMs));
+        state.proxy.updateLimits(maxInFlight, perReplicaConcurrency, Duration.ofMillis(timeoutMs));
     }
 
     private void addReplica(FunctionState state, int replicaIndex) {
@@ -510,7 +531,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         if (replica == null) {
             return;
         }
-        if(isOneShot(state.spec)) {
+        if(isOneShot(state.spec) || state.proxy instanceof ManagedReplicaPool) {
             state.proxy.beginDrain(replica.baseUrl());
             if(!state.proxy.awaitDrained(replica.baseUrl(),settings.readinessTimeout()))
                 throw new IllegalStateException("Replica still physically occupied or quarantined: "+replica.containerName());
@@ -604,7 +625,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     }
 
     private Map<String, String> deploymentObjects(FunctionState state) {
-        return Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, state.prefix);
+        return Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, state.prefix, DEPLOYMENT_INSTANCE, state.instance);
     }
 
     private String stateContainerName(FunctionState state, int replicaIndex) {
@@ -658,7 +679,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         return s.substring(0, end);
     }
 
-    private static void safeClose(ManagedFunctionProxy proxy) {
+    private static void safeClose(ManagedReplicaSet proxy) {
         try {
             proxy.close();
         } catch (RuntimeException _) {
@@ -678,9 +699,10 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         // Replaced on a spec update: the proxy's timeout and admission bound are derived from it,
         // so a snapshot frozen at provisioning time would outlive every later PATCH.
         private volatile FunctionSpec spec; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
-        private final ManagedFunctionProxy proxy;
+        private final ManagedReplicaSet proxy;
         private ReplicaSlots.QuiesceToken quiesceToken;
         private final String prefix;
+        private final String instance = java.util.UUID.randomUUID().toString();
         private final LinkedHashMap<Integer, ReplicaState> replicas = new LinkedHashMap<>();
         /**
          * Set by a deprovision that could not finish. The state then exists only to be cleaned up:
@@ -689,7 +711,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
          */
         private volatile boolean pendingRemoval;
 
-        private FunctionState(FunctionSpec spec, ManagedFunctionProxy proxy, String prefix) {
+        private FunctionState(FunctionSpec spec, ManagedReplicaSet proxy, String prefix) {
             this.spec = spec;
             this.proxy = proxy;
             this.prefix = prefix;

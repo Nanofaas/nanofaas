@@ -3,22 +3,14 @@ package it.unimib.datai.nanofaas.containerdeployment;
 import java.time.Duration;
 import java.util.List;
 
-public interface ManagedFunctionProxy extends AutoCloseable {
-    String endpointUrl();
+public interface ManagedReplicaSet extends AutoCloseable {
+    default it.unimib.datai.nanofaas.controlplane.deployment.ManagedInvocationTarget acquire(String executionId, String attempt) { return null; }
+    default void updateReadyBackends(List<String> ready) { }
+    default void updateLimits(int global, int perReplica, Duration timeout) { updateLimits(global, timeout); }
 
     void updateBackends(List<String> backendBaseUrls);
 
-    /**
-     * Pushes the per-function tuning to the proxy: the maximum number of invocation requests that
-     * may be forwarded concurrently (the admission bound) and the timeout allowed for a single
-     * forwarding hop toward one backend. The bound deliberately does not cover health checks,
-     * which are served on a separate path.
-     *
-     * <p>The deployment provider calls this at provision time and whenever the replica set or the
-     * function tuning changes, so a proxy must be able to adopt new values for the whole of its
-     * life. The default is a no-op so that fixed-configuration proxies and test doubles are not
-     * forced to implement it.
-     */
+    /** Updates admission and the deadline retained by accepted allocation waiters. */
     default void updateLimits(int maxInFlight, Duration singleHopTimeout) {
     }
 

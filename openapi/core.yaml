@@ -681,7 +681,8 @@ components:
           description: Bounded in-memory queue size
         endpointUrl:
           type: string
-          description: Effective HTTP endpoint used for EXTERNAL or provider-backed DEPLOYMENT invocation
+          nullable: true
+          description: External endpoint or Kubernetes Service URL. Null for managed local-container deployments, whose replicas are resolved internally; invoke through the public function API.
         requestedExecutionMode:
           type: string
           enum: [LOCAL, EXTERNAL, DEPLOYMENT]

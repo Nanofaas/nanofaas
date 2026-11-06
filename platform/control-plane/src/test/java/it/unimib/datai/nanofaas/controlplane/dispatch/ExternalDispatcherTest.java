@@ -219,7 +219,7 @@ class ExternalDispatcherTest {
     }
 
     @Test
-    void onlyPhysicalManagedProxyCanAttachExecutionEvidenceToAnError() throws Exception {
+    void endpointHeadersCannotAttachExecutionEvidenceWithoutAProviderReservation() throws Exception {
         for(boolean physical:List.of(true,false)) {
             try(var server=new MockWebServer()) {
                 server.enqueue(new MockResponse().setResponseCode(500)
@@ -231,7 +231,7 @@ class ExternalDispatcherTest {
                 var task=new InvocationTask("physical-error","fn",spec,new InvocationRequest("input",null),null,null,RETRY_NOW,1,InvocationKind.SYNC);
                 var result=new ExternalDispatcher(WebClient.create()).dispatch(task).get(5,TimeUnit.SECONDS);
                 assertFalse(result.result().success());
-                assertEquals(physical,result.handlerExecuted());
+                assertFalse(result.handlerExecuted());
             }
         }
     }

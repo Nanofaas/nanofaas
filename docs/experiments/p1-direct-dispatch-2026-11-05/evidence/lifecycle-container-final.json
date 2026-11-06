@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "error": null,
+  "started_at": "2026-11-05T14:53:58.045918+00:00",
+  "ended_at": "2026-11-05T14:55:14.100162+00:00",
+  "git_commit": "401391a0d39f84364570a17044dc4d8b0db23596",
+  "git_dirty": true,
+  "git_diff_sha256": "56d314d30c618c5e28cdbe5581a3f078bd6d5dc7df0f2e6e9d0606c584fa7669",
+  "git_status": [
+    "M  docs/control-plane.md",
+    "A  docs/experiments/p1-direct-dispatch-2026-11-05/native.yaml",
+    "M  docs/one-shot.md",
+    "M  openapi/core.yaml",
+    "M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/DispatcherRouter.java",
+    "M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java",
+    "M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java",
+    "M  platform/control-plane/src/main/resources/application.yml",
+    "A  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/DirectManagedDispatchTest.java",
+    "M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java",
+    "A  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ManagedDispatcherRouterTest.java",
+    "A  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedTargetResolutionTest.java",
+    "M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/QueuedAllocationTransitionTest.java",
+    "M  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/LocalManagedDeploymentProvider.java",
+    "A  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ManagedReplicaPool.java",
+    "A  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ManagedReplicaPoolFactory.java",
+    "R  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ManagedFunctionProxy.java -> platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ManagedReplicaSet.java",
+    "D  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ProxySettings.java",
+    "M  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaSlots.java",
+    "D  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/RoundRobinFunctionProxy.java",
+    "D  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/RoundRobinFunctionProxyFactory.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/AcceptedDispatchTransitionTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ArchitectureTest.java",
+    "A  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/DirectProviderTest.java",
+    "A  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/DirectReplicaFixture.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/LocalManagedDeploymentProviderTest.java",
+    "A  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ManagedReplicaPoolTest.java",
+    "D  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/P13BoundedProxyTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/PartialScalingHttpTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaAdmissionProviderTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaDrainTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaEpochProxyTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaRetainedEpochProxyTest.java",
+    "D  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/RoundRobinFunctionProxyTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/RustPhysicalProxyTest.java",
+    "M  platform/libs/control-plane-spi/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/ManagedDeploymentProvider.java",
+    "A  platform/libs/control-plane-spi/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/ManagedInvocationTarget.java",
+    "A  platform/libs/control-plane-spi/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/ManagedTargetResolution.java",
+    "M  platform/libs/execution-runtime/src/main/java/it/unimib/datai/nanofaas/execution/AttemptCoordinator.java",
+    "M  platform/modules/container-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerDeploymentProviderConfiguration.java",
+    "M  platform/modules/container-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerLocalDeploymentProvider.java",
+    "D  platform/modules/container-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerProxyProperties.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/CliContainerRuntimeAdapterTest.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerIdentityHttpTest.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerLocalDeploymentProviderTest.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerLocalDeprovisionRecoveryTest.java",
+    "D  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/P13ProxyConfigurationTest.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/R6DeprovisionFailureOwnershipRegressionTest.java",
+    "M  platform/modules/containerd-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/ContainerdDeploymentProvider.java",
+    "M  platform/modules/containerd-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/ContainerdDeploymentProviderConfiguration.java",
+    "M  platform/modules/containerd-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/ContainerdDeploymentProviderTest.java",
+    "M  platform/modules/containerd-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/ContainerdDeprovisionRecoveryTest.java",
+    "M  platform/modules/containerd-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/RecoveryFixture.java",
+    "M  platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalProviderTransitionTest.java",
+    "M  platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/routing/OneShotHopGuardE2eTest.java"
+  ],
+  "scenario": {
+    "source": "/Users/micheleciavotta/Downloads/nanolab/packages/nanolab/src/nanolab/assets/presets/scenarios/deployment-lifecycle-container.yaml",
+    "config": {
+      "workflow": "validate",
+      "moduleCost": null,
+      "idleReactivation": null,
+      "oneShot": null,
+      "contract": null,
+      "backend": "container",
+      "build": "docker",
+      "recipeProfile": "/Users/micheleciavotta/Downloads/nanolab/packages/nanolab/src/nanolab/assets/presets/recipes/validate-container-jvm.yaml",
+      "cliRuntime": "jvm",
+      "functions": [
+        "word-stats-java"
+      ],
+      "resources": {},
+      "payloadProfile": null,
+      "handlerEnvelope": false,
+      "asyncLoad": false,
+      "persistentRecovery": false,
+      "retryBackoffBurst": false,
+      "autoscaling": false,
+      "concurrencyControl": false,
+      "fixedConcurrency": null,
+      "concurrencyTotalBudget": null,
+      "concurrencyMode": "ADAPTIVE_PER_POD",
+      "completionLatency": false,
+      "loadProfile": "cycle",
+      "soakMinutes": null,
+      "drainMinutes": null,
+      "asyncShare": null,
+      "idemShare": null,
+      "controlPlaneRuntime": "jvm",
+      "autoscalingStrategy": "INTERNAL",
+      "hpaScaleToZero": false,
+      "functionImages": {},
+      "controlPlaneImage": null,
+      "controlPlaneVariant": null,
+      "loadScale": 1.0,
+      "loadVus": null,
+      "release": null,
+      "soak": null,
+      "heapAnalysis": null,
+      "experiment01": null,
+      "experiment02": null,
+      "offloadExperiment": null
+    }
+  },
+  "environment": {
+    "source": null,
+    "config": {
+      "provider": "local",
+      "roles": {},
+      "azure": null,
+      "proxmox": null,
+      "sites": {},
+      "placement": {},
+      "logging": null,
+      "containerdMavenRepository": null
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "001.acquire-local-registry",
+      "title": "Acquire local registry",
+      "status": "passed",
+      "duration_seconds": 2.924,
+      "detail": ""
+    },
+    {
+      "task_id": "002.publish-recipe-validate-container-jvm-yaml",
+      "title": "Publish recipe validate-container-jvm.yaml",
+      "status": "passed",
+      "duration_seconds": 49.13,
+      "detail": ""
+    },
+    {
+      "task_id": "003.acquire-docker-compose-project-nanofaas-validate-from-recipe",
+      "title": "Acquire Docker Compose project nanofaas-validate from recipe",
+      "status": "passed",
+      "duration_seconds": 16.435,
+      "detail": ""
+    },
+    {
+      "task_id": "004.verify-recipe-build-metadata",
+      "title": "Verify recipe build metadata",
+      "status": "passed",
+      "duration_seconds": 0.075,
+      "detail": ""
+    },
+    {
+      "task_id": "005.verify-recipe-control-plane-image",
+      "title": "Verify recipe control-plane image",
+      "status": "passed",
+      "duration_seconds": 0.286,
+      "detail": ""
+    },
+    {
+      "task_id": "006.acquire-word-stats-java",
+      "title": "Acquire word-stats-java",
+      "status": "passed",
+      "duration_seconds": 3.075,
+      "detail": ""
+    },
+    {
+      "task_id": "007.invoke-word-stats-java",
+      "title": "Invoke word-stats-java",
+      "status": "passed",
+      "duration_seconds": 0.323,
+      "detail": ""
+    },
+    {
+      "task_id": "008.verify-recipe-image-of-word-stats-java",
+      "title": "Verify recipe image of word-stats-java",
+      "status": "passed",
+      "duration_seconds": 0.114,
+      "detail": ""
+    },
+    {
+      "task_id": "009.inspect-resources-of-word-stats-java-replica-1",
+      "title": "Inspect resources of word-stats-java replica 1",
+      "status": "passed",
+      "duration_seconds": 0.074,
+      "detail": ""
+    },
+    {
+      "task_id": "010.release-word-stats-java",
+      "title": "Release word-stats-java",
+      "status": "passed",
+      "duration_seconds": 0.212,
+      "detail": ""
+    },
+    {
+      "task_id": "011.release-docker-compose-project-nanofaas-validate-from-recipe",
+      "title": "Release Docker Compose project nanofaas-validate from recipe",
+      "status": "passed",
+      "duration_seconds": 2.743,
+      "detail": ""
+    },
+    {
+      "task_id": "012.release-publish-recipe-validate-container-jvm-yaml",
+      "title": "Release Publish recipe validate-container-jvm.yaml",
+      "status": "passed",
+      "duration_seconds": 0.0,
+      "detail": ""
+    },
+    {
+      "task_id": "013.release-local-registry",
+      "title": "Release local registry",
+      "status": "passed",
+      "duration_seconds": 0.156,
+      "detail": ""
+    }
+  ]
+}

@@ -1,0 +1,388 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "error": null,
+  "started_at": "2026-11-05T14:56:47.257567+00:00",
+  "ended_at": "2026-11-05T15:06:14.810990+00:00",
+  "git_commit": "401391a0d39f84364570a17044dc4d8b0db23596",
+  "git_dirty": true,
+  "git_diff_sha256": "aec17f970cddb8433e1e235fd8b11047fffa26f1690c009bd78f0d2528d4a483",
+  "git_status": [
+    "M  docs/control-plane.md",
+    "A  docs/experiments/p1-direct-dispatch-2026-11-05/native.yaml",
+    "M  docs/one-shot.md",
+    "M  openapi/core.yaml",
+    "M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/DispatcherRouter.java",
+    "M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java",
+    "M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java",
+    "M  platform/control-plane/src/main/resources/application.yml",
+    "A  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/DirectManagedDispatchTest.java",
+    "M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java",
+    "A  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ManagedDispatcherRouterTest.java",
+    "A  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedTargetResolutionTest.java",
+    "M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/QueuedAllocationTransitionTest.java",
+    "M  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/LocalManagedDeploymentProvider.java",
+    "AM platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ManagedReplicaPool.java",
+    "A  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ManagedReplicaPoolFactory.java",
+    "R  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ManagedFunctionProxy.java -> platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ManagedReplicaSet.java",
+    "D  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ProxySettings.java",
+    "M  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaSlots.java",
+    "D  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/RoundRobinFunctionProxy.java",
+    "D  platform/libs/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment/RoundRobinFunctionProxyFactory.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/AcceptedDispatchTransitionTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ArchitectureTest.java",
+    "A  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/DirectProviderTest.java",
+    "A  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/DirectReplicaFixture.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/LocalManagedDeploymentProviderTest.java",
+    "AM platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ManagedReplicaPoolTest.java",
+    "D  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/P13BoundedProxyTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/PartialScalingHttpTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaAdmissionProviderTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaDrainTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaEpochProxyTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/ReplicaRetainedEpochProxyTest.java",
+    "D  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/RoundRobinFunctionProxyTest.java",
+    "M  platform/libs/container-deployment-runtime/src/test/java/it/unimib/datai/nanofaas/containerdeployment/RustPhysicalProxyTest.java",
+    "M  platform/libs/control-plane-spi/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/ManagedDeploymentProvider.java",
+    "A  platform/libs/control-plane-spi/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/ManagedInvocationTarget.java",
+    "A  platform/libs/control-plane-spi/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/ManagedTargetResolution.java",
+    "M  platform/libs/execution-runtime/src/main/java/it/unimib/datai/nanofaas/execution/AttemptCoordinator.java",
+    "M  platform/modules/container-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerDeploymentProviderConfiguration.java",
+    "M  platform/modules/container-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerLocalDeploymentProvider.java",
+    "D  platform/modules/container-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerProxyProperties.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/CliContainerRuntimeAdapterTest.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerIdentityHttpTest.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerLocalDeploymentProviderTest.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/ContainerLocalDeprovisionRecoveryTest.java",
+    "D  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/P13ProxyConfigurationTest.java",
+    "M  platform/modules/container-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerdeploymentprovider/R6DeprovisionFailureOwnershipRegressionTest.java",
+    "M  platform/modules/containerd-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/ContainerdDeploymentProvider.java",
+    "M  platform/modules/containerd-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/ContainerdDeploymentProviderConfiguration.java",
+    "M  platform/modules/containerd-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/ContainerdDeploymentProviderTest.java",
+    "M  platform/modules/containerd-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/ContainerdDeprovisionRecoveryTest.java",
+    "M  platform/modules/containerd-deployment-provider/src/test/java/it/unimib/datai/nanofaas/modules/containerddeploymentprovider/RecoveryFixture.java",
+    "M  platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/actuation/LogicalProviderTransitionTest.java",
+    "M  platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/oneshot/routing/OneShotHopGuardE2eTest.java"
+  ],
+  "scenario": {
+    "source": "/Users/micheleciavotta/Downloads/nanolab/packages/nanolab/src/nanolab/assets/presets/scenarios/deployment-lifecycle-k8s.yaml",
+    "config": {
+      "workflow": "validate",
+      "moduleCost": null,
+      "idleReactivation": null,
+      "oneShot": null,
+      "contract": null,
+      "backend": "k8s",
+      "build": "docker",
+      "recipeProfile": "/Users/micheleciavotta/Downloads/nanolab/packages/nanolab/src/nanolab/assets/presets/recipes/validate-k8s-jvm.yaml",
+      "cliRuntime": "jvm",
+      "functions": [
+        "word-stats-java"
+      ],
+      "resources": {},
+      "payloadProfile": null,
+      "handlerEnvelope": false,
+      "asyncLoad": false,
+      "persistentRecovery": false,
+      "retryBackoffBurst": false,
+      "autoscaling": false,
+      "concurrencyControl": false,
+      "fixedConcurrency": null,
+      "concurrencyTotalBudget": null,
+      "concurrencyMode": "ADAPTIVE_PER_POD",
+      "completionLatency": false,
+      "loadProfile": "cycle",
+      "soakMinutes": null,
+      "drainMinutes": null,
+      "asyncShare": null,
+      "idemShare": null,
+      "controlPlaneRuntime": "jvm",
+      "autoscalingStrategy": "INTERNAL",
+      "hpaScaleToZero": false,
+      "functionImages": {},
+      "controlPlaneImage": null,
+      "controlPlaneVariant": null,
+      "loadScale": 1.0,
+      "loadVus": null,
+      "release": null,
+      "soak": null,
+      "heapAnalysis": null,
+      "experiment01": null,
+      "experiment02": null,
+      "offloadExperiment": null
+    }
+  },
+  "environment": {
+    "source": "/Users/micheleciavotta/Downloads/nanolab/packages/nanolab/src/nanolab/assets/presets/environments/multipass.yaml",
+    "config": {
+      "provider": "multipass",
+      "roles": {
+        "stack": {
+          "provider": null,
+          "name": "nanofaas-stack",
+          "host": null,
+          "user": "ubuntu",
+          "home": null,
+          "kubeconfig": null,
+          "cpus": 4,
+          "memory": "12G",
+          "disk": "30G",
+          "hpaScaleToZero": false
+        }
+      },
+      "azure": null,
+      "proxmox": null,
+      "sites": {},
+      "placement": {},
+      "logging": null,
+      "containerdMavenRepository": null
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "provision.stack.ensure",
+      "title": "Ensure stack VM is running",
+      "status": "passed",
+      "duration_seconds": 122.29,
+      "detail": ""
+    },
+    {
+      "task_id": "provision.stack.vm.provision_base",
+      "title": "Provision base VM dependencies",
+      "status": "passed",
+      "duration_seconds": 44.902,
+      "detail": ""
+    },
+    {
+      "task_id": "provision.stack.k3s.install",
+      "title": "Install k3s",
+      "status": "passed",
+      "duration_seconds": 17.106,
+      "detail": ""
+    },
+    {
+      "task_id": "provision.stack.registry.ensure_container",
+      "title": "Ensure local registry container is running",
+      "status": "passed",
+      "duration_seconds": 4.635,
+      "detail": ""
+    },
+    {
+      "task_id": "provision.stack.k3s.configure_registry",
+      "title": "Configure k3s registry access",
+      "status": "passed",
+      "duration_seconds": 7.596,
+      "detail": ""
+    },
+    {
+      "task_id": "provision.stack.loadtest.install_k6",
+      "title": "Install k6 for load testing",
+      "status": "passed",
+      "duration_seconds": 16.949,
+      "detail": ""
+    },
+    {
+      "task_id": "provision.stack.assets.sync_to_vm",
+      "title": "Sync tooling assets into VM",
+      "status": "passed",
+      "duration_seconds": 1.312,
+      "detail": ""
+    },
+    {
+      "task_id": "provision.stack.repo.sync_to_vm",
+      "title": "Sync repository into VM",
+      "status": "passed",
+      "duration_seconds": 2.007,
+      "detail": ""
+    },
+    {
+      "task_id": "001.stage-recipe-validate-k8s-jvm-yaml",
+      "title": "Stage recipe validate-k8s-jvm.yaml",
+      "status": "passed",
+      "duration_seconds": 1.334,
+      "detail": ""
+    },
+    {
+      "task_id": "002.stage-recipe-in-stack-vm",
+      "title": "Stage recipe in stack VM",
+      "status": "passed",
+      "duration_seconds": 10.222,
+      "detail": ""
+    },
+    {
+      "task_id": "003.publish-staged-recipe-in-stack-vm",
+      "title": "Publish staged recipe in stack VM",
+      "status": "passed",
+      "duration_seconds": 260.053,
+      "detail": ""
+    },
+    {
+      "task_id": "004.build-staged-kubernetes-queue-probe",
+      "title": "Build staged Kubernetes queue probe",
+      "status": "passed",
+      "duration_seconds": 18.841,
+      "detail": ""
+    },
+    {
+      "task_id": "005.own-recipe-namespace-nanofaas-recipe-030ef77d592f",
+      "title": "Own recipe namespace nanofaas-recipe-030ef77d592f",
+      "status": "passed",
+      "duration_seconds": 1.005,
+      "detail": ""
+    },
+    {
+      "task_id": "006.check-kubectl-is-usable",
+      "title": "Check kubectl is usable",
+      "status": "passed",
+      "duration_seconds": 0.305,
+      "detail": ""
+    },
+    {
+      "task_id": "007.acquire-helm-release-nanofaas-from-recipe",
+      "title": "Acquire Helm release nanofaas from recipe",
+      "status": "passed",
+      "duration_seconds": 21.29,
+      "detail": ""
+    },
+    {
+      "task_id": "008.verify-recipe-build-metadata",
+      "title": "Verify recipe build metadata",
+      "status": "passed",
+      "duration_seconds": 0.244,
+      "detail": ""
+    },
+    {
+      "task_id": "009.verify-kubernetes-recipe-image-nanofaas-control-plane",
+      "title": "Verify Kubernetes recipe image nanofaas-control-plane",
+      "status": "passed",
+      "duration_seconds": 1.879,
+      "detail": ""
+    },
+    {
+      "task_id": "010.acquire-word-stats-java",
+      "title": "Acquire word-stats-java",
+      "status": "passed",
+      "duration_seconds": 9.39,
+      "detail": ""
+    },
+    {
+      "task_id": "011.invoke-word-stats-java",
+      "title": "Invoke word-stats-java",
+      "status": "passed",
+      "duration_seconds": 0.545,
+      "detail": ""
+    },
+    {
+      "task_id": "012.verify-kubernetes-recipe-image-fn-word-stats-java",
+      "title": "Verify Kubernetes recipe image fn-word-stats-java",
+      "status": "passed",
+      "duration_seconds": 1.689,
+      "detail": ""
+    },
+    {
+      "task_id": "013.inspect-resources-of-fn-word-stats-java",
+      "title": "Inspect resources of fn-word-stats-java",
+      "status": "passed",
+      "duration_seconds": 0.234,
+      "detail": ""
+    },
+    {
+      "task_id": "014.acquire-k8s-sync-queue",
+      "title": "Acquire k8s-sync-queue",
+      "status": "passed",
+      "duration_seconds": 7.637,
+      "detail": ""
+    },
+    {
+      "task_id": "015.invoke-k8s-sync-queue",
+      "title": "Invoke k8s-sync-queue",
+      "status": "passed",
+      "duration_seconds": 0.544,
+      "detail": ""
+    },
+    {
+      "task_id": "016.check-k6-is-usable",
+      "title": "Check k6 is usable",
+      "status": "passed",
+      "duration_seconds": 0.359,
+      "detail": ""
+    },
+    {
+      "task_id": "017.burst-the-synchronous-queue",
+      "title": "Burst the synchronous queue",
+      "status": "passed",
+      "duration_seconds": 2.654,
+      "detail": ""
+    },
+    {
+      "task_id": "018.release-k8s-sync-queue",
+      "title": "Release k8s-sync-queue",
+      "status": "passed",
+      "duration_seconds": 0.243,
+      "detail": ""
+    },
+    {
+      "task_id": "019.qualify-native-kubernetes-lifecycle",
+      "title": "Qualify native Kubernetes lifecycle",
+      "status": "passed",
+      "duration_seconds": 0.001,
+      "detail": ""
+    },
+    {
+      "task_id": "020.release-word-stats-java",
+      "title": "Release word-stats-java",
+      "status": "passed",
+      "duration_seconds": 0.277,
+      "detail": ""
+    },
+    {
+      "task_id": "021.release-helm-release-nanofaas-from-recipe",
+      "title": "Release Helm release nanofaas from recipe",
+      "status": "passed",
+      "duration_seconds": 4.347,
+      "detail": ""
+    },
+    {
+      "task_id": "022.release-own-recipe-namespace-nanofaas-recipe-030ef77d592f",
+      "title": "Release Own recipe namespace nanofaas-recipe-030ef77d592f",
+      "status": "passed",
+      "duration_seconds": 5.446,
+      "detail": ""
+    },
+    {
+      "task_id": "023.release-build-staged-kubernetes-queue-probe",
+      "title": "Release Build staged Kubernetes queue probe",
+      "status": "passed",
+      "duration_seconds": 0.0,
+      "detail": ""
+    },
+    {
+      "task_id": "024.release-publish-staged-recipe-in-stack-vm",
+      "title": "Release Publish staged recipe in stack VM",
+      "status": "passed",
+      "duration_seconds": 0.0,
+      "detail": ""
+    },
+    {
+      "task_id": "025.release-stage-recipe-in-stack-vm",
+      "title": "Release Stage recipe in stack VM",
+      "status": "passed",
+      "duration_seconds": 0.0,
+      "detail": ""
+    },
+    {
+      "task_id": "026.release-stage-recipe-validate-k8s-jvm-yaml",
+      "title": "Release Stage recipe validate-k8s-jvm.yaml",
+      "status": "passed",
+      "duration_seconds": 0.0,
+      "detail": ""
+    },
+    {
+      "task_id": "provision.stack.destroy",
+      "title": "Destroy stack VM",
+      "status": "passed",
+      "duration_seconds": 0.226,
+      "detail": ""
+    }
+  ]
+}

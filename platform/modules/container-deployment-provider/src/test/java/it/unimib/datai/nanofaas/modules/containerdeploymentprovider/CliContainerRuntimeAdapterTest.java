@@ -20,7 +20,7 @@ class CliContainerRuntimeAdapterTest {
     @Test
     void failedRemovalKeepsPhysicalReplicaAndRetryRemovesIt() {
         var executor=new RecordingCliCommandExecutor();
-        var proxy=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy.class);
+        var proxy=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaSet.class);
         var provider=provider(executor,proxy);
         var provision=provider.provision(spec());
         String prefix=provision.deploymentObjects().get(it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult.CONTAINER_NAME_PREFIX);
@@ -43,7 +43,7 @@ class CliContainerRuntimeAdapterTest {
     @Test
     void failedDiscoveryCannotCompleteDeprovisionAndDiscardOwnership() {
         var executor=new RecordingCliCommandExecutor();
-        var proxy=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy.class);
+        var proxy=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaSet.class);
         var provider=provider(executor,proxy);
         provider.provision(spec());
         executor.withResult(ExecutionResult.failure(1,"daemon unavailable"));
@@ -74,12 +74,11 @@ class CliContainerRuntimeAdapterTest {
     }
 
     private static ContainerLocalDeploymentProvider provider(RecordingCliCommandExecutor executor,
-            it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy proxy) {
+            it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaSet proxy) {
         var ports=new java.util.concurrent.atomic.AtomicInteger(18080);
         var adapter=new CliContainerRuntimeAdapter("docker",executor,null,"127.0.0.1",ports::getAndIncrement);
-        var factory=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory.class);
+        var factory=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory.class);
         org.mockito.Mockito.when(factory.create("echo")).thenReturn(proxy);
-        org.mockito.Mockito.when(proxy.endpointUrl()).thenReturn("http://127.0.0.1:19090/invoke");
         var probe=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.EndpointProbe.class);
         org.mockito.Mockito.when(probe.isReady(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
         return new ContainerLocalDeploymentProvider(adapter,

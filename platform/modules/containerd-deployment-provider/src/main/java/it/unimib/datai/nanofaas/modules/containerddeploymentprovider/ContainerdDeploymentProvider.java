@@ -4,7 +4,7 @@ import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
 import it.unimib.datai.nanofaas.containerdeployment.LocalDeploymentSettings;
 import it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider;
-import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -14,7 +14,7 @@ import java.util.Locale;
 
 public final class ContainerdDeploymentProvider extends LocalManagedDeploymentProvider {
     public ContainerdDeploymentProvider(ContainerRuntimeAdapter adapter, ContainerdProperties properties,
-                                        EndpointProbe endpointProbe, RoundRobinFunctionProxyFactory proxyFactory) {
+                                        EndpointProbe endpointProbe, ManagedReplicaPoolFactory proxyFactory) {
         super("containerd", new LocalDeploymentSettings(properties.callbackUrl(),
                 properties.readinessTimeout(), properties.readinessPollInterval()),
                 adapter, endpointProbe, proxyFactory);

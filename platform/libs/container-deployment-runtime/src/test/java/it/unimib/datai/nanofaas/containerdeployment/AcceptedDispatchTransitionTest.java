@@ -40,7 +40,7 @@ class AcceptedDispatchTransitionTest {
             }
         });
         try (var client = HttpClient.newHttpClient();
-             var proxy = new RoundRobinFunctionProxy("127.0.0.1", 2, Duration.ofSeconds(5))) {
+             var proxy = new DirectReplicaFixture(client, 2, Duration.ofSeconds(5))) {
             try {
                 proxy.enablePhysicalSlots();
                 proxy.updateBackends(List.of(url(retained), url(removed)));
@@ -52,7 +52,7 @@ class AcceptedDispatchTransitionTest {
                     var request = HttpRequest.newBuilder(URI.create(proxy.endpointUrl()))
                             .header("X-Execution-Id", id).header("X-Dispatch-Attempt", "1")
                             .POST(HttpRequest.BodyPublishers.ofString("{\"input\":null}")).build();
-                    responses.add(client.sendAsync(request, HttpResponse.BodyHandlers.ofString()));
+                    responses.add(proxy.sendAsync(request));
                 }
                 long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
                 while (proxy.snapshot().inFlight() != 2 && System.nanoTime() < deadline) Thread.sleep(5);
@@ -85,14 +85,14 @@ class AcceptedDispatchTransitionTest {
     void localDispatchArrivingDuringTransitionExecutesOnceOnTheNewAllocation(boolean emptyDuringTransition) throws Exception {
         var oldCalls=new AtomicInteger();var newCalls=new AtomicInteger();
         var oldBackend=backend(oldCalls,"old");var newBackend=backend(newCalls,"new");
-        try(var client=HttpClient.newHttpClient();var proxy=new RoundRobinFunctionProxy("127.0.0.1",1,Duration.ofSeconds(2))) {
+        try(var client=HttpClient.newHttpClient();var proxy=new DirectReplicaFixture(client,1,Duration.ofSeconds(2))) {
             proxy.enablePhysicalSlots();proxy.updateBackends(List.of(url(oldBackend)));
             var initial=proxy.beginQuiesce();assertThat(proxy.resume(initial,initial.admissionEpoch())).isTrue();
             proxy.beginQuiesce();
             if(emptyDuringTransition) proxy.updateBackends(List.of());
             var request=HttpRequest.newBuilder(URI.create(proxy.endpointUrl())).header("X-Execution-Id","already-accepted")
                     .header("X-Dispatch-Attempt","1").POST(HttpRequest.BodyPublishers.ofString("{\"input\":null}")).build();
-            var response=client.sendAsync(request,HttpResponse.BodyHandlers.ofString());
+            var response=proxy.sendAsync(request);
             long deadline=System.nanoTime()+Duration.ofSeconds(1).toNanos();
             while(proxy.snapshot().inFlight()==0 && !response.isDone() && System.nanoTime()-deadline<0) Thread.sleep(5);
             Thread.sleep(50);

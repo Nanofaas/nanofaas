@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
-import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
 import it.unimib.datai.nanofaas.containerdeployment.HttpEndpointProbe;
 
@@ -21,7 +21,7 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 import java.time.Duration;
 
 @AutoConfiguration
-@EnableConfigurationProperties({ContainerLocalProperties.class, ContainerProxyProperties.class})
+@EnableConfigurationProperties(ContainerLocalProperties.class)
 @ImportRuntimeHints(DockerJavaRuntimeHints.class)
 public class ContainerDeploymentProviderConfiguration {
 
@@ -84,16 +84,15 @@ public class ContainerDeploymentProviderConfiguration {
     }
 
     @Bean
-    RoundRobinFunctionProxyFactory managedFunctionProxyFactory(ContainerLocalProperties properties,
-                                                            ContainerProxyProperties proxyProperties) {
-        return new RoundRobinFunctionProxyFactory(properties.bindHost(), proxyProperties.settings());
+    ManagedReplicaPoolFactory managedFunctionProxyFactory() {
+        return new ManagedReplicaPoolFactory();
     }
 
     @Bean
     ContainerLocalDeploymentProvider containerLocalDeploymentProvider(ContainerRuntimeAdapter adapter,
                                                                      ContainerLocalProperties properties,
                                                                      EndpointProbe endpointProbe,
-                                                                     RoundRobinFunctionProxyFactory proxyFactory) {
+                                                                     ManagedReplicaPoolFactory proxyFactory) {
         return new ContainerLocalDeploymentProvider(adapter, properties, endpointProbe, proxyFactory);
     }
 }

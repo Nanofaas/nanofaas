@@ -78,7 +78,7 @@ class ReplicaAdmissionProviderTest {
         final LocalManagedDeploymentProvider provider;
 
         Fixture() {
-            var factory = mock(RoundRobinFunctionProxyFactory.class);
+            var factory = mock(ManagedReplicaPoolFactory.class);
             when(factory.create(anyString())).thenReturn(proxy);
             when(adapter.runContainer(any())).thenReturn(
                     new ManagedContainer("f-r1", 1, "http://a", true),
@@ -90,9 +90,8 @@ class ReplicaAdmissionProviderTest {
         }
     }
 
-    private static final class SlotProxy implements ManagedFunctionProxy {
+    private static final class SlotProxy implements ManagedReplicaSet {
         final ReplicaSlots slots = new ReplicaSlots();
-        @Override public String endpointUrl() { return "http://proxy/invoke"; }
         @Override public void updateBackends(List<String> urls) { slots.update(urls.stream().collect(Collectors.toMap(url -> url, url -> "inc:" + url))); }
         @Override public void enablePhysicalSlots() { }
         @Override public ReplicaSlots.QuiesceToken beginQuiesce() { return slots.beginQuiesce(); }

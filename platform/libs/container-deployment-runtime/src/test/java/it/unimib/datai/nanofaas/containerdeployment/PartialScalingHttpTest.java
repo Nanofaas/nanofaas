@@ -34,15 +34,18 @@ class PartialScalingHttpTest {
             if (name.endsWith("-r2")) throw new IllegalStateException("remove failed");
             servers.get(2).stop(0); return null;
         }).when(adapter).removeContainer(anyString());
-        try (var provider = provider(adapter, new RoundRobinFunctionProxyFactory("127.0.0.1"));
+        try (var provider = provider(adapter, new ManagedReplicaPoolFactory());
              var client = HttpClient.newHttpClient()) {
-            String endpoint = provider.provision(spec(3)).endpointUrl();
+            var deployment = provider.provision(spec(3));
             assertThatThrownBy(() -> provider.setReplicas("echo", 1)).hasMessage("remove failed");
             assertThat(provider.getReplicaStatus("echo").readyReplicas()).isEqualTo(2);
             for (int i = 0; i < 6; i++) {
-                var request = HttpRequest.newBuilder(URI.create(endpoint)).timeout(Duration.ofSeconds(2))
-                        .POST(HttpRequest.BodyPublishers.ofString("{}")).build();
-                assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+                try (var target = provider.acquireInvocationTarget("echo", deployment.deploymentObjects(), "work" + i, "1").target()) {
+                    assertThat(target.markDispatched()).isTrue();
+                    var request = HttpRequest.newBuilder(URI.create(target.endpointUrl())).timeout(Duration.ofSeconds(2))
+                            .POST(HttpRequest.BodyPublishers.ofString("{}")).build();
+                    assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+                }
             }
             doNothing().when(adapter).removeContainer(anyString());
             provider.setReplicas("echo", 1);
@@ -53,7 +56,7 @@ class PartialScalingHttpTest {
     @Test
     void partialScaleUpPublishesCreatedReplicaAndRetryCompletes() {
         var adapter = mock(ContainerRuntimeAdapter.class);
-        var proxy = mock(ManagedFunctionProxy.class);
+        var proxy = mock(ManagedReplicaSet.class);
         when(adapter.runContainer(any())).thenAnswer(invocation -> {
             ContainerInstanceSpec instance = invocation.getArgument(0);
             if (instance.containerName().endsWith("-r3")) throw new IllegalStateException("create failed");
@@ -73,7 +76,7 @@ class PartialScalingHttpTest {
     void occupiedOneShotReplicaRemainsTrackedAndDrainingAfterRefresh() {
         var slots = new ReplicaSlots();
         var adapter = mock(ContainerRuntimeAdapter.class);
-        var proxy = mock(ManagedFunctionProxy.class);
+        var proxy = mock(ManagedReplicaSet.class);
         String endpoint = "http://r1";
         when(adapter.runContainer(any())).thenReturn(new ManagedContainer("r1", 1, endpoint, true));
         doAnswer(invocation -> {
@@ -109,7 +112,7 @@ class PartialScalingHttpTest {
     @Test
     void firstRemovalFailurePublishesSurvivorsAndSuppressesPublicationFailure() {
         var adapter = mock(ContainerRuntimeAdapter.class);
-        var proxy = mock(ManagedFunctionProxy.class);
+        var proxy = mock(ManagedReplicaSet.class);
         when(adapter.runContainer(any())).thenReturn(new ManagedContainer("r1", 1, "http://r1", true));
         try (var provider = provider(adapter, factory(proxy))) {
             provider.provision(spec(1));
@@ -124,14 +127,14 @@ class PartialScalingHttpTest {
         }
     }
 
-    private static LocalManagedDeploymentProvider provider(ContainerRuntimeAdapter adapter, RoundRobinFunctionProxyFactory factory) {
+    private static LocalManagedDeploymentProvider provider(ContainerRuntimeAdapter adapter, ManagedReplicaPoolFactory factory) {
         var probe = mock(EndpointProbe.class);
         when(probe.isReady(anyString())).thenReturn(true);
         return new LocalManagedDeploymentProvider("test", new LocalDeploymentSettings(null,
                 Duration.ofSeconds(1), Duration.ofMillis(10)), adapter, probe, factory);
     }
-    private static RoundRobinFunctionProxyFactory factory(ManagedFunctionProxy proxy) {
-        var factory = mock(RoundRobinFunctionProxyFactory.class);
+    private static ManagedReplicaPoolFactory factory(ManagedReplicaSet proxy) {
+        var factory = mock(ManagedReplicaPoolFactory.class);
         when(factory.create(anyString())).thenReturn(proxy); return factory;
     }
     private static FunctionSpec spec(int min) {

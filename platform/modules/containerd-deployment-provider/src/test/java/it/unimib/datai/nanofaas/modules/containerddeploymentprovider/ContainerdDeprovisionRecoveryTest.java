@@ -40,7 +40,7 @@ class ContainerdDeprovisionRecoveryTest {
     void everyReplicaIsAttemptedAndProxyClosesOnPartialDeletion() {
         RecoveryFixture state = new RecoveryFixture();
         try (var session = state.open(); HttpClient http = HttpClient.newHttpClient()) {
-            String endpoint = session.provider().provision(spec()).endpointUrl();
+            var deployment = session.provider().provision(spec());
             session.provider().setReplicas("echo", 3);
             state.removalFailures.put(id(1), 1);
             state.removalFailures.put(id(3), 1);
@@ -50,9 +50,8 @@ class ContainerdDeprovisionRecoveryTest {
                         assertThat(failure.getSuppressed()).hasSize(1);
                     });
             assertThat(state.events).contains("remove " + id(1), "remove " + id(2), "remove " + id(3));
-            assertThatThrownBy(() -> http.send(HttpRequest.newBuilder(URI.create(endpoint))
-                    .timeout(Duration.ofSeconds(1)).POST(HttpRequest.BodyPublishers.ofString("{}"))
-                    .build(), HttpResponse.BodyHandlers.discarding())).isInstanceOf(java.io.IOException.class);
+            assertThat(session.provider().acquireInvocationTarget("echo", deployment.deploymentObjects(), "late", "1"))
+                    .isEqualTo(it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.UNAVAILABLE);
             state.events.clear();
             session.provider().setReplicas("echo", 4);
             assertThat(state.events).isEmpty();

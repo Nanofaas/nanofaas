@@ -1,0 +1,32 @@
+{
+  "base": "401391a0d39f84364570a17044dc4d8b0db23596",
+  "backend": "docker",
+  "runtimes": [
+    "jvm",
+    "native"
+  ],
+  "replicas": [
+    1,
+    2
+  ],
+  "globalConcurrency": 4,
+  "perReplicaSDKConcurrency": 4,
+  "repetitions": 1,
+  "cpuBudget": 4,
+  "memoryMiB": 4096,
+  "functionImage": "sha256:44cdc5fdde5eccebf3d5d5821df1499c8505f49bbc1c62c498d90d412e39d5ca",
+  "inputs": {
+    "after.tar.gz": "8ec2f04a1c4cd0a3b70df6cea58b2c528a7d5275fba10de925c51dbdfd019f37",
+    "native.yaml": "58cce176f2564c9813597af54a7a383499ad652062f9c799925e905b9d250092",
+    "plugin.tar.gz": "c09221759637ec4168d85c33658b88c99a82c78066037964d231492e0b02930a",
+    "runtime.patch": "744ccd99f46087f1a08af78b1c9b3267a611e71d09d9330885e35ffcdf539e5b",
+    "jvm.yaml": "9f656164a067186d2077cef9a2718a8e1cc2afc62b6b5246dea9707fdec0b713",
+    "before.tar.gz": "0b3e191c4947a40ae41e6d2c2d909c22ab5ad8d1e6ed70c8167e717812974134",
+    "runtime-source-inventory.json": "14c9e5a29e7f01291da40e64d1d9c11a0cb64b8821ace002cb1d91a65417822c",
+    "force-nodelay.gradle": "029da65f3b8d00d69a8ecb8b76217db0c5868dcb283e2d1716f7c33d5e299496"
+  },
+  "nativeTcpNodelayOverride": {
+    "before": true,
+    "after": false
+  }
+}

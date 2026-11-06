@@ -142,14 +142,14 @@ reject other inputs, so tests must send the calibrated fixed workload. Trusted
 `X-NanoFaaS-Execution-Node` travels separately from handler-provided headers and is
 preserved through remote completion and idempotent replay. It is absent on
 infrastructure failures where execution was not attributed. A failed handler can
-still have an execution node: the managed proxy accepts only physical runtime
+still have an execution node: the managed replica reservation accepts only physical runtime
 evidence matching execution ID, attempt and incarnation, with an explicit boolean
 `handlerStarted: true`. Rust sets that flag after typed input validation, immediately
 before invoking the handler. `ACTIVE` and `RELEASED` alone describe physical slot
 occupancy; a released admission can free the slot without attributing execution.
-Missing, false or nonboolean start evidence does not attribute execution. It strips a backend
-`X-NanoFaaS-Handler-Executed` value before generating its own internal evidence;
-that internal field is not an allowed handler response header. Admission refusals,
+Missing, false or nonboolean start evidence does not attribute execution. The dispatcher ignores backend `X-NanoFaaS-Handler-Executed` headers and consumes
+correlated evidence directly from the provider reservation; no HTTP header grants
+execution attribution, including on EXTERNAL endpoints. Admission refusals,
 unknown observations and stale attempts do not supply execution attribution.
 
 ## Real local cluster gate

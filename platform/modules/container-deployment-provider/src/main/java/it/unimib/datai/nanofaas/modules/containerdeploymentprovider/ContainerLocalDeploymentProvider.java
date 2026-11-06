@@ -4,7 +4,7 @@ import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
 import it.unimib.datai.nanofaas.containerdeployment.LocalDeploymentSettings;
 import it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider;
-import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
 
 public class ContainerLocalDeploymentProvider extends LocalManagedDeploymentProvider {
     private final String namespace;
@@ -34,7 +34,7 @@ public class ContainerLocalDeploymentProvider extends LocalManagedDeploymentProv
     public ContainerLocalDeploymentProvider(ContainerRuntimeAdapter adapter,
                                             ContainerLocalProperties properties,
                                             EndpointProbe endpointProbe,
-                                            RoundRobinFunctionProxyFactory proxyFactory) {
+                                            ManagedReplicaPoolFactory proxyFactory) {
         super(BACKEND_ID, new LocalDeploymentSettings(properties.callbackUrl(),
                 properties.readinessTimeout(), properties.readinessPollInterval()),
                 adapter, endpointProbe, proxyFactory);

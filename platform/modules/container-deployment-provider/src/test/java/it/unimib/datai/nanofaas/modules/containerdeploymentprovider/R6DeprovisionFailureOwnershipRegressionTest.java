@@ -3,9 +3,9 @@ package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
-import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaSet;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
-import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -79,13 +79,8 @@ class R6DeprovisionFailureOwnershipRegressionTest {
         }
     }
 
-    private static final class RecordingProxy implements ManagedFunctionProxy {
+    private static final class RecordingProxy implements ManagedReplicaSet {
         private final AtomicBoolean closed = new AtomicBoolean();
-
-        @Override
-        public String endpointUrl() {
-            return "http://127.0.0.1:19001/invoke";
-        }
 
         @Override
         public void updateBackends(List<String> backendBaseUrls) {
@@ -113,7 +108,7 @@ class R6DeprovisionFailureOwnershipRegressionTest {
     void failedDeprovisionDoesNotLeakAnUntrackedProxy() throws Exception {
         FailingRemovalAdapter adapter = new FailingRemovalAdapter();
         RecordingProxy proxy = new RecordingProxy();
-        RoundRobinFunctionProxyFactory proxyFactory = mock(RoundRobinFunctionProxyFactory.class);
+        ManagedReplicaPoolFactory proxyFactory = mock(ManagedReplicaPoolFactory.class);
         when(proxyFactory.create(anyString())).thenReturn(proxy);
         ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
                 adapter,

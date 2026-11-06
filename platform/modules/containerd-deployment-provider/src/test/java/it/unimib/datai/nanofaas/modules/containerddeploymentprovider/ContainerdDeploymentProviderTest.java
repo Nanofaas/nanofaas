@@ -5,8 +5,8 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
-import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
-import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaSet;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
@@ -19,7 +19,7 @@ class ContainerdDeploymentProviderTest {
     private final ContainerdDeploymentProvider provider = new ContainerdDeploymentProvider(
             mock(ContainerRuntimeAdapter.class),
             ContainerdProperties.defaults(Map.of("HOME", "/home/service", "XDG_RUNTIME_DIR", "/run/user/1000")),
-            mock(EndpointProbe.class), mock(RoundRobinFunctionProxyFactory.class));
+            mock(EndpointProbe.class), mock(ManagedReplicaPoolFactory.class));
 
     @Test
     void namesAreDeterministicBoundedAndAvoidNormalizationCollisions() {
@@ -41,10 +41,9 @@ class ContainerdDeploymentProviderTest {
 
     @Test
     void provisionPersistsTheActualHashedNamePrefix() {
-        RoundRobinFunctionProxyFactory factory = mock(RoundRobinFunctionProxyFactory.class);
-        ManagedFunctionProxy proxy = mock(ManagedFunctionProxy.class);
+        ManagedReplicaPoolFactory factory = mock(ManagedReplicaPoolFactory.class);
+        ManagedReplicaSet proxy = mock(ManagedReplicaSet.class);
         when(factory.create("hello.world")).thenReturn(proxy);
-        when(proxy.endpointUrl()).thenReturn("http://127.0.0.1:9000");
         ContainerdDeploymentProvider deployment = new ContainerdDeploymentProvider(
                 mock(ContainerRuntimeAdapter.class),
                 ContainerdProperties.defaults(Map.of("HOME", "/home/service", "XDG_RUNTIME_DIR", "/run/user/1000")),

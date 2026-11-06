@@ -24,16 +24,16 @@ class ReplicaEpochProxyTest {
         var released = new AtomicBoolean();
         var server = backend(calls, released, 504);
         try (var client = HttpClient.newHttpClient();
-             var proxy = new RoundRobinFunctionProxy("127.0.0.1", 2, Duration.ofSeconds(2))) {
+             var proxy = new DirectReplicaFixture(client, 2, Duration.ofSeconds(2))) {
             proxy.enablePhysicalSlots();
             proxy.updateBackends(List.of("http://127.0.0.1:" + server.getAddress().getPort()));
             var initial = proxy.beginQuiesce();
             assertThat(proxy.resume(initial, initial.admissionEpoch())).isTrue();
-            assertThat(invoke(client, proxy.endpointUrl(), "work", initial.admissionEpoch()).statusCode()).isEqualTo(504);
+            assertThat(invoke(client, proxy, "work", initial.admissionEpoch()).statusCode()).isEqualTo(504);
             var next = proxy.beginQuiesce();
             assertThat(proxy.awaitQuiesced(Duration.ofMillis(100))).isFalse();
             assertThat(proxy.resume(next, next.admissionEpoch())).isFalse();
-            assertThat(invoke(client, proxy.endpointUrl(), "early", next.admissionEpoch()).statusCode()).isEqualTo(504);
+            assertThat(invoke(client, proxy, "early", next.admissionEpoch()).statusCode()).isEqualTo(504);
             assertThat(calls.get()).isEqualTo(1);
             released.set(true);
             assertThat(proxy.awaitQuiesced(Duration.ofSeconds(2))).isTrue();
@@ -61,12 +61,11 @@ class ReplicaEpochProxyTest {
         return server;
     }
 
-    private static HttpResponse<String> invoke(HttpClient client, String url, String id, String epoch) throws Exception {
-        var request = HttpRequest.newBuilder(URI.create(url))
+    private static HttpResponse<String> invoke(HttpClient client, DirectReplicaFixture proxy, String id, String epoch) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(proxy.endpointUrl()))
                 .header("X-Execution-Id", id).header("X-Dispatch-Attempt", "1");
         if (epoch != null) request.header("X-NanoFaaS-Replica-Epoch", epoch);
-        return client.send(request.POST(HttpRequest.BodyPublishers.ofString("{\"input\":null}")).build(),
-                HttpResponse.BodyHandlers.ofString());
+        return proxy.send(request.POST(HttpRequest.BodyPublishers.ofString("{\"input\":null}")).build());
     }
 
     private static void reply(HttpExchange exchange, int status, String body) throws java.io.IOException {

@@ -2,7 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import com.sun.net.httpserver.HttpServer;
 import it.unimib.datai.nanofaas.common.model.*;
-import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
 import it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcher;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
@@ -55,13 +55,13 @@ class QueuedAllocationTransitionTest {
             exchange.close();
         });
         backend.start();
-        try (var proxy = new RoundRobinFunctionProxyFactory("127.0.0.1").create("f")) {
+        try (var proxy = new ManagedReplicaPoolFactory().create("f")) {
             proxy.enablePhysicalSlots();
             proxy.updateBackends(List.of("http://127.0.0.1:" + backend.getAddress().getPort()));
             var initial = proxy.beginQuiesce();
             assertThat(proxy.resume(initial, initial.admissionEpoch())).isTrue();
             var spec = new FunctionSpec("f", "image", List.of(), Map.of("NANOFAAS_ONE_SHOT_PROFILE", "true"), null, 5000, 1, 10, 0,
-                    proxy.endpointUrl(), ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null, null);
+                    null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null, null);
             var metrics = new Metrics(new SimpleMeterRegistry());
             var runtime = TestWaiterCapacity.runtime(new ExecutionStore(), new IdempotencyStore(), metrics, "f");
             var lookup = runtime.factory().createOrReuseExecution("f", spec,
@@ -80,7 +80,7 @@ class QueuedAllocationTransitionTest {
             assertThat(proxy.awaitQuiesced(Duration.ofSeconds(1))).isTrue();
             assertThat(proxy.resume(successor, successor.admissionEpoch())).isTrue();
             try (var input = lookup.executionRecord().openPhysicalInput(queued.get())) {
-                var result = new ExternalDispatcher(WebClient.create()).dispatch(input.task()).get(5, TimeUnit.SECONDS);
+                var result = new ExternalDispatcher(WebClient.create()).dispatch(input.task(), proxy.acquire(input.task().executionId(), String.valueOf(input.task().attempt()))).get(5, TimeUnit.SECONDS);
                 assertThat(result.result().success()).isTrue();
                 lookup.executionRecord().completion().complete(result.result());
             } finally {

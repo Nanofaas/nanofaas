@@ -23,10 +23,28 @@ import static org.assertj.core.api.Assertions.*;
 class OneShotHopGuardE2eTest {
     static final String DIGEST="sha256:"+"b".repeat(64);
     static String url(ConfigurableApplicationContext app) { return "http://127.0.0.1:"+app.getEnvironment().getProperty("local.server.port"); }
-    static ConfigurableApplicationContext app(String registry) {
-        return new SpringApplicationBuilder(ControlPlaneApplication.class).run("--server.port=0","--management.server.port=0","--nanofaas.registry.path="+registry,
-            "--spring.autoconfigure.exclude=it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration,it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration,it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeConfigAutoConfiguration,it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigConfiguration","--sync-queue.enabled=false");
+    static ConfigurableApplicationContext app(String registry) { return app(registry, null); }
+    static ConfigurableApplicationContext app(String registry, it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider provider) {
+        return new SpringApplicationBuilder(ControlPlaneApplication.class).initializers(context -> {
+            if (provider != null) context.getBeanFactory().registerSingleton("directTestProvider", provider);
+        }).run("--server.port=0","--management.server.port=0","--nanofaas.registry.path="+registry,
+            "--spring.autoconfigure.exclude=it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration,it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration,it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeConfigAutoConfiguration,it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigConfiguration","--sync-queue.enabled=false", "--nanofaas.deployment.default-backend=" + (provider == null ? "" : "test-direct"));
     }
+    static it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider directProvider(
+            String backend, it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory factory) {
+        var adapter = org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter.class);
+        org.mockito.Mockito.when(adapter.isAvailable()).thenReturn(true);
+        org.mockito.Mockito.when(adapter.runContainer(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
+            it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec spec = call.getArgument(0);
+            return new it.unimib.datai.nanofaas.containerdeployment.ManagedContainer(spec.containerName(), 1, backend, true);
+        });
+        var probe = org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.EndpointProbe.class);
+        org.mockito.Mockito.when(probe.isReady(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
+        return new it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider("test-direct",
+                new it.unimib.datai.nanofaas.containerdeployment.LocalDeploymentSettings(null, Duration.ofSeconds(2), Duration.ofMillis(10)),
+                adapter, probe, factory);
+    }
+
     static HttpResponse<String> send(String url,String method,String body,Map<String,String> headers) throws Exception {
         var request=HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10)).header("Content-Type","application/json");headers.forEach(request::header);
         try(var client=HttpClient.newHttpClient()) {
@@ -102,13 +120,13 @@ class OneShotHopGuardE2eTest {
                 }
             });
             backend.start();cloud.start();
-            try(var proxy=new it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxy("127.0.0.1")) {
-                proxy.updateLimits(2,Duration.ofSeconds(2));
-                proxy.enablePhysicalSlots();proxy.updateBackends(List.of(backend.url("/").toString().replaceAll("/+$","")));
+            try(var factory = new it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory();
+                var providerA = directProvider(backend.url("/").toString().replaceAll("/+$", ""), factory);
+                var providerB = directProvider(backend.url("/").toString().replaceAll("/+$", ""), factory)) {
                 var directory=java.nio.file.Files.createTempDirectory("one-shot-handler-error-");
-                try(var a=app(directory.resolve("a.json").toString());var b=app(directory.resolve("b.json").toString())) {
+                try(var a=app(directory.resolve("a.json").toString(), providerA);var b=app(directory.resolve("b.json").toString(), providerB)) {
                     String aUrl=url(a),bUrl=url(b),cloudUrl=cloud.url("/").toString().replaceAll("/+$", "");
-                    String spec="{\"name\":\"f\",\"image\":\"img@"+DIGEST+"\",\"executionMode\":\"EXTERNAL\",\"endpointUrl\":\""+proxy.endpointUrl()+"\",\"env\":{\"NANOFAAS_ONE_SHOT_PROFILE\":\"true\"},\"timeoutMs\":5000,\"concurrency\":1,\"maxRetries\":0}";
+                    String spec="{\"name\":\"f\",\"image\":\"img@"+DIGEST+"\",\"executionMode\":\"DEPLOYMENT\",\"env\":{\"NANOFAAS_ONE_SHOT_PROFILE\":\"true\",\"NANOFAAS_MAX_CONCURRENT_HANDLERS\":\"1\"},\"timeoutMs\":5000,\"concurrency\":1,\"maxRetries\":0}";
                     assertThat(send(aUrl+"/v1/functions","POST",spec,Map.of()).statusCode()).isEqualTo(201);
                     assertThat(send(bUrl+"/v1/functions","POST",spec,Map.of()).statusCode()).isEqualTo(201);
                     long ag=a.getBean(FunctionCapacityRegistry.class).activeGeneration("f").id(),bg=b.getBean(FunctionCapacityRegistry.class).activeGeneration("f").id();
