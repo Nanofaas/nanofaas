@@ -1,0 +1,24 @@
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+dependencyManagement { imports { mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}" } }
+configurations { embeddingProbe }
+dependencies {
+    embeddingProbe 'org.graalvm.polyglot:polyglot:25.2.4'
+    embeddingProbe 'org.graalvm.polyglot:wasm:25.2.4'
+    implementation project(':forecasting-api')
+    implementation 'org.graalvm.polyglot:polyglot:25.2.4'
+    runtimeOnly 'org.graalvm.polyglot:wasm:25.2.4'
+    implementation 'org.springframework.boot:spring-boot-autoconfigure'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+tasks.named('test') { useJUnitPlatform() }
+
+tasks.register('prepareEmbeddingProbe', Sync) {
+    dependsOn testClasses
+    from(sourceSets.test.output) { into 'classes' }
+    from(configurations.embeddingProbe) { into 'lib' }
+    into layout.buildDirectory.dir('embedding-probe')
+}

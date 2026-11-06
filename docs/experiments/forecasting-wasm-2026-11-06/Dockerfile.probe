@@ -1,0 +1,40 @@
+ARG BUILDER_IMAGE=oraclelinux:9-slim
+ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian13:nonroot
+
+FROM ${BUILDER_IMAGE} AS builder
+
+ARG TARGETARCH
+# gcc-c++ is needed only by G1: its collector library (libg1gc-cr) is C++, and
+# linking it fails with "cannot find -lstdc++". The serial collector needs none
+# of it, which is why nothing here was required until G1 was tried.
+#
+# gcc-c++ and not libstdc++-devel, which is the obvious guess and does not work.
+# On Oracle Linux 9 that package installs cleanly and ships only
+# libstdc++fs.a — no libstdc++.so for the linker to find — so a build reaches
+# the link step after eleven minutes of compiling and dies there. gcc-c++ brings
+# /usr/lib/gcc/x86_64-redhat-linux/11/libstdc++.so, which is what `-lstdc++`
+# resolves against.
+RUN microdnf install -y ca-certificates curl findutils gcc gcc-c++ glibc-devel gzip tar \
+      zlib-devel && microdnf clean all
+
+# `oracle` only where G1 is wanted: Community's Native Image ships a serial
+# collector and nothing else, which cost 32% of wall-clock time on a sustained
+# load. Oracle GraalVM is GFTC-licensed, so it stays opt-in.
+ARG GRAALVM_DISTRIBUTION=community
+COPY gradle.properties scripts/install-graalvm.sh /tmp/
+RUN graalvm_version="$(sed -n 's/^graalvmVersion=//p' /tmp/gradle.properties)" && \
+    graalvm_java_version="$(sed -n 's/^graalvmJavaVersion=//p' /tmp/gradle.properties)" && \
+    sh /tmp/install-graalvm.sh "$TARGETARCH" "$graalvm_version" "$graalvm_java_version" \
+       "$GRAALVM_DISTRIBUTION"
+
+ENV JAVA_HOME=/opt/graalvm
+ENV PATH="$JAVA_HOME/bin:$PATH"
+
+WORKDIR /probe
+COPY --from=probe . .
+RUN native-image -J-Xmx6g --parallelism=4 --no-fallback -cp 'classes:lib/*' \
+    it.unimib.datai.nanofaas.modules.forecastingwasm.WasmEmbeddingProbe /probe/probe
+RUN /probe/probe -Xmx64m
+FROM gcr.io/distroless/cc-debian13:nonroot
+COPY --from=builder /probe/probe /probe
+ENTRYPOINT ["/probe"]
