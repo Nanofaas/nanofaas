@@ -54,4 +54,20 @@ class ForecastingConfigurationTest {
         runner.withPropertyValues("nanofaas.forecasting.enabled=true", "nanofaas.forecasting.node-id=edge")
                 .run(context -> assertThat(context).hasFailed());
     }
+    @Test void missingWasmProviderIsNotAdvertisedAndCannotBeSelected() {
+        var enabled=runner.withPropertyValues("nanofaas.forecasting.enabled=true", "nanofaas.forecasting.node-id=edge",
+                "nanofaas.forecasting.window=10s", "nanofaas.forecasting.max-age=1m");
+        enabled.run(context -> {
+            var namespace=context.getBean(RuntimeConfigExtension.class);
+            var before=namespace.snapshot();
+            assertThat(before.get("available").toString()).doesNotContain("holt_wasm");
+            assertThat(namespace.validate(Map.of("provider","holt_wasm"))).isNotEmpty();
+            assertThatThrownBy(()->namespace.apply(Map.of("provider","holt_wasm"))).isInstanceOf(IllegalArgumentException.class);
+            assertThat(namespace.snapshot()).isEqualTo(before);
+        });
+        enabled.withPropertyValues("nanofaas.forecasting.provider=holt_wasm").run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).hasStackTraceContaining("forecasting-wasm module");
+        });
+    }
 }

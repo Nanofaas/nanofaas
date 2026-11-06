@@ -11,6 +11,7 @@ dependencies {
     implementation 'org.graalvm.polyglot:polyglot:25.2.4'
     runtimeOnly 'org.graalvm.polyglot:wasm:25.2.4'
     implementation 'org.springframework.boot:spring-boot-autoconfigure'
+    testImplementation project(':control-plane-spi')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

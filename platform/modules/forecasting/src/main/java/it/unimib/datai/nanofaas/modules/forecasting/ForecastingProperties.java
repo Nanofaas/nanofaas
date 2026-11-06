@@ -7,7 +7,7 @@ public record ForecastingProperties(Boolean enabled, String nodeId, Provider pro
                                     Duration window, Duration maxAge, Integer maxFunctions,
                                     Holt holt, Ari ari, Integer history) {
     public enum Provider {
-        EWMA, ORACLE, HOLT, ARI;
+        EWMA, ORACLE, HOLT, ARI, HOLT_WASM;
         public String id() { return name().toLowerCase(Locale.ROOT); }
     }
     /** Initial Holt weights; the runtime-config namespace can replace them. */

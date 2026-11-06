@@ -24,15 +24,17 @@ final class ForecastingRuntimeConfigExtension implements RuntimeConfigExtension 
     private static final String HOLT_DAMPING = "holtDamping";
     private static final String ARI_ORDER = "ariOrder";
     private static final Set<String> EDITABLE = Set.of(PROVIDER, HOLT_LEVEL, HOLT_TREND, HOLT_DAMPING, ARI_ORDER);
-    private static final List<String> AVAILABLE = Arrays.stream(ForecastingProperties.Provider.values())
-            .map(ForecastingProperties.Provider::id).toList();
+    private final List<String> available;
 
     private final ForecastSelection selection;
     private final int history;
 
-    ForecastingRuntimeConfigExtension(ForecastSelection selection, int history) {
+    ForecastingRuntimeConfigExtension(ForecastSelection selection, int history, boolean wasmAvailable) {
         this.selection = selection;
         this.history = history;
+        this.available = Arrays.stream(ForecastingProperties.Provider.values())
+                .filter(provider -> wasmAvailable || provider != ForecastingProperties.Provider.HOLT_WASM)
+                .map(ForecastingProperties.Provider::id).toList();
     }
 
     @Override
@@ -45,7 +47,7 @@ final class ForecastingRuntimeConfigExtension implements RuntimeConfigExtension 
         ForecastSelection.Settings current = selection.get();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put(PROVIDER, current.provider().id());
-        result.put("available", AVAILABLE);
+        result.put("available", available);
         result.put(HOLT_LEVEL, current.holt().level());
         result.put(HOLT_TREND, current.holt().trend());
         result.put(HOLT_DAMPING, current.holt().damping());
@@ -63,7 +65,7 @@ final class ForecastingRuntimeConfigExtension implements RuntimeConfigExtension 
             return List.of("forecasting patch contains unsupported keys");
         }
         List<String> errors = new ArrayList<>();
-        if (patch.containsKey(PROVIDER) && !AVAILABLE.contains(patch.get(PROVIDER))) {
+        if (patch.containsKey(PROVIDER) && !available.contains(patch.get(PROVIDER))) {
             errors.add(PROVIDER + " must be one of the available providers");
         }
         for (String key : List.of(HOLT_LEVEL, HOLT_TREND, HOLT_DAMPING)) {
@@ -83,6 +85,8 @@ final class ForecastingRuntimeConfigExtension implements RuntimeConfigExtension 
 
     @Override
     public void apply(Map<String, Object> patch) {
+        var errors = validate(patch);
+        if (!errors.isEmpty()) throw new IllegalArgumentException(String.join("; ", errors));
         Map<String, Object> candidate = new LinkedHashMap<>(snapshot());
         candidate.putAll(patch);
         restore(candidate);
@@ -90,6 +94,8 @@ final class ForecastingRuntimeConfigExtension implements RuntimeConfigExtension 
 
     @Override
     public void restore(Map<String, Object> snapshot) {
+        if (!available.contains(snapshot.get(PROVIDER)))
+            throw new IllegalArgumentException("provider must be one of the available providers");
         selection.set(new ForecastSelection.Settings(
                 ForecastingProperties.Provider.valueOf(((String) snapshot.get(PROVIDER)).toUpperCase(Locale.ROOT)),
                 new TrendForecastSource.Holt(number(snapshot, HOLT_LEVEL), number(snapshot, HOLT_TREND),

@@ -58,20 +58,40 @@ public final class TrendForecastSource extends WindowedForecastSource<TrendForec
         return forecast(query, selected instanceof Holt ? "holt" : "ari", History::chronological,
                 (rates, next) -> estimate(rates, next, query, selected));
     }
+    /** Uses the same detached history and validity calculation as the Java model. */
+    public ForecastSnapshot forecast(ForecastQuery query, Holt model, HoltForecastAlgorithm algorithm) {
+        Objects.requireNonNull(algorithm);
+        return forecast(query, "holt_wasm", History::chronological, (rates, next) -> {
+            try { return estimate(rates, next, query, model, algorithm); }
+            catch (RuntimeException failure) {
+                org.slf4j.LoggerFactory.getLogger(TrendForecastSource.class)
+                        .warn("Holt WASM forecast unavailable for function {} generation {}: {}",
+                                query.function(), query.generation(), failure.toString());
+                return null;
+            }
+        });
+    }
     @Override protected History newState() { return new History(history); }
     @Override protected void add(History state, double rate) { state.add(rate); }
     // Only retained windows matter: a longer gap equals a full history of zeros.
     @Override protected void addZeros(History state, long count) { for (long i = Math.min(count, history); i > 0; i--) state.add(0); }
     private Double estimate(double[] rates, long next, ForecastQuery query, Model selected) {
+        return estimate(rates, next, query, selected, null);
+    }
+    private Double estimate(double[] rates, long next, ForecastQuery query, Model selected, HoltForecastAlgorithm algorithm) {
         if (rates.length == 0) return null;
         long window = Math.multiplyExact(windowSeconds(), 1_000_000_000L);
         long origin = Math.multiplyExact(next, window);
         long from = nanos(query.start()) - origin, until = nanos(query.end()) - origin;
         int steps = (int) Math.min(MAX_STEPS, Math.max(1, Math.ceilDiv(until, window)));
         double[] path = switch (selected) {
-            case Holt holt -> holt(holt, rates, steps);
+            case Holt holt -> algorithm == null ? holt(holt, rates, steps)
+                    : algorithm.forecast(rates, steps, holt.level(), holt.trend(), holt.damping());
             case Ari ari -> ari(ari, rates, steps);
         };
+        if (algorithm != null && (path == null || path.length != steps
+                || Arrays.stream(path).anyMatch(value -> !Double.isFinite(value) || value < 0)))
+            throw new IllegalStateException("Invalid Holt WASM forecast path");
         return mean(path, window, from, until);
     }
     private static long nanos(Instant at) { return Math.addExact(Math.multiplyExact(at.getEpochSecond(), 1_000_000_000L), at.getNano()); }

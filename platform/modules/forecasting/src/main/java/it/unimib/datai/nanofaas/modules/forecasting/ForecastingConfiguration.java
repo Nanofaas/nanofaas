@@ -30,14 +30,18 @@ public class ForecastingConfiguration {
     }
     // Read per query, so a runtime-config switch applies to the next one.
     @Bean @Primary ForecastSource selectedForecastSource(ForecastingProperties props, ForecastSelection selection,
-            EwmaForecastSource ewma, TrendForecastSource trend, OracleForecastStore oracle) {
+            EwmaForecastSource ewma, TrendForecastSource trend, OracleForecastStore oracle, ObjectProvider<HoltForecastAlgorithm> algorithms) {
         if(!props.enabled()) return q -> new ForecastSnapshot(q,ForecastSnapshot.Status.MISSING,null,0,"disabled",null);
+        var wasm = algorithms.getIfAvailable();
+        if (props.provider() == ForecastingProperties.Provider.HOLT_WASM && wasm == null)
+            throw new IllegalArgumentException("holt_wasm requires the forecasting-wasm module");
         return q -> {
             var settings = selection.get();
             return switch (settings.provider()) {
                 case EWMA -> ewma.forecast(q);
                 case ORACLE -> oracle.forecast(q);
                 case HOLT, ARI -> trend.forecast(q, settings.trendModel());
+                case HOLT_WASM -> trend.forecast(q, settings.holt(), wasm);
             };
         };
     }
@@ -51,7 +55,7 @@ public class ForecastingConfiguration {
         return new ForecastObservationLifecycle(List.of(ewma, trend), catalog.getIfAvailable(), replicas.getIfAvailable(), Clock.systemUTC(),props.enabled());
     }
     /** Served by the runtime-config module's admin API when that module is built in. */
-    @Bean RuntimeConfigExtension forecastingRuntimeConfigExtension(ForecastingProperties props, ForecastSelection selection) {
-        return new ForecastingRuntimeConfigExtension(selection, props.history());
+    @Bean RuntimeConfigExtension forecastingRuntimeConfigExtension(ForecastingProperties props, ForecastSelection selection, ObjectProvider<HoltForecastAlgorithm> algorithms) {
+        return new ForecastingRuntimeConfigExtension(selection, props.history(), algorithms.getIfAvailable() != null);
     }
 }

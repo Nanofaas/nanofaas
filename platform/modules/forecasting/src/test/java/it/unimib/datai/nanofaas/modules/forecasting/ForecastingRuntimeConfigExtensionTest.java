@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.*;
 class ForecastingRuntimeConfigExtensionTest {
     final ForecastSelection selection = new ForecastSelection(new ForecastSelection.Settings(
             ForecastingProperties.Provider.EWMA, new TrendForecastSource.Holt(0.4, 0.4, 0.95), new TrendForecastSource.Ari(6)));
-    final ForecastingRuntimeConfigExtension extension = new ForecastingRuntimeConfigExtension(selection, 20);
+    final ForecastingRuntimeConfigExtension extension = new ForecastingRuntimeConfigExtension(selection, 20, false);
     @Test void snapshotNamesTheProviderItsAlternativesAndTheModelParameters() {
         assertThat(extension.namespace()).isEqualTo("forecasting");
         assertThat(extension.snapshot()).containsExactlyInAnyOrderEntriesOf(Map.of(

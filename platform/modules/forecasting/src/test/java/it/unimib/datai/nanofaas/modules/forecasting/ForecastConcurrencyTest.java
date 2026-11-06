@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.forecasting;
 
 import it.unimib.datai.nanofaas.forecastingapi.ExternalArrival;
+import it.unimib.datai.nanofaas.forecastingapi.HoltForecastAlgorithm;
 import it.unimib.datai.nanofaas.forecastingapi.ForecastQuery;
 import it.unimib.datai.nanofaas.forecastingapi.ForecastSnapshot;
 import org.junit.jupiter.api.Test;
@@ -46,8 +47,8 @@ class ForecastConcurrencyTest {
                 () -> selection.get().trendModel(), clock);
         populateRamp(trend, clock);
         var source = config.selectedForecastSource(props, selection, config.ewmaForecastSource(props),
-                trend, config.oracleForecastStore(props));
-        var namespace = config.forecastingRuntimeConfigExtension(props, selection);
+                trend, config.oracleForecastStore(props), new org.springframework.beans.factory.support.DefaultListableBeanFactory().getBeanProvider(HoltForecastAlgorithm.class));
+        var namespace = config.forecastingRuntimeConfigExtension(props, selection, new org.springframework.beans.factory.support.DefaultListableBeanFactory().getBeanProvider(HoltForecastAlgorithm.class));
         var query = query(4, "f");
         var forecast = new FutureTask<>(() -> source.forecast(query));
         var worker = new Thread(forecast, "forecast-switch-regression");
