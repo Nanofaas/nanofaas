@@ -1,0 +1,14 @@
+{
+  "abi": 1,
+  "target": "wasm32-unknown-unknown",
+  "toolchain": "1.97.0",
+  "sources": {
+    "Cargo.toml": "6eec6f6e80064d1a4b984231bb57f18c1976cea87130a472ec32864506bd31a9",
+    "Cargo.lock": "88897abe81ff04216dc58877ae4a6d352020ef92aa474b6ecfe8fac59a075d9d",
+    "rust-toolchain.toml": "6574b8c404a1b01b8761fbec15615fbc57ac12bacef5e1a51ccdb45dcc020c05",
+    ".cargo/config.toml": "248e2a541d3e7dfcb99497886bb57b684f430bd63bafedba2594b7072b43f999",
+    "src/lib.rs": "2c2ba58e421e33dbb3f6b9fd87ded7478160b95d215318f6f0eecfd6b5503145",
+    "build_guest.py": "56d7bda7b00326f8386b7513f986b04c54d221637f489c1e49a12ed963cb2212"
+  },
+  "sha256": "b7613a19f69712f0f21ce1cf14d23f8f1e17ed157256e9bf80a0b6f58373eb47"
+}

@@ -22,3 +22,14 @@ tasks.register('prepareEmbeddingProbe', Sync) {
     from(configurations.embeddingProbe) { into 'lib' }
     into layout.buildDirectory.dir('embedding-probe')
 }
+
+tasks.register('compileWasm', Exec) {
+    workingDir projectDir
+    commandLine 'python3', 'guest/build_guest.py', 'compile'
+}
+tasks.register('verifyWasmArtifact', Exec) {
+    workingDir projectDir
+    commandLine 'python3', 'guest/build_guest.py', 'verify'
+    mustRunAfter 'compileWasm'
+}
+tasks.named('processResources') { dependsOn 'verifyWasmArtifact' }

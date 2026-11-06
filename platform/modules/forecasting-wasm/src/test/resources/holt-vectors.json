@@ -1,0 +1,6 @@
+[
+  {"rates":[5],"steps":2,"level":0.4,"trend":0.4,"damping":0.95,"expected":[5,5]},
+  {"rates":[1,2,3],"steps":2,"level":1,"trend":1,"damping":1,"expected":[4,5]},
+  {"rates":[3,2,1],"steps":2,"level":1,"trend":1,"damping":1,"expected":[0,0]},
+  {"rates":[10,20],"steps":2,"level":1,"trend":1,"damping":0.5,"expected":[25,27.5]}
+]
