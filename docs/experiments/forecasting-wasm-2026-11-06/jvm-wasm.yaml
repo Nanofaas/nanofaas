@@ -1,0 +1,23 @@
+schemaVersion: 2
+name: forecasting-jvm-wasm
+registry:
+  repository: nanofaas
+  tag: wasm-local
+controlPlane:
+  modules: [forecasting, runtime-config, build-metadata, forecasting-wasm]
+  build:
+    mode: jvm
+  jvm:
+    args: ["-XX:+UseSerialGC", "-Xmx64m"]
+  container: {image: forecasting-jvm-wasm}
+  config:
+    nanofaas:
+      admin:
+        runtime-config:
+          enabled: true
+      forecasting:
+        enabled: true
+        node-id: local
+        provider: holt_wasm
+        window: 1s
+        max-age: 1m

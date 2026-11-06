@@ -47,6 +47,7 @@ class ModuleBoundaryArchitectureTest {
             Map.entry("build-metadata", ROOT + "modules.buildmetadata"),
             Map.entry("offload", ROOT + "modules.offload"),
             Map.entry("p2p-discovery", ROOT + "modules.p2pdiscovery"),
+            Map.entry("forecasting-wasm", ROOT + "modules.forecastingwasm"),
             Map.entry("forecasting", ROOT + "modules.forecasting"),
             Map.entry("k8s-deployment-provider", ROOT + "modules.k8s"),
             Map.entry("container-deployment-provider", ROOT + "modules.containerdeploymentprovider"),

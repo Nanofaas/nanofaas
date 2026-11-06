@@ -1,0 +1,11 @@
+gradle.projectsEvaluated {
+    def cp = gradle.rootProject.findProject(':control-plane')
+    if (cp == null) return
+    cp.dependencies.add('implementation', cp.project(':control-plane-modules:forecasting'))
+    cp.sourceSets.main.java.srcDir(cp.rootProject.file('docs/experiments/forecasting-wasm-2026-11-06/src'))
+    cp.sourceSets.main.resources.srcDir(cp.rootProject.file('docs/experiments/forecasting-wasm-2026-11-06/resources'))
+    def entry = 'it.unimib.datai.nanofaas.modules.forecasting.ForecastBenchmark'
+    cp.tasks.named('bootJar') { mainClass = entry }
+    cp.springBoot.mainClass.set('it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication')
+    cp.graalvmNative.binaries.main.mainClass.set(entry)
+}

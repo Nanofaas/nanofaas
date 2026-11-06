@@ -378,3 +378,18 @@ Variants that share an image name and tag also share the local image tag: each a
 retags the image, so the last one wins. Give each variant its own tag (`-PrecipeTag`, which
 needs a `registry` section) or its own `container.image`. Otherwise, pin each build by the
 `image.id` in its own `distribution.json`.
+
+### Rust/WASM forecasting
+
+The optional `forecasting-wasm` module uses the normal module descriptor and
+packaging paths; no extra recipe keys or Gradle plugin changes are needed. Include
+both `forecasting` and `forecasting-wasm` in the exact module list. Set
+`controlPlane.config.nanofaas.forecasting.enabled: true` and `provider: holt_wasm`.
+For native builds these settings must be present during AOT. Runtime switching also
+requires `runtime-config` and `nanofaas.admin.runtime-config.enabled: true` at build
+time. The bundled guest is hash-verified without Cargo or Python in the builder.
+
+[JVM and native recipes and measurements](experiments/forecasting-wasm-2026-11-06/README.md)
+exercise the existing container builder with a 64 MiB heap. The WASM runtime's
+native allocations and code are additional RSS; consult the report before enabling
+it on a memory-constrained node.

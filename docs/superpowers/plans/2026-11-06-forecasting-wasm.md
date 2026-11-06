@@ -1,6 +1,6 @@
 # Forecasting WASM Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Aggiungere un provider Holt Rust/WASM opzionale, equivalente al Java, e misurarne la praticabilità su JVM e Native Image.
 
@@ -47,12 +47,12 @@ Nei task, `F` indica `platform/modules/forecasting/src/main/java/it/unimib/datai
 
 **Interfaces:** produce prova ripetibile JVM/native e coordinate/versioni compatibili; modulo defaultEnabled=false, requires.strong=forecasting, altri vincoli vuoti, schemaVersion=1.
 
-- [ ] Aggiornare indice e registrare baseline di `:forecasting-api:test` e `:control-plane-modules:forecasting:test`; leggere la spec. Registrare versione plugin e toolchain effettive.
-- [ ] Scrivere `WasmEmbeddingTest`: un minuscolo guest binario esporta add(i32,i32); chiamata via Polyglot deve restituire 42 e chiudere Context/Engine. Eseguire prima senza implementazione/dipendenze e constatare il fallimento atteso.
-- [ ] Fissare dipendenze Polyglot/GraalWasm compatibili con il JDK/GraalVM del repo; registrare edition/licenza. Non aggiornare globalmente toolchain o plugin per tentativi. Implementare probe, senza allowAllAccess.
-- [ ] Eseguire `./gradlew -PcontrolPlaneModules=forecasting,forecasting-wasm :control-plane-modules:forecasting-wasm:test`. Ripetere il probe come vero eseguibile Native Image Linux, registrando comando completo nel report, non solo processAot o un mock.
-- [ ] Verificare nel binario add(20,22)=42 e chiusura corretta; rilevare dimensione/RSS e distinguere runtime ottimizzato da fallback interpreter-only. Se non funziona, il gate resta rosso: documentare il limite prima di procedere ai task successivi.
-- [ ] Completare detect_changes e commit `Add optional WASM embedding probe`. Tenere il probe nel modulo come regressione.
+- [x] Aggiornare indice e registrare baseline di `:forecasting-api:test` e `:control-plane-modules:forecasting:test`; leggere la spec. Registrare versione plugin e toolchain effettive.
+- [x] Scrivere `WasmEmbeddingTest`: un minuscolo guest binario esporta add(i32,i32); chiamata via Polyglot deve restituire 42 e chiudere Context/Engine. Eseguire prima senza implementazione/dipendenze e constatare il fallimento atteso.
+- [x] Fissare dipendenze Polyglot/GraalWasm compatibili con il JDK/GraalVM del repo; registrare edition/licenza. Non aggiornare globalmente toolchain o plugin per tentativi. Implementare probe, senza allowAllAccess.
+- [x] Eseguire `./gradlew -PcontrolPlaneModules=forecasting,forecasting-wasm :control-plane-modules:forecasting-wasm:test`. Ripetere il probe come vero eseguibile Native Image Linux, registrando comando completo nel report, non solo processAot o un mock.
+- [x] Verificare nel binario add(20,22)=42 e chiusura corretta; rilevare dimensione/RSS e distinguere runtime ottimizzato da fallback interpreter-only. Se non funziona, il gate resta rosso: documentare il limite prima di procedere ai task successivi.
+- [x] Completare detect_changes e commit `Add optional WASM embedding probe`. Tenere il probe nel modulo come regressione.
 
 ### Task 2: Holt Rust con ABI stabile e artifact riproducibile
 
@@ -60,12 +60,12 @@ Nei task, `F` indica `platform/modules/forecasting/src/main/java/it/unimib/datai
 
 **Interfaces:** ABI esatta della spec: memory, abi_version, input_ptr, output_ptr, forecast. Produzione artifact senza libc/WASI/import host; memoria massima 16 MiB, niente fast-math.
 
-- [ ] Scrivere test Rust RED per costante, singolo valore, crescita, decrescita con clamp, damping=1, pesi ai limiti, 100000 campioni/4096 passi; invalidi: array vuoto, dimensioni eccedenti, pesi zero/NaN, campioni negativi/non finiti. Errori numerici restituiscono status 2.
-- [ ] Copiare l'ordine delle operazioni di `TrendForecastSource.holt` nel core Rust; implementare export C-ABI e buffer statici separati senza esporre riferimenti mutabili globali. Anche il guest valida gli input.
-- [ ] Eseguire `cargo test --locked --manifest-path platform/modules/forecasting-wasm/guest/Cargo.toml`; poi build release locked per wasm32-unknown-unknown. Registrare rustc/cargo effettivi e flag nel manifest.
-- [ ] Aggiungere `compileWasm` locale e `verifyWasmArtifact`; manifest con SHA256 di sorgenti/config/lock/toolchain e artifact. `processResources` dipende solo dalla verifica, non dalla disponibilità di Rust. Se sorgente o artifact cambia senza rigenerare, la build fallisce esplicitamente.
-- [ ] Eseguire `./gradlew -PcontrolPlaneModules=forecasting,forecasting-wasm :control-plane-modules:forecasting-wasm:compileWasm :control-plane-modules:forecasting-wasm:verifyWasmArtifact`; ripetere in directory pulita con stessa toolchain e confrontare SHA256. Provare hash errato e artifact mancante.
-- [ ] detect_changes e commit `Add reproducible Rust Holt WASM guest`.
+- [x] Scrivere test Rust RED per costante, singolo valore, crescita, decrescita con clamp, damping=1, pesi ai limiti, 100000 campioni/4096 passi; invalidi: array vuoto, dimensioni eccedenti, pesi zero/NaN, campioni negativi/non finiti. Errori numerici restituiscono status 2.
+- [x] Copiare l'ordine delle operazioni di `TrendForecastSource.holt` nel core Rust; implementare export C-ABI e buffer statici separati senza esporre riferimenti mutabili globali. Anche il guest valida gli input.
+- [x] Eseguire `cargo test --locked --manifest-path platform/modules/forecasting-wasm/guest/Cargo.toml`; poi build release locked per wasm32-unknown-unknown. Registrare rustc/cargo effettivi e flag nel manifest.
+- [x] Aggiungere `compileWasm` locale e `verifyWasmArtifact`; manifest con SHA256 di sorgenti/config/lock/toolchain e artifact. `processResources` dipende solo dalla verifica, non dalla disponibilità di Rust. Se sorgente o artifact cambia senza rigenerare, la build fallisce esplicitamente.
+- [x] Eseguire `./gradlew -PcontrolPlaneModules=forecasting,forecasting-wasm :control-plane-modules:forecasting-wasm:compileWasm :control-plane-modules:forecasting-wasm:verifyWasmArtifact`; ripetere in directory pulita con stessa toolchain e confrontare SHA256. Provare hash errato e artifact mancante.
+- [x] detect_changes e commit `Add reproducible Rust Holt WASM guest`.
 
 ### Task 3: adapter Java e parità con Holt esistente
 
@@ -73,11 +73,11 @@ Nei task, `F` indica `platform/modules/forecasting/src/main/java/it/unimib/datai
 
 **Interfaces:** `HoltForecastAlgorithm.forecast(double[] rates, int steps, double level, double trend, double damping) -> double[]`; adapter implementa AutoCloseable. Errori di guest con RuntimeException diagnostica; conversione in MISSING appartiene al Task 4.
 
-- [ ] Test RED: vettori Java come oracle, 100 sequenze deterministiche seed=42, confini della spec e verifica input non modificato. Assert tolleranza su ogni elemento e output esattamente steps.
-- [ ] Test RED: file assente, export assente, ABI!=1, puntatori fuori memoria/non allineati/sovrapposti, status nonzero, trap, NaN/Infinity, chiamata dopo close e due chiamate contemporanee con input diversi.
-- [ ] Implementare adapter: caricare bytes dal classpath; verificare ABI, export, bounds e memoria; copiare f64 little-endian tramite API documentate compatibili con la versione selezionata; eseguire e copiare output staccato. Una sezione serializzata comprende input-call-output; un Context/Engine riusato, chiusura idempotente. Nessun JSON o callback host.
-- [ ] Eseguire i test JVM con il vero guest; verificare che chiamate ripetute non accrescano la memoria lineare. Chiudere Context e Engine anche su errori di inizializzazione.
-- [ ] detect_changes e commit `Bridge Holt forecasts through GraalWasm`.
+- [x] Test RED: vettori Java come oracle, 100 sequenze deterministiche seed=42, confini della spec e verifica input non modificato. Assert tolleranza su ogni elemento e output esattamente steps.
+- [x] Test RED: file assente, export assente, ABI!=1, puntatori fuori memoria/non allineati/sovrapposti, status nonzero, trap, NaN/Infinity, chiamata dopo close e due chiamate contemporanee con input diversi.
+- [x] Implementare adapter: caricare bytes dal classpath; verificare ABI, export, bounds e memoria; copiare f64 little-endian tramite API documentate compatibili con la versione selezionata; eseguire e copiare output staccato. Una sezione serializzata comprende input-call-output; un Context/Engine riusato, chiusura idempotente. Nessun JSON o callback host.
+- [x] Eseguire i test JVM con il vero guest; verificare che chiamate ripetute non accrescano la memoria lineare. Chiudere Context e Engine anche su errori di inizializzazione.
+- [x] detect_changes e commit `Bridge Holt forecasts through GraalWasm`.
 
 ### Task 4: integrare la selezione senza duplicare lo storico
 
@@ -85,14 +85,14 @@ Nei task, `F` indica `platform/modules/forecasting/src/main/java/it/unimib/datai
 
 **Interfaces:** overload `TrendForecastSource.forecast(ForecastQuery query, Holt model, HoltForecastAlgorithm algorithm) -> ForecastSnapshot`. Selezione HOLT_WASM usa lo stesso storico e modello Holt già in ForecastSelection. Le altre chiamate conservano i metodi esistenti.
 
-- [ ] Eseguire impact sui simboli toccati e riportare rischi/callers, inclusa la costruzione dell'extension nei test. Non introdurre dipendenze dal modulo forecasting verso l'implementazione WASM.
-- [ ] Test RED: HOLT e HOLT_WASM producono lo stesso snapshot salvo provider; storico vuoto/altro nodo/nuova generazione restano MISSING; finestre osservate a zero restano distinguibili; query STALE resta STALE; intervalli parziali e cap 4096 riusano mean e limiti correnti.
-- [ ] Implementare il piccolo hook nel ramo Holt di estimate. Mantenere lo snapshot sotto lock e il calcolo fuori lock; Java conserva mean, producedAt, revision e query. Trap/output invalido restituiscono MISSING con provider holt_wasm, rate=null e revision catturata, senza fallback.
-- [ ] Aggiungere bean opzionale HoltForecastAlgorithm e autoconfigurazione del modulo con lifecycle close; risolverlo senza dipendenze circolari e senza richiedere ordine implicito delle autoconfigurazioni. Quando forecasting è disabled non creare il runtime.
-- [ ] Aggiungere HOLT_WASM al provider e al routing; verificare che ForecastSelection.trendModel continui a selezionare Holt per questo caso. Rendere `available` dell'extension dipendente dalla presenza del bean: assente non pubblicizzato, patch rifiutata senza side effect, configurazione iniziale invalida fallisce con messaggio chiaro.
-- [ ] Test RED→GREEN per toggle HOLT↔HOLT_WASM con storico caldo e cambio pesi; usare un algoritmo controllato da latch per provare che record/retain proseguono mentre il calcolo attende. Provare errori senza mutare query/generazione/revisione e senza creare un secondo observer.
-- [ ] Eseguire suite forecasting e forecasting-wasm con modulo incluso; ripetere suite forecasting senza modulo e controllare dependency tree del control plane privo di Polyglot/GraalWasm.
-- [ ] detect_changes e commit `Expose optional WASM Holt forecasting provider`.
+- [x] Eseguire impact sui simboli toccati e riportare rischi/callers, inclusa la costruzione dell'extension nei test. Non introdurre dipendenze dal modulo forecasting verso l'implementazione WASM.
+- [x] Test RED: HOLT e HOLT_WASM producono lo stesso snapshot salvo provider; storico vuoto/altro nodo/nuova generazione restano MISSING; finestre osservate a zero restano distinguibili; query STALE resta STALE; intervalli parziali e cap 4096 riusano mean e limiti correnti.
+- [x] Implementare il piccolo hook nel ramo Holt di estimate. Mantenere lo snapshot sotto lock e il calcolo fuori lock; Java conserva mean, producedAt, revision e query. Trap/output invalido restituiscono MISSING con provider holt_wasm, rate=null e revision catturata, senza fallback.
+- [x] Aggiungere bean opzionale HoltForecastAlgorithm e autoconfigurazione del modulo con lifecycle close; risolverlo senza dipendenze circolari e senza richiedere ordine implicito delle autoconfigurazioni. Quando forecasting è disabled non creare il runtime.
+- [x] Aggiungere HOLT_WASM al provider e al routing; verificare che ForecastSelection.trendModel continui a selezionare Holt per questo caso. Rendere `available` dell'extension dipendente dalla presenza del bean: assente non pubblicizzato, patch rifiutata senza side effect, configurazione iniziale invalida fallisce con messaggio chiaro.
+- [x] Test RED→GREEN per toggle HOLT↔HOLT_WASM con storico caldo e cambio pesi; usare un algoritmo controllato da latch per provare che record/retain proseguono mentre il calcolo attende. Provare errori senza mutare query/generazione/revisione e senza creare un secondo observer.
+- [x] Eseguire suite forecasting e forecasting-wasm con modulo incluso; ripetere suite forecasting senza modulo e controllare dependency tree del control plane privo di Polyglot/GraalWasm.
+- [x] detect_changes e commit `Expose optional WASM Holt forecasting provider`.
 
 ### Task 5: packaging Native Image, misure e documentazione
 

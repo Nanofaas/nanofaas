@@ -84,7 +84,7 @@ curl -fsS http://localhost:8080/v1/admin/runtime-config/forecasting
 
 Replace the `0` with the revision the first `curl` read: a stale revision answers
 `409`, an invalid value `422`. `provider` is one of the namespace's `available` ids
-(`ewma`, `oracle`, `holt`, `ari`); `holtLevel`, `holtTrend`, `holtDamping` and
+(`ewma`, `oracle`, `holt`, `ari`, plus `holt_wasm` when its module is available); `holtLevel`, `holtTrend`, `holtDamping` and
 `ariOrder` replace the model parameters, which Holt and ARI apply to the windows
 already retained. The next forecast query uses the change; an in-flight query keeps
 the provider and model parameters selected when it began. `alpha`, `window`,
@@ -115,3 +115,54 @@ production and experimental period, then upload new revisions when necessary.
 
 See [versioned contracts](contracts/one-shot/README.md) for provenance, measurement
 units and the distinction between client arrivals and internal execution attempts.
+
+## Optional Rust/WASM Holt provider
+
+`forecasting-wasm` is an opt-in module with a strong requirement on `forecasting`.
+Select both modules (and `runtime-config` for administrative switching), then set
+`nanofaas.forecasting.provider=holt_wasm`. The existing Holt weights apply. The module
+uses GraalWasm 25.2.4 with the repository's GraalVM Community 25.2.4 / Java 25.0.4;
+it does not require a new Gradle plugin or recipe schema.
+
+Only the numeric Holt path runs in Rust. Java still owns history, generations,
+window alignment, the query's captured revision, interval averaging, and MISSING /
+STALE semantics. Java and Rust results are tested with tolerance
+`1e-9 * max(1, abs(javaResult))`. Guest failures return MISSING with no rate; they
+never silently fall back to Java or report a fabricated zero.
+
+Without the module, `holt_wasm` is absent from `available`, a runtime patch is
+rejected atomically, and selecting it at startup fails with a module diagnostic.
+No GraalWasm dependencies enter that composition. With the module included and
+forecasting enabled, one runtime Engine/Context is created, even when `holt` is
+initially selected, so switching does not rebuild the runtime. Calls are serialized
+through input copy, execution and output copy; arrival recording keeps its own lock.
+Spring closes both resources on shutdown. Disabled forecasting creates neither.
+For Native Image, enable forecasting (and the admin API when needed) in the recipe's
+`controlPlane.config` during AOT; enabling a build-time-excluded bean later is not
+supported.
+
+The trusted guest is bundled at `wasm/holt-v1.wasm`; there is no download, WASI,
+hot reload or user-supplied plugin endpoint. ABI v1 exports `memory`, `abi_version`,
+`input_ptr`, `output_ptr` and `forecast(n, steps, level, trend, damping)`. Separate,
+aligned static buffers hold little-endian f64 values: 1..100000 samples and
+1..4096 output steps, with a 16 MiB linear-memory ceiling. Inputs must be finite
+and nonnegative; weights finite in (0,1]. Status 0 means success, 1 invalid input,
+2 numeric overflow. Java validates the ABI, bounds and finite nonnegative output.
+
+Normal JVM and native builds only verify the checked-in artifact with Gradle's
+standard libraries; neither Rust nor Python is required inside the native builder.
+To change the guest, install rustup toolchain 1.97.0 with wasm32-unknown-unknown and
+Python 3.12+, then run:
+
+```sh
+./gradlew -PcontrolPlaneModules=forecasting,forecasting-wasm \
+  :control-plane-modules:forecasting-wasm:compileWasm \
+  :control-plane-modules:forecasting-wasm:verifyWasmArtifact
+python3 platform/modules/forecasting-wasm/guest/build_guest.py check
+```
+
+Review and commit the Rust sources, WASM and manifest together. Source/config/lock/
+toolchain and binary SHA256 mismatches fail before resource packaging. Regeneration
+uses the absolute rustup-selected rustc to avoid mixing a Homebrew compiler into
+the pinned build. See the [local JVM/native validation report](experiments/forecasting-wasm-2026-11-06/README.md)
+for heap, RSS, latency and adoption limits; a 64 MiB Java heap is not a 64 MiB process.

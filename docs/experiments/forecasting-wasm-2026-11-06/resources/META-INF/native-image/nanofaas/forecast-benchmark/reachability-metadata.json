@@ -1,0 +1,6 @@
+{
+  "reflection": [{
+    "type": "it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication__ApplicationContextInitializer",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  }]
+}

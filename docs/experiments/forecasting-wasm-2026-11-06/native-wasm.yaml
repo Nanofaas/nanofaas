@@ -1,0 +1,23 @@
+schemaVersion: 2
+name: forecasting-native-wasm
+registry:
+  repository: nanofaas
+  tag: wasm-local
+controlPlane:
+  modules: [forecasting, runtime-config, build-metadata, forecasting-wasm]
+  build:
+    mode: native
+    builder: container
+    native: {gc: serial, maxHeap: 64m}
+  container: {image: forecasting-native-wasm}
+  config:
+    nanofaas:
+      admin:
+        runtime-config:
+          enabled: true
+      forecasting:
+        enabled: true
+        node-id: local
+        provider: holt_wasm
+        window: 1s
+        max-age: 1m

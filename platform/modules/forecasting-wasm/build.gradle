@@ -28,9 +28,19 @@ tasks.register('compileWasm', Exec) {
     workingDir projectDir
     commandLine 'python3', 'guest/build_guest.py', 'compile'
 }
-tasks.register('verifyWasmArtifact', Exec) {
-    workingDir projectDir
-    commandLine 'python3', 'guest/build_guest.py', 'verify'
+tasks.register('verifyWasmArtifact') {
     mustRunAfter 'compileWasm'
+    doLast {
+        def sources = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml', 'src/lib.rs', 'build_guest.py']
+        def manifest = new groovy.json.JsonSlurper().parse(file('src/main/resources/wasm/holt-v1.manifest.json'))
+        def sha256 = { File input -> java.security.MessageDigest.getInstance('SHA-256').digest(input.bytes).encodeHex().toString() }
+        def toolchain = (file('guest/rust-toolchain.toml').text =~ /channel\s*=\s*"([^"]+)"/)[0][1]
+        if (manifest.abi != 1 || manifest.target != 'wasm32-unknown-unknown' || manifest.toolchain != toolchain
+                || manifest.sources.keySet() != sources.toSet()
+                || sources.any { manifest.sources[it] != sha256(file('guest/' + it)) }
+                || manifest.sha256 != sha256(file('src/main/resources/wasm/holt-v1.wasm'))) {
+            throw new GradleException('WASM artifact is stale or modified; run compileWasm and review the generated artifact')
+        }
+    }
 }
 tasks.named('processResources') { dependsOn 'verifyWasmArtifact' }
