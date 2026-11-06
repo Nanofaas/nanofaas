@@ -131,3 +131,20 @@ Individual per-call timings are not retained. Complete build/runtime logs and
 container image metadata remain in `build/wasm-benchmark`. No x86-64 or cloud run
 was performed, and the small fixed-order local experiment is not a statistical
 performance guarantee.
+
+## Final review
+
+Fresh read-only review of `aba820d4..1b33ddc3` found no Critical or Important
+production defects. Two measurement refinements are deferred: the concurrent
+probe measures forecast latency but does not establish actual arrival overlap or
+measure arrival latency; the latch-based unit test separately verifies that arrival
+recording is not blocked by guest calculation. `cold_call.ns` includes Random,
+stream and input-array setup, so it is not an isolated cold algorithm latency.
+The published warm comparison table is unaffected.
+
+Scope decisions confirmed by review: automatic LOCAL discovery remains a known
+pre-existing limitation, so the test seeds observation; arbitrary replacement
+guests are unsupported, so this is not an untrusted-code isolation guarantee;
+x86-64, optimized JVMCI, cloud and production performance remain unmeasured.
+These limits must be revisited before using this experiment as evidence for those
+deployments. The module remains experimental and opt-in.

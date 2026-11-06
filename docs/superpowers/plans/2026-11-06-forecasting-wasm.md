@@ -100,22 +100,24 @@ Nei task, `F` indica `platform/modules/forecasting/src/main/java/it/unimib/datai
 
 **Interfaces:** recipe normali con moduli forecasting, runtime-config, build-metadata e opzionalmente forecasting-wasm; risorsa wasm/holt-v1.wasm registrata per Native Image. Harness registra artifact hash, versioni, parametri e dati grezzi.
 
-- [ ] Test RED per risorsa nel binario e bootstrap di un control plane nativo con holt_wasm; nessuna inizializzazione guest durante AOT. Usare il builder Linux container già supportato e un checkout/snapshot pulito senza Cargo installato nel builder.
-- [ ] Implementare RuntimeHints minimi e packaging richiesto dal probe; verificare assenza del runtime nelle composizioni senza modulo. Se il plugin non preserva artifact/dipendenze necessari, documentare il difetto e preparare un cambiamento mirato separato invece di introdurre uno schema WASM generico.
-- [ ] Smoke JVM/native: attivare una funzione locale, generare arrivi per più finestre e verificare via test client del contesto la previsione; usare API runtime-config esistente per selezione/toggle. Non inventare un endpoint pubblico per leggere forecast. Chiudere il contesto e verificare assenza di thread/risorse guest residui.
-- [ ] Eseguire tre composizioni indicate nella spec, stesso host e budget, tre ripetizioni locali. Microbenchmark: history 60/360/4096 e steps 1/60/4096, cold separato da warm; misurare p50/p95 di calcolo e costo con arrivi concorrenti. Scenario sostenuto separato: history=360, steps=60 per 60 s dopo warmup, registrando RSS e throughput. Provare inoltre i massimi una volta per correttezza/limiti, senza inventare un grande benchmark cloud.
-- [ ] Provare heap 64 MiB e riportare eventuale OOM/non avvio come risultato, senza aumenti impliciti. Riportare RSS totale e footprint del runtime, build time, immagine/binario e startup. Nessuna affermazione che WASM sia più veloce prima delle misure.
-- [ ] Documentare configurazione, ABI, pin, rigenerazione artifact, disponibilità provider, errori e limiti. Riportare decisione motivata: adottabile, solo sperimentale, oppure non adatto al budget NanoFaaS.
-- [ ] Eseguire test completi, distinguendo i due WarmEchoAotTest macOS già noti da nuove regressioni; verificare anche build JVM/native senza modulo. detect_changes completo, review finale e commit `Validate and document WASM forecasting on JVM and native`.
+- [x] Test RED per risorsa nel binario e bootstrap di un control plane nativo con holt_wasm; nessuna inizializzazione guest durante AOT. Usare il builder Linux container già supportato e un checkout/snapshot pulito senza Cargo installato nel builder.
+- [x] Implementare RuntimeHints minimi e packaging richiesto dal probe; verificare assenza del runtime nelle composizioni senza modulo. Se il plugin non preserva artifact/dipendenze necessari, documentare il difetto e preparare un cambiamento mirato separato invece di introdurre uno schema WASM generico.
+- [x] Smoke JVM/native: attivare una funzione locale, generare arrivi per più finestre e verificare via test client del contesto la previsione; usare API runtime-config esistente per selezione/toggle. Non inventare un endpoint pubblico per leggere forecast. Chiudere il contesto e verificare assenza di thread/risorse guest residui.
+- [x] Eseguire tre composizioni indicate nella spec, stesso host e budget, tre ripetizioni locali. Microbenchmark: history 60/360/4096 e steps 1/60/4096, cold separato da warm; misurare p50/p95 di calcolo e costo con arrivi concorrenti. Scenario sostenuto separato: history=360, steps=60 per 60 s dopo warmup, registrando RSS e throughput. Provare inoltre i massimi una volta per correttezza/limiti, senza inventare un grande benchmark cloud.
+- [x] Provare heap 64 MiB e riportare eventuale OOM/non avvio come risultato, senza aumenti impliciti. Riportare RSS totale e footprint del runtime, build time, immagine/binario e startup. Nessuna affermazione che WASM sia più veloce prima delle misure.
+- [x] Documentare configurazione, ABI, pin, rigenerazione artifact, disponibilità provider, errori e limiti. Riportare decisione motivata: adottabile, solo sperimentale, oppure non adatto al budget NanoFaaS.
+- [x] Eseguire test completi, distinguendo i due WarmEchoAotTest macOS già noti da nuove regressioni; verificare anche build JVM/native senza modulo. detect_changes completo, review finale e commit `Validate and document WASM forecasting on JVM and native`.
 
 ## Criteri di completamento
 
-- [ ] Guest Rust vero eseguito su JVM e Native Image Linux con parità numerica verificata.
-- [ ] Nessuna regressione su generazioni, finestre, MISSING/STALE, provider esistenti e runtime-config.
-- [ ] Artifact riproducibile e verificato, modulo assente realmente privo di runtime WASM.
-- [ ] Costi misurati e limite heap 64 MiB esplicitamente provato, anche se il risultato è negativo.
-- [ ] Report e decisione di adozione disponibili; nessun merge o push senza istruzione dell'utente.
+- [x] Guest Rust vero eseguito su JVM e Native Image Linux con parità numerica verificata.
+- [x] Nessuna regressione su generazioni, finestre, MISSING/STALE, provider esistenti e runtime-config.
+- [x] Artifact riproducibile e verificato, modulo assente realmente privo di runtime WASM.
+- [x] Costi misurati e limite heap 64 MiB esplicitamente provato, anche se il risultato è negativo.
+- [x] Report e decisione di adozione disponibili; nessun merge o push senza istruzione dell'utente.
 
 ## Autorevisione del piano
 
 Spec coperta dai task 1–5; ABI e firme coerenti; cinque casi di Review Focus associati a test. La scelta dell'artifact versionato evita Cargo annidato nel builder native. Disponibilità effettiva dei provider e ordine delle autoconfigurazioni sono verifiche obbligatorie. Nessun lavoro di implementazione eseguito durante la stesura.
+
+Completion note: all implementation tasks completed; two non-blocking measurement refinements are explicitly deferred in the validation report (arrival overlap/latency and cold-call input setup). Full-suite baseline retains the two known macOS WarmEchoAotTest failures.
