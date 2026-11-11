@@ -20,6 +20,7 @@ import it.unimib.datai.nanofaas.controlplane.service.RetryScheduler;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
@@ -79,6 +80,26 @@ class AttemptCoordinatorTest {
         assertThat(record.completion().join().headers()).containsEntry("Retry-After", "1");
         assertThat(record.toOutcome().statusCodeOrNull()).isEqualTo(429);
         assertThat(record.toOutcome().headers()).containsEntry("Retry-After", "1");
+    }
+
+    @Test
+    void callbackFirstColdStartCompletionAttributesOnlyActualLocalTransport() {
+        for(String path:List.of("local","cloud","unknown")) {
+            var spec=new FunctionSpec("fn","image",null,null,null,30000,1,10,0,null,ExecutionMode.LOCAL,null,null,null);
+            var task=new InvocationTask(path,"fn",spec,new InvocationRequest("input",null),null,null,Instant.now(),1,InvocationKind.SYNC);
+            var record=new ExecutionRecord(path,task);
+            var remote=new it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE,"http://cloud","cloud",1,"cloud",Map.of(),null);
+            record.pinPlannedRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.localThenCloud("edge",remote));
+            record.markRunning();
+            if(path.equals("local")) record.transportOwnsCapacity();
+            if(path.equals("cloud")) record.attributeExecutionNode("cloud");
+            var store=new ExecutionStore();store.put(record);
+            var coordinator=new AttemptCoordinator(store,new FunctionCapacityRegistry(),RetryScheduler.unavailable(),mock(AttemptTransport.class),mock(AttemptObserver.class));
+            if(path.equals("local")) coordinator.completeExecution(path,DispatchResult.warm(InvocationResult.success("done")),1);
+            else coordinator.completeOffloadedExecution(path,InvocationResult.success("done"));
+            assertThat(record.completion().join().success()).isTrue();
+            assertThat(record.executionNode()).isEqualTo(path.equals("local")?"edge":path.equals("cloud")?"cloud":null);
+        }
     }
 
     @Test

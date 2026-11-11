@@ -65,6 +65,50 @@ class EpochProtocolTest {
     }
     static EpochSettings settings(int rounds) { return new EpochSettings(Duration.ofSeconds(3),Duration.ofMillis(200),Duration.ofSeconds(1),rounds,2,16,4,.1); }
     static ClockHealth health() { var health=new ClockHealth(Duration.ofMillis(100),Duration.ofMinutes(1),Instant::now);health.sample(Duration.ZERO,Instant.now());return health; }
+    @Test void missingForecastKeepsLocalCapacityAndClosesPeerPhasesWithoutTrading() {
+        var network=new ConcurrentHashMap<String,Fake>();
+        var transports=List.of(new Fake("a",network),new Fake("b",network),new Fake("c",network));
+        var nodes=transports.stream().map(t->new EpochCoordinator(t,(epoch,from,until)-> {
+            var base=input(t.id,epoch,from,until);
+            if(!t.id.equals("a")) return base;
+            var forecasts=new HashMap<String,ForecastSnapshot>();
+            base.forecasts().forEach((name,f)->forecasts.put(name,new ForecastSnapshot(f.query(),ForecastSnapshot.Status.MISSING,null,0,"ewma",null)));
+            return new EpochInput(base.problem(),base.identities(),forecasts,base.revision());
+        },settings(2),health())).toList();
+        nodes.forEach(EpochCoordinator::start);
+        try {
+            var from=Instant.now().plusSeconds(10);var until=from.plusSeconds(300);
+            var results=Mono.zip(nodes.stream().map(n->n.prepare(1,from,until)).toList(),objects->Arrays.stream(objects).map(o->(EpochOutcome)o).toList()).block(Duration.ofSeconds(5));
+            assertThat(results).allSatisfy(r->assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED));
+            var cold=results.getFirst();
+            assertThat(cold.snapshot().desiredReplicas().values()).anyMatch(count->count>0);
+            assertThat(cold.snapshot().assignments()).isEmpty();
+            assertThat(cold.input().forecasts().values()).allSatisfy(f->assertThat(f.rate()).isNull());
+            assertThat(transports.getFirst().attempts).filteredOn(c->ROUND_PHASES.contains(c.batch().phase())).allSatisfy(c->assertThat(c.batch().messages()).isEmpty());
+        } finally { nodes.forEach(EpochCoordinator::close); }
+    }
+    @Test void missingForecastUsesRemainingMemoryForFunctionsThatStillFit() {
+        var network=new ConcurrentHashMap<String,Fake>();
+        var transport=new Fake("a",network);
+        try(var node=new EpochCoordinator(transport,(epoch,from,until)-> {
+            var functions=List.of(
+                    new LocalProblem.Function("small",0,1,1,16,1,.9,.1,0,0,0,0),
+                    new LocalProblem.Function("large",0,1,1,1024,1,.9,.1,0,0,0,0));
+            var identities=new HashMap<String,AuctionSnapshot.FunctionIdentity>();
+            var forecasts=new HashMap<String,ForecastSnapshot>();
+            for(var f:functions) {
+                identities.put(f.id(),new AuctionSnapshot.FunctionIdentity("image-v1",1));
+                forecasts.put(f.id(),new ForecastSnapshot(new ForecastQuery("a",f.id(),1,from,until),ForecastSnapshot.Status.MISSING,null,0,"ewma",null));
+            }
+            return new EpochInput(new LocalProblem(LocalProblem.Model.LSP,512,functions),identities,forecasts,1);
+        },settings(2),health())) {
+            node.start();
+            var from=Instant.now().plusSeconds(10);
+            var result=node.prepare(1,from,from.plusSeconds(300)).block(Duration.ofSeconds(5));
+            assertThat(result.status()).withFailMessage(result.reason()).isEqualTo(EpochOutcome.Status.FIXED_ROUNDS_COMPLETED);
+            assertThat(result.snapshot().desiredReplicas()).containsExactlyInAnyOrderEntriesOf(Map.of("small",32,"large",0));
+        }
+    }
     @Test void threeNodesConvergeWithDuplicateBatchesAndFrozenForecasts() {
         var network=new ConcurrentHashMap<String,Fake>(); var transports=List.of(new Fake("a",network),new Fake("b",network),new Fake("c",network));
         transports.forEach(t -> t.loseFirstGrantReply = true);

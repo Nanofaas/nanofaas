@@ -193,3 +193,29 @@ checkpoints/chunks and exposes collector metrics. Select JSON separately in each
 autonomous process and managed function's `env`; modules inside a process inherit
 its backend. Request IDs are searchable JSON fields, never Loki labels. Buffer
 limits, rotation and the possibility of loss/duplicates are documented there.
+
+## Physical release receipts in experiment logs
+
+The Rust SDK emits one `runtime.execution.released` event when an attempt releases
+its last handler reservation. The JSON envelope carries `executionId`; attributes
+carry `receiptSchemaVersion: 1`, `incarnation`, `dispatchAttempt`, `state: RELEASED`,
+`occupancySeconds`, `responseStatus` and `handlerStarted`. A timeout response can
+precede this event if a blocking handler still holds capacity. The receipt records
+the resolved response outcome, including output-validation errors.
+
+For Docker experiment VMs, use
+[`fluent-bit-journal.conf`](../deploy/observability/fluent-bit-journal.conf) with
+Docker's `journald` log driver and a persistent host journal. Mount the journal and
+machine ID read-only into the collector; keep its cursor and chunk directory on
+persistent storage. Container removal then does not delete unread receipt logs.
+The existing json-file/CRI collector configuration remains available for other
+deployments. NanoLab provisions the owned VMs and the Workbench collector role
+supplies the mounts; neither SDK nor control plane calls Loki directly.
+
+NanoLab correlates these events with client terminal execution identities and
+validates attempt, node, schema and release state before writing `physical.jsonl`.
+Duplicate delivery is deduplicated; contradictory receipts fail collection, and
+missing releases remain incomplete evidence. k6 records client-visible responses,
+Prometheus aggregates measurements, and these logs provide per-attempt release
+evidence. Journal retention and collector buffers are bounded: disk exhaustion,
+retention expiry or abrupt process/host loss can still leave missing receipts.

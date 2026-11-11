@@ -97,6 +97,11 @@ public final class PlanRouter {
             if(inbound.isEmpty()) return PlannedInvocationRoute.reject("inbound assignment absent");
             return PlannedInvocationRoute.local(plan.nodeId());
         }
+        if(plan.localFallback()) {
+            var overflow=cloud(settings.get(),plan.epoch());
+            return f.readyReplicas()>0 && overflow.kind()==PlannedInvocationRoute.Kind.REMOTE
+                    ?PlannedInvocationRoute.localThenCloud(plan.nodeId(),overflow):overflow;
+        }
         if(state==null || !state.plan.equals(plan)) state=new State(plan);
         var picker=state.picks.get(task.functionName());if(picker==null) return cloud(settings.get(),plan.epoch());
         var selected=picker.next(random.getAsDouble());

@@ -189,6 +189,17 @@ public final class ReactiveInvocationCoordinator {
             switch(route.kind()) {
                 case REJECT -> throw new it.unimib.datai.nanofaas.controlplane.offload.PlannedRouteRejectedException(route.reason());
                 case LOCAL -> admitLocally(executionRecord);
+                case LOCAL_THEN_CLOUD -> {
+                    if(context.offloadedHop()) throw new it.unimib.datai.nanofaas.controlplane.offload.PlannedRouteRejectedException("second hop forbidden");
+                    try {
+                        admitLocally(executionRecord);
+                    } catch(SyncQueueRejectedException ex) {
+                        if(pressureTrigger(ex.reason())==null) throw ex;
+                        startOffload(executionRecord,spec,pressureTrigger(ex.reason()),context,offloadedTarget);
+                    } catch(it.unimib.datai.nanofaas.controlplane.queue.QueueFullException ex) {
+                        startOffload(executionRecord,spec,OffloadTrigger.DEPTH,context,offloadedTarget);
+                    }
+                }
                 case REMOTE -> {
                     if(context.offloadedHop()) throw new it.unimib.datai.nanofaas.controlplane.offload.PlannedRouteRejectedException("second hop forbidden");
                     startOffload(executionRecord,spec,OffloadTrigger.EAGER,context,offloadedTarget);
@@ -253,7 +264,8 @@ public final class ReactiveInvocationCoordinator {
                               OffloadTrigger trigger,
                               OffloadContext context,
                               AtomicReference<String> offloadedTarget) {
-        var route=executionRecord.plannedRoute();
+        var decision=executionRecord.plannedRoute();
+        var route=decision!=null && decision.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL_THEN_CLOUD?decision.cloudFallback():decision;
         String target = route!=null && route.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE?route.targetUrl():offloadGateway.targetUrl(spec);
         offloadedTarget.set(target);
         // Bypasses the local queue entirely: no local concurrency slots are consumed,

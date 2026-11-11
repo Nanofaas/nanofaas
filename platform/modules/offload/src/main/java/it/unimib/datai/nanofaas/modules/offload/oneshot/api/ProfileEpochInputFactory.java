@@ -58,8 +58,8 @@ public final class ProfileEpochInputFactory implements EpochInput.Factory {
             ForecastSnapshot forecast=null;double rate=0;
             if(getForecasts) {
                 var query=new ForecastQuery(node,name,generation.id(),from,until);forecast=forecasts.forecast(query);
-                if(forecast==null || forecast.status()!=ForecastSnapshot.Status.AVAILABLE || !query.equals(forecast.query()) || forecast.rate()==null) throw new IllegalArgumentException("forecast missing/stale: "+name);
-                rate=forecast.rate();
+                if(forecast==null || !query.equals(forecast.query()) || ("oracle".equals(forecast.provider()) && forecast.status()!=ForecastSnapshot.Status.AVAILABLE)) throw new IllegalArgumentException("forecast missing/stale or incompatible: "+name);
+                if(forecast.status()==ForecastSnapshot.Status.AVAILABLE) rate=forecast.rate();
                 if("oracle".equals(forecast.provider())) { if(oracleRevision!=null && oracleRevision!=forecast.revision()) throw new IllegalArgumentException("oracle revision changed during freeze");oracleRevision=forecast.revision(); }
                 snapshots.put(name,forecast);
             }

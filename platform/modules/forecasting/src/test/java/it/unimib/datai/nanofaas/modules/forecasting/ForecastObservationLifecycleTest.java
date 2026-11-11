@@ -18,11 +18,12 @@ class ForecastObservationLifecycleTest {
         when(catalog.listRegistered()).thenReturn(List.of(first,second));
         var lifecycle=new ForecastObservationLifecycle(source,catalog,replicas,clock);
         assertThatCode(lifecycle::refresh).doesNotThrowAnyException();
+        source.record(new ExternalArrival("first",1,start,"first-request"));
         clock.now=start.plusSeconds(1);lifecycle.refresh();
         assertThat(source.forecast(query("first",1,clock)).status()).isEqualTo(ForecastSnapshot.Status.AVAILABLE);
         assertThat(source.forecast(query("second",2,clock)).status()).isEqualTo(ForecastSnapshot.Status.MISSING);
         when(catalog.listRegistered()).thenReturn(List.of(second));
-        lifecycle.refresh();clock.now=start.plusSeconds(2);lifecycle.refresh();
+        lifecycle.refresh();source.record(new ExternalArrival("second",2,clock.now,"second-request"));clock.now=start.plusSeconds(2);lifecycle.refresh();
         assertThat(source.forecast(query("first",1,clock)).status()).isEqualTo(ForecastSnapshot.Status.MISSING);
         assertThat(source.forecast(query("second",2,clock)).status()).isEqualTo(ForecastSnapshot.Status.AVAILABLE);
     }

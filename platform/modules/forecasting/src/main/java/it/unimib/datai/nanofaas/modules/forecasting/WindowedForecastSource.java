@@ -17,6 +17,7 @@ public abstract class WindowedForecastSource<S> implements ForecastSource, Exter
         final Map<Long, Long> counts = new HashMap<>();
         final S state = newState();
         long revision;
+        boolean observedTraffic;
         Instant producedAt;
         Series(long next) { this.next = next; }
     }
@@ -80,6 +81,7 @@ public abstract class WindowedForecastSource<S> implements ForecastSource, Exter
             if (entry.getKey() < value.next) { value.counts.remove(entry.getKey()); continue; }
             zeroWindows(value, entry.getKey() - value.next);
             add(value.state, entry.getValue() / (double) windowSeconds);
+            value.observedTraffic = true;
             value.next++;
             value.revision++;
             value.producedAt = Instant.ofEpochSecond(Math.multiplyExact(value.next, windowSeconds));
@@ -89,7 +91,7 @@ public abstract class WindowedForecastSource<S> implements ForecastSource, Exter
     }
     private void zeroWindows(Series value, long count) {
         if (count == 0) return;
-        addZeros(value.state, count);
+        if (value.observedTraffic) addZeros(value.state, count);
         value.next += count;
         value.revision += count;
         value.producedAt = Instant.ofEpochSecond(Math.multiplyExact(value.next, windowSeconds));
@@ -109,6 +111,7 @@ public abstract class WindowedForecastSource<S> implements ForecastSource, Exter
             Series value = nodeId.equals(query.nodeId()) ? series.get(new Key(query.function(), query.generation())) : null;
             if (value == null) return new ForecastSnapshot(query, ForecastSnapshot.Status.MISSING, null, 0, provider, null);
             finalizeWindows(value);
+            if (!value.observedTraffic) return new ForecastSnapshot(query, ForecastSnapshot.Status.MISSING, null, value.revision, provider, null);
             state = snapshotState.apply(value.state);
             next = value.next;
             revision = value.revision;

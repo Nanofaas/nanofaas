@@ -15,3 +15,9 @@ The baseline retains class/method/field identifiers for review. The full-composi
 source after the pinned dependency bootstrap.
 
 The live `MeterRegistry`, `P2pSettings` and `PeerTable` collaborators introduced by node-information exchange are intentionally shared. Their constructor-field `EI_EXPOSE_REP2` matches are narrowly excluded in `exclude.xml`; this does not baseline or suppress synchronization findings. Polling acquires its messaging transport under the instance monitor and retains it for deferred subscriptions in that round.
+
+The managed deployment adapter and dispatcher registry are also injected live
+collaborators. Their constructor-field exclusions preserve that shared identity.
+Reservation dispatch/close deliberately use the same pool monitor as admission
+and membership changes; only those two monitor warnings are excluded. The timeout
+is captured under that monitor, and readiness exposes a cancellable copy without exposing the owned future.

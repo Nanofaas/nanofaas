@@ -136,14 +136,14 @@ impl HandlerReservation {
 
 impl Drop for HandlerReservation {
     fn drop(&mut self) {
-        if let Some((tracker, id, started)) = &self.occupancy {
-            tracker.release(id, *started);
-        }
         let bytes = *self.input_bytes.get_mut();
         self.limits.update(|state| {
             state.active_handlers -= 1;
             state.input_bytes -= bytes;
         });
+        if let Some((tracker, id, started)) = &self.occupancy {
+            tracker.release(id, *started);
+        }
     }
 }
 

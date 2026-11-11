@@ -85,14 +85,17 @@ class OneShotLocalClusterE2eTest {
         for(var node:edges) pending.add(CompletableFuture.supplyAsync(()->{try {return json(request(node,"/v1/admin/offload/one-shot/epochs/"+epoch+"/prepare","POST",Map.of("startsAt",from.toString(),"endsAt",from.plus(PERIOD).toString()),Map.of()),200);}catch(Exception e) {throw new CompletionException(e);}}));
         var results=new ArrayList<JsonNode>();for(int i=0;i<pending.size();i++) {var result=pending.get(i).get(25,TimeUnit.SECONDS);Files.writeString(artifacts.resolve("epoch-"+epoch+"-"+edges.get(i).id+".json"),result.toPrettyString());results.add(result);}return results;
     }
-    Map<String,Integer> traffic(Node origin,int count,String prefix) throws Exception {
+    Map<String,Integer> traffic(Node origin,int minimum,String prefix,Set<String> destinations) throws Exception {
         var counts=new HashMap<String,Integer>();var ids=new HashSet<String>();
-        for(int i=0;i<count;i++) {
+        // Roulette does not guarantee destination coverage in a fixed small sample.
+        for(int i=0;i<100 && (i<minimum || !counts.keySet().containsAll(destinations));i++) {
             var result=request(origin,"/v1/functions/f:invoke","POST",Map.of("input",INPUT),Map.of("Idempotency-Key",prefix+i));var body=json(result,200);Files.writeString(artifacts.resolve(prefix+i+"-response.json"),body.toPrettyString());assertThat(body.path("status").asString()).as(body.toPrettyString()).isEqualTo("success");assertThat(ids.add(body.path("executionId").asString())).isTrue();
             String node=result.headers().firstValue("X-NanoFaaS-Execution-Node").orElseThrow();counts.merge(node,1,Integer::sum);
             var replay=request(origin,"/v1/functions/f:invoke","POST",Map.of("input",INPUT),Map.of("Idempotency-Key",prefix+i));assertThat(replay.headers().firstValue("X-NanoFaaS-Execution-Node")).contains(node);assertThat(json(replay,200).path("executionId").asString()).isEqualTo(body.path("executionId").asString());Thread.sleep(200);
         }
-        assertThat(counts.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(count);Files.writeString(artifacts.resolve(prefix+"traffic.json"),JSON.writeValueAsString(counts));return counts;
+        Files.writeString(artifacts.resolve(prefix+"traffic.json"),JSON.writeValueAsString(counts));
+        assertThat(counts.keySet()).as("destinations reached within 100 invocations: %s",counts).containsExactlyInAnyOrderElementsOf(destinations);
+        assertThat(counts.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(ids.size());return counts;
     }
     String container(Node node) throws Exception {
         String id=command(List.of("docker","ps","-aq","--filter","label=io.nanofaas.function="+node.namespace+"/f"));
@@ -204,7 +207,7 @@ class OneShotLocalClusterE2eTest {
             register(cloud,true);for(var n:edges) {register(n,false);configure(n,cloud);}
             await(20,()->{for(var n:edges) {var peers=json(get(n,"/v1/admin/p2p/peers"),200);long active=java.util.stream.StreamSupport.stream(peers.spliterator(),false).filter(p->p.path("active").asBoolean()).count();if(active<2 || json(get(n,"/v1/admin/offload/one-shot/status"),200).path("peerEndpoints").size()!=2) return false;}return true;});
             var from=Instant.now().plusSeconds(15);var first=prepare(edges,1,from,new double[]{6,0,0},1);assertThat(first).allSatisfy(p->assertThat(p.path("status").asString()).as(p.toPrettyString()).isEqualTo("PREPARED"));
-            await(20,()->!Instant.now().isBefore(from));var counts=traffic(a,18,"first-");assertThat(counts.keySet()).contains("a","b","c","cloud");
+            await(20,()->!Instant.now().isBefore(from));var counts=traffic(a,18,"first-",Set.of("a","b","c","cloud"));
             var secondFrom=from.plus(PERIOD);String paused=container(c);
             command(List.of("docker","pause",paused));List<JsonNode> second;
             try {
@@ -216,8 +219,9 @@ class OneShotLocalClusterE2eTest {
             assertThat(second.get(2).path("readyReplicas").path("f").asInt()).isZero();assertThat(second.get(2).path("status").asString()).isEqualTo("DEGRADED");
             await(130,()->!Instant.now().isBefore(secondFrom));a.process.destroyForcibly();assertThat(a.process.waitFor(5,TimeUnit.SECONDS)).isTrue();
             await(30,()->{var peers=json(get(b,"/v1/admin/p2p/peers"),200);return java.util.stream.StreamSupport.stream(peers.spliterator(),false).noneMatch(p->p.path("id").asString().equals("a") && p.path("active").asBoolean());});
-            var faulted=traffic(b,12,"second-");assertThat(faulted.keySet()).contains("b","cloud").doesNotContain("a","c");
-            verifyPhysicalExecutionConservation(30);
+            var faulted=traffic(b,12,"second-",Set.of("b","cloud"));
+            verifyPhysicalExecutionConservation(java.util.stream.Stream.of(counts,faulted)
+                    .flatMap(m->m.values().stream()).mapToInt(Integer::intValue).sum());
             for(var n:List.of(b,c)) {var events=json(get(n,"/v1/admin/offload/one-shot/epochs/2/events"),200);Files.writeString(artifacts.resolve(n.id+"-events.json"),events.toPrettyString());}
             var events=json(get(c,"/v1/admin/offload/one-shot/epochs/2/events"),200);assertThat(events.path("entries").get(0).path("event").path("censored").asBoolean()).isTrue();
         } finally {

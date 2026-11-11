@@ -32,6 +32,18 @@ class DelayedNeighborRoutingTest {
         return new OffloadContext(true, null, null, new OffloadContext.Metadata(origin, incarnation, epoch, "old-grant"), false);
     }
 
+    @Test void coldPlanTriesLocalBeforeCloudAndStillRejectsUnassignedNeighbors() {
+        var settings=OneShotHopGuardE2eTest.settings(3,"http://cloud:8080");
+        var plan=new ActiveRoutingPlan("a","a-run",2,1,Instant.EPOCH,Instant.EPOCH.plusSeconds(360),1,
+                Map.of("f",new ActiveRoutingPlan.FunctionPlan(DIGEST,3,1,0,0,0,64,1,.8,List.of(),List.of())),true);
+        var router=new PlanRouter(()->Optional.of(plan),()->Optional.of(settings),rev->Optional.of(settings),
+                OneShotHopGuardE2eTest.peers("a","http://a:8080","b","http://b:8080"),()->.99);
+        var route=router.route(task(),new OffloadContext(false,null,null));
+        assertThat(route.kind().name()).isEqualTo("LOCAL_THEN_CLOUD");
+        assertThat(route.executionNode()).isEqualTo("a");
+        assertThat(route.targetUrl()).isEqualTo("http://cloud:8080");
+        assertThat(router.route(task(),incoming(2,"b","b-run")).kind()).isEqualTo(PlannedInvocationRoute.Kind.REJECT);
+    }
     @Test
     void delayedNeighborRequestUsesCurrentLocalAdmissionWithoutANewGrant() {
         var route = router().route(task(), incoming(1, "b", "b-run"));

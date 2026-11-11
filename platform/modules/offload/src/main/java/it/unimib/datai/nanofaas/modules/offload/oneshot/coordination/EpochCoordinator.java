@@ -30,6 +30,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         final AtomicReference<CompletableFuture<?>> exchange=new AtomicReference<>();
         final AtomicLong solverNanos=new AtomicLong();
         volatile boolean cancelled, closed; volatile int round;
+        AuctionSnapshot fallbackSnapshot;
         SellerLedger ledger; EpochInput input; EpochSettings settings;
         Run(PeerEndpoint local,Map<String,PeerEndpoint> peers,long epoch,Instant from,Instant until,long started,long deadline,int bound) {
             this.local=local; this.peers=Map.copyOf(peers); this.epoch=epoch; this.from=from; this.until=until;
@@ -209,6 +210,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         int rounds=0;
         try {
             check(run); var input=run.input; validateInput(run,input);
+            if(input.localFallback()) return localFallback(run);
             var solver=new LocalReplicaSolver(nanos); var initial=solver.solve(input.problem(),limits(run)); run.solverNanos.addAndGet(initial.durationNanos());
             if(initial.status()!=LocalSolution.Status.OPTIMAL) throw new IllegalStateException("initial solver: "+initial.status());
             var peers=new LinkedHashMap<String,String>(); run.peers.values().forEach(p->peers.put(p.peerId(),p.incarnation()));
@@ -247,15 +249,47 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         } catch(Deadline expired) { return outcome(run,EpochOutcome.Status.DEADLINE,rounds,"auction deadline");
         } catch(Exception failure) { return outcome(run,nanos.getAsLong()-run.deadline>=0?EpochOutcome.Status.DEADLINE:EpochOutcome.Status.FAILED,rounds,failure.getMessage()); }
     }
+    /** Keep bounded local capacity while learning; participate in phases without trading it. */
+    private EpochOutcome localFallback(Run run) throws Exception {
+        var problem=run.input.problem();
+        var replicas=new LinkedHashMap<String,Integer>();
+        var prices=new LinkedHashMap<String,Double>();
+        for(var f:problem.functions()) {replicas.put(f.id(),0);prices.put(f.id(),0.0);}
+        long remaining=problem.memoryCapacityMiB();
+        while(remaining>0) {
+            long roundMemory=0;
+            for(var f:problem.functions()) if(f.memoryMiB()<=remaining) roundMemory=Math.addExact(roundMemory,f.memoryMiB());
+            if(roundMemory==0) break;
+            long rounds=Math.max(1,remaining/roundMemory);
+            for(var f:problem.functions()) if(f.memoryMiB()<=remaining/rounds) {
+                replicas.put(f.id(),Math.toIntExact(replicas.get(f.id())+rounds));
+                remaining-=rounds*f.memoryMiB();
+            }
+        }
+        var peers=new LinkedHashMap<String,String>();run.peers.forEach((id,p)->peers.put(id,p.incarnation()));
+        hello(run);
+        for(int round=0;round<run.settings.maxRounds();round++) {
+            run.round=round;
+            for(var phase:List.of(AuctionCodec.Phase.OFFERS,AuctionCodec.Phase.BIDS,AuctionCodec.Phase.GRANTS,AuctionCodec.Phase.CHECK)) {
+                exchange(run,phase,peer->List.of(),false);await(run,phase);
+            }
+            run.accepted.keySet().removeIf(key->key.round()<run.round);
+        }
+        check(run);
+        run.fallbackSnapshot=new AuctionSnapshot(run.local.peerId(),run.local.incarnation(),run.epoch,run.round,
+                run.input.revision(),run.from,run.until,problem,run.input.identities(),peers,replicas,prices,
+                Map.of(),List.of(),Map.of(),Set.of(),true,"FINALIZED");
+        return outcome(run,EpochOutcome.Status.FIXED_ROUNDS_COMPLETED,run.settings.maxRounds(),"forecast unavailable: local admission with cloud overflow");
+    }
     private void validateInput(Run run,EpochInput input) {
         if(input.problem().functions().size()>1000 || input.problem().model()!=LocalProblem.Model.LSP) throw new IllegalArgumentException("unsupported frozen catalog");
         for(var f:input.problem().functions()) {
             var identity=input.identities().get(f.id()); var forecast=input.forecasts().get(f.id());
-            if(identity==null || forecast==null || forecast.status()!=ForecastSnapshot.Status.AVAILABLE || !forecast.query().nodeId().equals(run.local.peerId())
+            if(identity==null || forecast==null || !forecast.query().nodeId().equals(run.local.peerId())
                 || forecast.query().generation()!=identity.generation() || !forecast.query().function().equals(f.id()) || !forecast.query().start().equals(run.from) || !forecast.query().end().equals(run.until)) throw new IllegalArgumentException("forecast missing or incompatible");
         }
     }
-    private EpochOutcome outcome(Run run,EpochOutcome.Status status,int rounds,String reason) { run.closed=true; if(running && active.get()==run && !run.cancelled) lastClosed.set(run); run.inbox.clear(); run.waiting.clear(); return new EpochOutcome(run.epoch,status,run.ledger==null?null:run.ledger.snapshot(),nanos.getAsLong()-run.started,run.solverNanos.get(),rounds,reason,run.input,run.timing); }
+    private EpochOutcome outcome(Run run,EpochOutcome.Status status,int rounds,String reason) { run.closed=true; if(running && active.get()==run && !run.cancelled) lastClosed.set(run); run.inbox.clear(); run.waiting.clear(); return new EpochOutcome(run.epoch,status,run.fallbackSnapshot!=null?run.fallbackSnapshot:run.ledger==null?null:run.ledger.snapshot(),nanos.getAsLong()-run.started,run.solverNanos.get(),rounds,reason,run.input,run.timing); }
     private AuctionMessage.Envelope envelope(Run run) { return new AuctionMessage.Envelope(1,run.local.peerId(),run.local.incarnation(),run.epoch,run.round,UUID.randomUUID().toString(),run.ledger.snapshot().revision(),run.from,run.until); }
     private void hello(Run run) throws Exception {
         var missing=new HashSet<>(run.peers.keySet());

@@ -123,15 +123,15 @@ if [ "$DRY" = false ]; then
 fi
 # --- Analyses ----------------------------------------------------------------
 run_java() {
-    local repository_args=()
+    set --
     if [[ -n ${CONTAINERD_MAVEN_REPO:-} ]]; then
         if [[ ! -d $CONTAINERD_MAVEN_REPO ]]; then
             echo "Missing containerd Maven repository: $CONTAINERD_MAVEN_REPO" >&2
             return 1
         fi
-        repository_args=(-PcontainerdMavenLocal=true "-Dmaven.repo.local=$CONTAINERD_MAVEN_REPO")
+        set -- -PcontainerdMavenLocal=true "-Dmaven.repo.local=$CONTAINERD_MAVEN_REPO"
     fi
-    run ./gradlew test --no-parallel sonar "${repository_args[@]}" \
+    run ./gradlew test --no-parallel sonar "$@" \
         -Dsonar.host.url="$SONAR_HOST" -Dsonar.token="$TOKEN" \
         -Dsonar.projectKey=nanofaas-java -Dsonar.projectName="nanofaas Java"
 }
@@ -148,9 +148,9 @@ run_rust() {
     run sonar-scanner \
         -Dsonar.host.url="$SONAR_HOST" -Dsonar.token="$TOKEN" \
         -Dsonar.projectKey=nanofaas-rust -Dsonar.projectName="nanofaas Rust" \
-        -Dsonar.sources=runtimes/watchdog,sdks/rust,functions/rust \
+        -Dsonar.sources=runtimes/watchdog,sdks/rust,functions/rust,platform/modules/forecasting-wasm/guest \
         -Dsonar.exclusions="**/target/**" \
-        -Dsonar.rust.cargo.manifestPaths=runtimes/watchdog/Cargo.toml,sdks/rust/Cargo.toml,functions/rust/word-stats/Cargo.toml,functions/rust/json-transform/Cargo.toml,functions/rust/roman-numeral/Cargo.toml,functions/rust/qr-code/Cargo.toml,functions/rust/one-shot-workload/Cargo.toml
+        -Dsonar.rust.cargo.manifestPaths=runtimes/watchdog/Cargo.toml,sdks/rust/Cargo.toml,functions/rust/word-stats/Cargo.toml,functions/rust/json-transform/Cargo.toml,functions/rust/roman-numeral/Cargo.toml,functions/rust/qr-code/Cargo.toml,functions/rust/one-shot-workload/Cargo.toml,platform/modules/forecasting-wasm/guest/Cargo.toml
 }
 
 run_go() {

@@ -71,15 +71,14 @@ public final class ReplicaSlots {
     }
     public synchronized boolean awaitingAllocation() { return quiescing || admissionEpoch != null && slots.isEmpty(); }
 
-    /** Preserve an already accepted dispatch while its allocation is temporarily closed. */
+    /** An admitted dispatch keeps its wait budget even if its worker starts after allocation resumes. */
     public synchronized Optional<ReplicaLease> acquireWhenResumed(String executionId,String attempt,Duration timeout)
             throws InterruptedException,TimeoutException {
         if(timeout==null || timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException("positive allocation wait required");
         long deadline=System.nanoTime()+timeout.toNanos();
-        boolean waitedForAllocation=quiescing || admissionEpoch!=null && slots.isEmpty();
         while(true) {
             var lease=tryAcquire(executionId,attempt);
-            if(lease.isPresent() || !waitedForAllocation) return lease;
+            if(lease.isPresent()) return lease;
             long remaining=deadline-System.nanoTime();
             if(remaining<=0) throw new TimeoutException("allocation capacity unavailable before dispatch timeout");
             TimeUnit.NANOSECONDS.timedWait(this,remaining);

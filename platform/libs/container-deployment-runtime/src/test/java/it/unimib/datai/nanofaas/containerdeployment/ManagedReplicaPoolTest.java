@@ -175,6 +175,43 @@ class ManagedReplicaPoolTest {
         }
     }
 
+    @Test void readinessObserversCannotCompleteTheOwnedReservation() {
+        var tasks=new java.util.ArrayDeque<Runnable>();
+        try(var pool=pool(tasks::add,new Probe())) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            var token=pool.beginQuiesce();
+            var accepted=pool.acquire("accepted","1");
+            accepted.ready().toCompletableFuture().complete(null);
+            assertThat(accepted.ready().toCompletableFuture()).isNotDone();
+            var observer=accepted.ready();
+            if(observer instanceof Future<?> future) future.cancel(true);
+            assertThat(accepted.ready().toCompletableFuture()).isNotDone();
+            assertThat(pool.resume(token,token.admissionEpoch())).isTrue();
+            tasks.remove().run();
+            assertThat(accepted.ready().toCompletableFuture()).isCompleted();
+            accepted.close();
+        }
+    }
+
+    @Test void acceptedWaiterStartingAfterResumeStillWaitsForCapacityUntilItsDeadline() {
+        var tasks=new java.util.ArrayDeque<Runnable>();
+        try(var pool=pool(tasks::add,new Probe())) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            pool.updateLimits(2,1,Duration.ofMillis(20));
+            var token=pool.beginQuiesce();
+            var first=pool.acquire("first","1");
+            var second=pool.acquire("second","1");
+            assertThat(pool.resume(token,token.admissionEpoch())).isTrue();
+            tasks.remove().run();
+            assertThat(first.ready().toCompletableFuture()).isCompleted();
+            // Both were admitted while paused; the second worker starts after resume with no free slot.
+            tasks.remove().run();
+            assertThat(second.ready().toCompletableFuture()).hasFailedWithThrowableThat().isInstanceOf(TimeoutException.class);
+            second.close(); first.close();
+            try(var next=pool.acquire("next","1")) { assertThat(next).isNotNull(); }
+        }
+    }
+
     @Test void replacedIncarnationIsFencedAndLateOldProofCannotReopenIt() {
         var incarnation = new AtomicReference<>("old");
         var probe = new RuntimeExecutionProbe() {
