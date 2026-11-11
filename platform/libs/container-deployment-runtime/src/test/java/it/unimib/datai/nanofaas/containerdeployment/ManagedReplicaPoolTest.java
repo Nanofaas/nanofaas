@@ -175,6 +175,24 @@ class ManagedReplicaPoolTest {
         }
     }
 
+    @Test void readinessObserversCannotCompleteTheOwnedReservation() {
+        var tasks=new java.util.ArrayDeque<Runnable>();
+        try(var pool=pool(tasks::add,new Probe())) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            var token=pool.beginQuiesce();
+            var accepted=pool.acquire("accepted","1");
+            accepted.ready().toCompletableFuture().complete(null);
+            assertThat(accepted.ready().toCompletableFuture()).isNotDone();
+            var observer=accepted.ready();
+            if(observer instanceof Future<?> future) future.cancel(true);
+            assertThat(accepted.ready().toCompletableFuture()).isNotDone();
+            assertThat(pool.resume(token,token.admissionEpoch())).isTrue();
+            tasks.remove().run();
+            assertThat(accepted.ready().toCompletableFuture()).isCompleted();
+            accepted.close();
+        }
+    }
+
     @Test void acceptedWaiterStartingAfterResumeStillWaitsForCapacityUntilItsDeadline() {
         var tasks=new java.util.ArrayDeque<Runnable>();
         try(var pool=pool(tasks::add,new Probe())) {

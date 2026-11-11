@@ -54,9 +54,10 @@ public final class ManagedReplicaPool implements ManagedReplicaSet {
                 var pending = new Reservation(null, null, null);
                 inFlight++;
                 waiting.add(pending);
+                var admissionTimeout = timeout;
                 pending.waiter = new FutureTask<>(() -> {
                     try {
-                        var lease = replicaSlots.acquireWhenResumed(executionId, attempt, timeout).orElseThrow();
+                        var lease = replicaSlots.acquireWhenResumed(executionId, attempt, admissionTimeout).orElseThrow();
                         synchronized (ManagedReplicaPool.this) {
                             if (pending.finished || closed.get()) { lease.cancelBeforeDispatch(); return null; }
                             pending.backend = lease.backend(); pending.physical = lease;
@@ -125,7 +126,7 @@ public final class ManagedReplicaPool implements ManagedReplicaSet {
             this.backend = backend; this.ordinarySlot = ordinarySlot; this.physical = physical;
             if (backend != null) readiness.complete(null);
         }
-        @Override public CompletionStage<Void> ready() { return readiness; }
+        @Override public CompletionStage<Void> ready() { return readiness.copy(); }
     @Override public String endpointUrl() { return backend + "/invoke"; }
         @Override public String replicaId() { return backend; }
         @Override public boolean markDispatched() {

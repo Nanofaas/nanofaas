@@ -181,4 +181,23 @@
         <Method name="solve"/>
         <Bug pattern="ICAST_IDIV_CAST_TO_DOUBLE"/>
     </Match>
+    <!-- Live runtime/registry collaborators must remain shared, not copied as value objects. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="adapter"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="deployments"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Reservations must share the pool's monitor with admission, membership updates and close. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPool$Reservation"/>
+        <Or><Method name="markDispatched"/><Method name="close"/></Or>
+        <Bug pattern="USO_UNSAFE_OBJECT_SYNCHRONIZATION"/>
+    </Match>
 </FindBugsFilter>
