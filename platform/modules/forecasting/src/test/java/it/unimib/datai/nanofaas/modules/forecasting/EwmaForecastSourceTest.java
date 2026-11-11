@@ -17,6 +17,18 @@ class EwmaForecastSourceTest {
     void arrivals(int count, long offset) {
         for (int i = 0; i < count; i++) source.record(new ExternalArrival("f", 1, start.plusSeconds(offset), "r" + offset + "-" + i));
     }
+    @Test void preTrafficWindowsRemainMissingRatherThanPredictingZero() {
+        source.observe("f", 1, start);
+        clock.now = start.plusSeconds(120);
+        var forecast = source.forecast(query(1));
+        assertThat(forecast.status()).isEqualTo(ForecastSnapshot.Status.MISSING);
+        assertThat(forecast.rate()).isNull();
+        source.record(new ExternalArrival("f", 1, clock.now, "first"));
+        clock.now = clock.now.plusSeconds(10);
+        assertThat(source.forecast(query(1)).rate()).isEqualTo(0.1);
+        clock.now = clock.now.plusSeconds(10);
+        assertThat(source.forecast(query(1)).rate()).isEqualTo(0.05);
+    }
     @Test void smoothsCompletedObservedWindowsAndKeepsGenerationsSeparate() {
         assertThat(source.forecast(query(1)).status()).isEqualTo(ForecastSnapshot.Status.MISSING);
         source.observe("f", 1, start);
@@ -30,9 +42,9 @@ class EwmaForecastSourceTest {
         source.observe("f", 1, start); arrivals(1, 10);
         assertThat(source.forecast(query(1)).status()).isEqualTo(ForecastSnapshot.Status.MISSING);
         clock.now = start.plusSeconds(10);
-        assertThat(source.forecast(query(1)).rate()).isEqualTo(0);
+        assertThat(source.forecast(query(1)).status()).isEqualTo(ForecastSnapshot.Status.MISSING);
         clock.now = start.plusSeconds(20);
-        assertThat(source.forecast(query(1)).rate()).isEqualTo(0.05);
+        assertThat(source.forecast(query(1)).rate()).isEqualTo(0.1);
     }
     @Test void longGapPreservesEarlierSamplesWithoutUnboundedWindowIteration() {
         var slowDecay = new EwmaForecastSource("edge", 0.001, Duration.ofSeconds(10), Duration.ofHours(2), 100, clock);

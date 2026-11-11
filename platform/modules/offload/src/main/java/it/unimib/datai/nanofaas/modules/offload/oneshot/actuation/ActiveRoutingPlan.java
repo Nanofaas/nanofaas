@@ -3,7 +3,10 @@ import it.unimib.datai.nanofaas.modules.offload.oneshot.auction.Assignment;
 import java.time.Instant;
 import java.util.*;
 /** Ready capacity, never desired capacity, authorizes routing within one immutable epoch. */
-public record ActiveRoutingPlan(String nodeId,String incarnation,long epoch,long revision,Instant startsAt,Instant endsAt,double flowQuantum,Map<String,FunctionPlan> functions) {
+public record ActiveRoutingPlan(String nodeId,String incarnation,long epoch,long revision,Instant startsAt,Instant endsAt,double flowQuantum,Map<String,FunctionPlan> functions,boolean localFallback) {
+    public ActiveRoutingPlan(String nodeId,String incarnation,long epoch,long revision,Instant startsAt,Instant endsAt,double flowQuantum,Map<String,FunctionPlan> functions) {
+        this(nodeId,incarnation,epoch,revision,startsAt,endsAt,flowQuantum,functions,false);
+    }
     public record FunctionPlan(String version,long generation,int readyReplicas,double localRate,double cloudRate,double forecastRate,long memoryMiB,double demandSeconds,double utilization,List<Assignment> inbound,List<Assignment> outbound) {
         public FunctionPlan {
             inbound=List.copyOf(inbound); outbound=List.copyOf(outbound);

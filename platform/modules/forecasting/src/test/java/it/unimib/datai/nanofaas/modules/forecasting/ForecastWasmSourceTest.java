@@ -66,11 +66,12 @@ class ForecastWasmSourceTest {
     @Test void preservesStaleAndObservedZeroStates() {
         var slower=new TrendForecastSource("node",Duration.ofSeconds(10),Duration.ofSeconds(3),10,360,()->model,clock);
         slower.observe("f",1,Instant.EPOCH);
-        clock.now=Instant.ofEpochSecond(14);
+        slower.record(new ExternalArrival("f",1,Instant.EPOCH,"learned"));
+        clock.now=Instant.ofEpochSecond(24);
         var q=new ForecastQuery("node","f",1,Instant.ofEpochSecond(20),Instant.ofEpochSecond(30));
-        var actual=slower.forecast(q,model,same);
+        var actual=slower.forecast(q,new TrendForecastSource.Holt(1,1,1),same);
         assertEquals(ForecastSnapshot.Status.STALE,actual.status());
-        assertEquals(0,actual.rate());assertEquals(Instant.ofEpochSecond(10),actual.producedAt());
+        assertEquals(0,actual.rate());assertEquals(Instant.ofEpochSecond(20),actual.producedAt());
         assertEquals(slower.forecast(q,model).revision(),actual.revision());
     }
 }

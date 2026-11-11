@@ -359,7 +359,8 @@ public final class AttemptCoordinator {
         // Stale attempts and terminal records were rejected above; refusals and transport errors carry no proof.
         var plannedRoute=executionRecord.plannedRoute();
         if(dispatchResult.handlerExecuted() && plannedRoute!=null
-                && plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL) {
+                && (plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL
+                    || plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL_THEN_CLOUD)) {
             executionRecord.attributeExecutionNode(plannedRoute.executionNode());
         }
 

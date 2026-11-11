@@ -207,6 +207,8 @@ async fn run(shared: Arc<Shared>, admitted: Admitted, mut reply: oneshot::Sender
     // The task owns the handler slot as well as the context does: a handler that ignores its
     // context must not release the slot before its work is gone.
     let occupancy_started = handler_reservation.started();
+    // Keep the receipt pending until the response outcome is known, even for a fast handler.
+    let response_reservation = Arc::clone(&handler_reservation);
     let mut handle: JoinHandle<Result<Produced, BoxError>> = tokio::spawn(
         async move {
             let _reservation = handler_reservation;
@@ -220,16 +222,12 @@ async fn run(shared: Arc<Shared>, admitted: Admitted, mut reply: oneshot::Sender
         () = tokio::time::sleep(shared.settings.handler_timeout) => Finished::TimedOut,
         () = reply.closed() => Finished::Cancelled,
     };
-    shared.occupancy.response_at(
-        &identity.execution_id,
-        occupancy_started,
-        match &finished {
-            Finished::Done(Ok(Ok(_))) => "success",
-            Finished::Done(_) => "error",
-            Finished::TimedOut => "timeout",
-            Finished::Cancelled => "cancelled",
-        },
-    );
+    let mut response_status = match &finished {
+        Finished::Done(Ok(Ok(_))) => "success",
+        Finished::Done(_) => "error",
+        Finished::TimedOut => "timeout",
+        Finished::Cancelled => "cancelled",
+    };
     if !matches!(finished, Finished::Done(_)) {
         cancelled.store(true, Ordering::Release);
         handle.abort();
@@ -237,7 +235,7 @@ async fn run(shared: Arc<Shared>, admitted: Admitted, mut reply: oneshot::Sender
     shared
         .metrics
         .handler_duration(started.elapsed().as_secs_f64());
-    if let Some(response) = span.in_scope(|| {
+    let response = span.in_scope(|| {
         conclude(
             &shared,
             finished,
@@ -245,7 +243,23 @@ async fn run(shared: Arc<Shared>, admitted: Admitted, mut reply: oneshot::Sender
             &identity,
             cold_start,
         )
-    }) {
+    });
+    if response_status == "success"
+        && response.as_ref().is_some_and(|response| {
+            !response.status().is_success()
+                && response
+                    .headers()
+                    .get(FUNCTION_STATUS_HEADER)
+                    .is_none_or(|value| value != "true")
+        })
+    {
+        response_status = "error";
+    }
+    shared
+        .occupancy
+        .response_at(&identity.execution_id, occupancy_started, response_status);
+    span.in_scope(|| drop(response_reservation));
+    if let Some(response) = response {
         let _ = reply.send(response);
     }
 }
@@ -632,6 +646,15 @@ mod admission_tests {
                 .find(|event| event["executionId"] == mode)
                 .expect("terminal diagnostic");
             assert_eq!(event["traceId"], format!("trace-{mode}"));
+            let receipt = logs
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .find(|event| {
+                    event["executionId"] == mode
+                        && event["attributes"]["event"] == "runtime.execution.released"
+                })
+                .expect("released receipt");
+            assert_eq!(receipt["attributes"]["responseStatus"], "error");
         }
     }
 

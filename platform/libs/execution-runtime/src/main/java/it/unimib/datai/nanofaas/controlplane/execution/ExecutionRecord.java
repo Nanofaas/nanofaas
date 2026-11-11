@@ -287,7 +287,8 @@ public class ExecutionRecord {
         if (!canTransition(ExecutionState.SUCCESS)) {
             return;
         }
-        if(plannedRoute!=null && plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL) executionNode=plannedRoute.executionNode();
+        if(plannedRoute!=null && (plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL
+                || plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL_THEN_CLOUD && transportOwnsCapacity)) executionNode=plannedRoute.executionNode();
         this.state = ExecutionState.SUCCESS;
         this.finishedAt = timeSource.instant();
         this.finishedAtNanos = timeSource.nanoTime();

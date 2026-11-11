@@ -129,6 +129,19 @@ impl Occupancy {
             record.status.occupancy_seconds = Some(seconds);
             let released = Instant::now();
             record.released_at = Some(released);
+            tracing::info!(
+                target: "nanofaas::receipt",
+                event = "runtime.execution.released",
+                receiptSchemaVersion = 1u64,
+                execution_id = %record.status.execution_id,
+                incarnation = %record.status.incarnation,
+                dispatchAttempt = record.status.dispatch_attempt.as_deref().unwrap_or(""),
+                state = "RELEASED",
+                occupancySeconds = seconds,
+                responseStatus = record.status.response_status,
+                handlerStarted = record.status.handler_started,
+                "physical handler released"
+            );
             history.terminal.insert((released, id.to_owned()), ());
             self.active.dec();
             self.duration.observe(seconds);
@@ -155,6 +168,59 @@ impl Occupancy {
 mod tests {
     use super::*;
     use std::time::Duration;
+    #[test]
+    fn release_logs_one_structured_receipt_per_attempt() {
+        #[derive(Clone)]
+        struct Sink(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Sink {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let sink = Sink(bytes.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .fmt_fields(tracing_subscriber::fmt::format::JsonFields::default())
+            .event_format(crate::logging::LogFormatter::new("function-runtime", true))
+            .with_writer(move || sink.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let tracker = Occupancy::new(
+            1,
+            Duration::from_secs(600),
+            Default::default(),
+            Histogram::new([1.0]),
+        );
+        let started = tracker
+            .start_attempt("request", Some("1".into()), Instant::now())
+            .unwrap();
+        tracker.handler_started_at("request", started);
+        tracker.response_at("request", started, "timeout");
+        assert!(bytes.lock().unwrap().is_empty());
+        tracker.release("request", started);
+        tracker.release("request", started);
+        let logs = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+        let events: Vec<serde_json::Value> = logs
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        assert_eq!(event["executionId"], "request");
+        let receipt = &event["attributes"];
+        assert_eq!(receipt["event"], "runtime.execution.released");
+        assert_eq!(receipt["receiptSchemaVersion"], 1);
+        assert_eq!(receipt["incarnation"], tracker.incarnation);
+        assert_eq!(receipt["dispatchAttempt"], "1");
+        assert_eq!(receipt["state"], "RELEASED");
+        assert_eq!(receipt["responseStatus"], "timeout");
+        assert_eq!(receipt["handlerStarted"], true);
+        assert!(receipt["occupancySeconds"].as_f64().unwrap() >= 0.0);
+    }
     #[test]
     fn retained_history_does_not_make_execution_status_queries_linear() {
         let tracker = Occupancy::new(

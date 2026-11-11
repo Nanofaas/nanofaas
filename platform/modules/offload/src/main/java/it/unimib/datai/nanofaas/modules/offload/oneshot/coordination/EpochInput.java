@@ -9,5 +9,6 @@ public record EpochInput(LocalProblem problem,Map<String,AuctionSnapshot.Functio
     public EpochInput(LocalProblem problem,Map<String,AuctionSnapshot.FunctionIdentity> identities,Map<String,ForecastSnapshot> forecasts,long revision,double flowQuantum) { this(problem,identities,forecasts,revision,flowQuantum,null,2000000,64L*1024*1024,""); }
     public EpochInput(LocalProblem problem,Map<String,AuctionSnapshot.FunctionIdentity> identities,Map<String,ForecastSnapshot> forecasts,long revision) { this(problem,identities,forecasts,revision,1,null,2000000,64L*1024*1024,""); }
     public EpochInput { identities=Map.copyOf(identities); forecasts=Map.copyOf(forecasts); if(profileHash==null || maxSolverStates<1 || maxSolverBytes<1 || revision<1 || !Double.isFinite(flowQuantum) || flowQuantum<=0) throw new IllegalArgumentException("positive revision required"); }
+    public boolean localFallback() { return forecasts.values().stream().anyMatch(f -> f.status()!=ForecastSnapshot.Status.AVAILABLE); }
     @FunctionalInterface public interface Factory { EpochInput freeze(long epoch,Instant startsAt,Instant endsAt); }
 }

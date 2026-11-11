@@ -110,7 +110,7 @@ class ForecastConcurrencyTest {
                 assertThat(newer.provider()).isEqualTo("holt");
                 assertThat(newer.revision()).isEqualTo(5);
                 assertThat(newer.rate()).isZero();
-                assertThat(source.forecast(query(5, "g")).rate()).isEqualTo(2);
+                assertThat(source.forecast(query(5, "g")).rate()).isEqualTo(1);
 
                 resumeFit.countDown();
                 var original = pending.get(5, TimeUnit.SECONDS);

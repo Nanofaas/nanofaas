@@ -72,6 +72,31 @@ class ReactiveInvocationCoordinatorOffloadTest {
         }).when(completionHandler).failOffloadedExecution(anyString(), any(OffloadFailedException.class));
     }
 
+    @Test void coldForecastOverflowGoesToCloudOnlyAfterLocalAdmissionRefuses() {
+        var spec=spec("fn-pressure",null);var lookup=lookup(spec);wireOffloadCompletion(lookup);
+        var remote=new it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE,TARGET,"cloud",1,"cloud",Map.of(),null);
+        var route=it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.localThenCloud("edge",remote);
+        when(offloadGateway.planRoute(any(),any())).thenReturn(route);
+        var queue=mock(SyncQueueGateway.class);when(queue.enabled()).thenReturn(true);
+        org.mockito.Mockito.doThrow(new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH,1)).when(queue).enqueueOrThrow(any());
+        when(offloadGateway.invokePlannedRemote(any(),eq(remote),any(),anyInt())).thenReturn(Mono.just(new it.unimib.datai.nanofaas.controlplane.offload.PlannedRemoteResult(InvocationResult.success("cloud-output"),"cloud")));
+        var response=coordinator(queue).invoke(lookup,spec,1000).block();
+        assertThat(response.executionNode()).isEqualTo("cloud");
+        assertThat(response.offloadedTarget()).isEqualTo(TARGET);
+        verify(queue).enqueueOrThrow(any());
+        verify(offloadGateway,never()).invokeRemote(any(),any(),any(),anyInt());
+    }
+    @Test void coldForecastAcceptedLocalWorkDoesNotAlsoRunInCloud() {
+        var spec=spec("fn-pressure",null);var lookup=lookup(spec);
+        var remote=new it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE,TARGET,"cloud",1,"cloud",Map.of(),null);
+        when(offloadGateway.planRoute(any(),any())).thenReturn(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.localThenCloud("edge",remote));
+        var queue=mock(SyncQueueGateway.class);when(queue.enabled()).thenReturn(true);
+        doAnswer(call->{lookup.executionRecord().completion().complete(InvocationResult.success("local-output"));return null;}).when(queue).enqueueOrThrow(any());
+        var response=coordinator(queue).invoke(lookup,spec,1000).block();
+        assertThat(response.offloadedTarget()).isNull();
+        verify(queue).enqueueOrThrow(any());
+        verify(offloadGateway,never()).invokePlannedRemote(any(),any(),any(),anyInt());
+    }
     @Test void plannedRemoteFailurePinsDestinationAndNeverFallsBack() {
         var spec=spec("fn-fail",null);var lookup=lookup(spec);wireOffloadCompletion(lookup);
         var route=new it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE,"http://b:8080","b",1,"grant",Map.of(),null);

@@ -34,8 +34,10 @@ and a [runtime switch](#switching-the-provider-at-runtime) needs no warm-up.
 
 EWMA uses complete UTC-aligned whole-second windows. Registration partway through a
 window starts observation at the next boundary. Before the first complete observed
-window it reports MISSING; a complete known window with no arrivals reports zero.
-The first completed rate initializes the mean; subsequent rates use
+window containing an arrival it reports MISSING with no rate. Empty windows before
+traffic do not initialize the model. Once traffic has been observed, empty windows
+are real zero samples and let the model decay normally. The first positive completed
+rate initializes the mean; subsequent rates use
 `alpha * rate + (1-alpha) * mean`. Gaps containing only zeros decay analytically,
 without dropping pending nonzero samples or iterating indefinitely. At most the
 current and next window's counts are retained per active generation. Function

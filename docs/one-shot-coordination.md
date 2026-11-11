@@ -288,3 +288,24 @@ outbound grant. `diagnostics` exposes the local handshake perspective, including
 partial capacity, timeouts, refusals and lost responses. These are observations,
 not evidence of mathematical convergence or of remote packet non-delivery.
 The eight fixed rounds and the allocation/routing mathematics are unchanged.
+
+## Unavailable forecasts and local admission
+
+A correctly bound `MISSING` or `STALE` non-oracle forecast remains unavailable;
+it is not converted into a zero-demand prediction. If any function has such a
+forecast, the node uses a local fallback for that epoch. Oracle traces must still
+provide the requested interval; a missing oracle value is a configuration error.
+
+The fallback divides the node's configured memory budget into local replicas
+across its functions, never exceeding that budget. It participates in the same
+protocol phases with empty offers, bids and grants, so peers can close the epoch,
+but it neither sells capacity nor uses neighbor assignments. The active plan
+exposes `localFallback: true`; null forecast rates in the input remain null.
+A zero `forecastRate` in this fallback routing plan is not a demand estimate.
+
+Original requests first use the existing local admission and queue limits.
+When those limits reject admission, the request goes to the configured cloud;
+if no local replica is ready it goes directly to cloud. An admitted invocation's
+execution timeout does not trigger a second execution in cloud. Existing inbound
+hop and assignment checks still apply. A later epoch with all forecasts available
+returns to normal allocation and trading. The auction wire protocol is unchanged.

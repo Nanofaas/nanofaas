@@ -428,11 +428,11 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
             var id=p.snapshot.identities().get(row.id());
             var inbound=p.localReady.values().stream().filter(a->a.function().equals(row.id())).toList();
             var outbound=acknowledged.stream().filter(a->a.function().equals(row.id())).toList();
-            double forecast=p.outcome.input().forecasts().get(row.id()).rate();double local=localRates.get(row.id());
+            var prediction=p.outcome.input().forecasts().get(row.id()).rate();double forecast=prediction==null?0:prediction;double local=localRates.get(row.id());
             double cloud=Math.max(0,forecast-local-outbound.stream().mapToLong(Assignment::quantity).sum()*quantum);
             plans.put(row.id(),new ActiveRoutingPlan.FunctionPlan(id.version(),id.generation(),ready.get(row.id()),local,cloud,forecast,row.memoryMiB(),row.demandSeconds()/quantum,row.utilization(),inbound,outbound));
         }
-        return new ActiveRoutingPlan(p.snapshot.nodeId(),p.snapshot.incarnation(),p.snapshot.epoch(),p.snapshot.revision(),p.snapshot.validFrom(),p.snapshot.validUntil(),quantum,plans);
+        return new ActiveRoutingPlan(p.snapshot.nodeId(),p.snapshot.incarnation(),p.snapshot.epoch(),p.snapshot.revision(),p.snapshot.validFrom(),p.snapshot.validUntil(),quantum,plans,p.outcome.input().localFallback());
     }
     private boolean receivedForSeller(Preparation p,String peer) { return p.receivedClosures.contains(peer); }
     private byte[] receive(String sender,byte[] bytes) {
