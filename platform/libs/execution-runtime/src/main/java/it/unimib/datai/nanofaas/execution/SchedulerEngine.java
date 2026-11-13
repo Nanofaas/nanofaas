@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerControl;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection;
@@ -105,12 +104,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     .thenComparingInt(t -> t.id().attempt()));
     /** Generations whose lease could not be acquired since the last wake. Guarded by {@link #gate}. */
     private final Set<FunctionGeneration> blocked = new HashSet<>();
-    /**
-     * Removals that arrived while their ticket was already submitting. {@link PendingWorkStore}
-     * deliberately gives no handle on a committed dispatch, so the request is held here and
-     * applied if — and only if — that dispatch comes back for a requeue. Guarded by {@link #gate}.
-     */
-    private final Set<TicketId> cancelRequests = new HashSet<>();
     /** Tickets retained by each execution, including overlapping retry publication during submit.
      * Terminal notifications use this lookup instead of scanning unrelated backlog. Guarded by gate. */
     private final Map<String, Set<TicketId>> executionTickets = new HashMap<>();
@@ -242,8 +235,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * Replaces the active index with a fresh one built by {@code strategy}, without draining
      * anything. Pending work is rebuilt into the candidate in sequence order; a selection the
      * loop is still carrying is provisional and returns itself to whichever index is active when
-     * it lands; an attempt already committed to dispatch keeps its attempt, deadline and
-     * sequence and simply requeues into the new index if it comes back.
+     * it lands; an attempt already committed to dispatch is past the index and unaffected.
      *
      * <p>The whole switch is one gate section. That is what makes "before or after" the only two
      * possible positions for a concurrent {@link #enqueue} or {@link #remove}: neither can
@@ -436,9 +428,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     /**
      * Withdraws admitted work. A pending or claimed ticket leaves both the store and the index
      * and is reported through {@link EngineDispatch#removed}; a ticket whose dispatch is already
-     * submitting cannot be withdrawn here (the attempt is committed and belongs to the
-     * lifecycle), so the request is remembered and applied if input backpressure hands that
-     * ticket back for a requeue.
+     * submitting is left alone: the attempt is committed and belongs to the lifecycle.
      */
     public void remove(TicketId id) {
         Objects.requireNonNull(id, "id must not be null");
@@ -447,8 +437,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             removed = store.remove(id);
             if (removed != null) {
                 retire(removed.ticket());
-            } else if (store.get(id) != null) {
-                cancelRequests.add(id);
             }
         }
         if (removed != null) {
@@ -470,8 +458,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * since that runs concurrently with the worker's own {@code offer}/{@code finishSubmit}
      * mutations of the same {@code LinkedHashMap} and can both throw
      * ({@code ConcurrentModificationException} out of the snapshot's stream) and silently miss
-     * entries. A submitting ticket belongs to the lifecycle; its cancellation is remembered in
-     * case input backpressure returns it to the queue.
+     * entries. A submitting ticket belongs to the lifecycle and is left alone.
      */
     public void removeAllFor(String functionName) {
         Objects.requireNonNull(functionName, FUNCTION_NAME_REQUIRED);
@@ -484,8 +471,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     if (taken != null) {
                         retire(taken.ticket());
                         removed.add(taken);
-                    } else {
-                        cancelRequests.add(entry.ticket().id());
                     }
                 }
             }
@@ -593,8 +578,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 if (taken != null) {
                     retire(taken.ticket());
                     removed.add(taken);
-                } else {
-                    cancelRequests.add(id);
                 }
             }
         }
@@ -604,7 +587,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         }
     }
 
-    /** Under the gate. Submitting entries can only be cancelled if they return for requeue. */
+    /** Under the gate. Submitting entries belong to the lifecycle and are left alone. */
     private List<PendingEntry> removeMatching(Predicate<PendingEntry> matches) {
         List<PendingEntry> removed = new ArrayList<>();
         for (PendingEntry entry : store.snapshotAll()) {
@@ -613,8 +596,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 if (taken != null) {
                     retire(taken.ticket());
                     removed.add(taken);
-                } else {
-                    cancelRequests.add(entry.ticket().id());
                 }
             }
         }
@@ -918,15 +899,10 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         }
     }
 
-    /** Returns true only for input backpressure whose lease was released. */
-    private boolean dispatchWithFailureCleanup(InvocationTask task, DispatchOwnership lease) {
+    /** A failed submit returns the lease and retires the attempt through the lifecycle. */
+    private void dispatchWithFailureCleanup(InvocationTask task, DispatchOwnership lease) {
         try {
             dispatch.submit(task);
-            return false;
-        } catch (InvocationQuotaExceededException _) {
-            lease.release();
-            log.debug("Input capacity blocked dispatch for execution {}", task.executionId());
-            return true;
         } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             try {
                 lease.release();
@@ -934,56 +910,18 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 dispatch.rejected(task, ex);
             }
             log.error("Dispatch failed for execution {}: {}", task.executionId(), ex.getMessage(), ex);
-            return false;
         }
     }
 
     private void submit(SchedulingTicket ticket, InvocationTask leased, DispatchOwnership lease) {
-        boolean inputBackpressured = false;
         QueueObservation.record("DISPATCH", leased, System.nanoTime());
         try {
-            inputBackpressured = dispatchWithFailureCleanup(leased, lease);
+            dispatchWithFailureCleanup(leased, lease);
         } finally {
-            // A throwing cleanup still settles the reservation; only confirmed input
-            // backpressure requeues the ticket and retains its reservation. A ticket left in
-            // `submitting` would hold its reservation forever: no index holds it, and the
-            // deadline reap cannot remove it. When the settlement is unknown the reservation is
-            // released; concluding that execution is the lifecycle's job, not the queue's.
-            if (inputBackpressured) {
-                QueueObservation.record("RETURNED", leased, System.nanoTime());
-                requeue(ticket);
-            } else {
-                finishSubmit(ticket);
-            }
-        }
-    }
-
-    /**
-     * Input backpressure: the reservation was held for the whole submit and is kept, and the
-     * ticket goes back — same sequence, same deadlines — into whichever index is active now.
-     * A removal that arrived mid-submit is applied here instead.
-     */
-    private void requeue(SchedulingTicket ticket) {
-        PendingEntry cancelled = null;
-        synchronized (gate) {
-            store.requeueSubmit(ticket.id());
-            if (cancelRequests.remove(ticket.id())) {
-                cancelled = store.remove(ticket.id());
-                untrackExecution(ticket.id());
-                if (ticket.queueDeadline() != null) {
-                    deadlines.remove(ticket);
-                }
-            } else {
-                indexEligible(ticket, clock.instant());
-                // Re-track in case a reap polled this deadline off while the submit was in
-                // flight and then found the ticket committed; TreeSet.add is idempotent here.
-                track(ticket);
-                wake();
-            }
-        }
-        if (cancelled != null) {
-            QueueObservation.record("REMOVED", cancelled.task(), System.nanoTime());
-            dispatch.removed(cancelled.task());
+            // A throwing cleanup still settles the reservation. A ticket left in `submitting`
+            // would hold it forever: no index holds it, and the deadline reap cannot remove it.
+            // Concluding that execution is the lifecycle's job, not the queue's.
+            finishSubmit(ticket);
         }
     }
 
@@ -991,7 +929,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         synchronized (gate) {
             store.finishSubmit(ticket.id());
             untrackExecution(ticket.id());
-            cancelRequests.remove(ticket.id());
             if (ticket.queueDeadline() != null) {
                 deadlines.remove(ticket);
             }
@@ -1056,7 +993,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         return promoted;
     }
 
-    /** Reservation lookup and deadlines are independent of eligibility, idempotent across requeue. */
+    /** Reservation lookup and deadlines are independent of eligibility. */
     private void track(SchedulingTicket ticket) {
         executionTickets.computeIfAbsent(ticket.id().executionId(), ignored -> new HashSet<>())
                 .add(ticket.id());

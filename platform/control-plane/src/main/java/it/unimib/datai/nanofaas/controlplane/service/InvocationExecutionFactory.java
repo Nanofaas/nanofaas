@@ -10,7 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore.AcquireR
 import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
-import it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInput;
 import it.unimib.datai.nanofaas.controlplane.input.InvocationInputRejectedException;
 import it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimator;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
@@ -190,21 +189,21 @@ public final class InvocationExecutionFactory {
                                                       String traceId,
                                                       InvocationKind kind) {
         String executionId = newExecutionId();
-        CanonicalInvocationInput.Result result = CanonicalInvocationInput.canonicalize(request, inputLimits);
-        if (result instanceof CanonicalInvocationInput.Rejected(var reason)) {
+        RetainedInputEstimator.Result estimate = new RetainedInputEstimator(inputLimits).estimate(request.input());
+        if (estimate instanceof RetainedInputEstimator.Rejected(var reason)) {
             throw new InvocationInputRejectedException(reason);
         }
-        CanonicalInvocationInput.Accepted canonical = (CanonicalInvocationInput.Accepted) result;
+        long retainedBytes = ((RetainedInputEstimator.Measured) estimate).retainedBytes();
         if (standaloneCapacity) {
             invocationCapacity.ensureStandaloneGeneration(functionName, spec.concurrency());
         }
         InvocationCapacity.Admission admission = invocationCapacity.reserve(
-                functionName, executionId, canonical.retainedBytes());
+                functionName, executionId, retainedBytes);
         InvocationTask task = new InvocationTask(
                 executionId,
                 functionName,
                 spec,
-                canonical.canonicalRequest(),
+                request,
                 idempotencyKey,
                 traceId,
                 Instant.now(),
@@ -212,8 +211,7 @@ public final class InvocationExecutionFactory {
                 kind
         );
         try {
-            return ExecutionRecord.withInputResources(
-                    executionId, task, invocationCapacity, admission, canonical);
+            return ExecutionRecord.withInputResources(executionId, task, admission);
         } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             admission.rollback();
             throw failure;

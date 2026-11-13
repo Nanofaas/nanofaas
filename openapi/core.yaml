@@ -1001,4 +1001,4 @@ components:
           enum: [invocation_quota_exceeded]
         resource:
           type: string
-          enum: [execution, input, input_copy, waiter]
+          enum: [execution, input, waiter]

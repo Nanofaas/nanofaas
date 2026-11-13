@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
@@ -42,9 +41,8 @@ import static org.mockito.Mockito.verify;
  *
  * <p>Each test below keeps one non-null-deadline ticket ("kept") untouched in the index — so
  * {@code deadlines} is non-empty throughout — while a null-deadline ticket ("target") is driven
- * through one of the three call sites that were unguarded before this task's fix:
- * {@code selectAndClaim}'s orphan-drop, {@code requeue}'s cancel branch, and
- * {@code finishSubmit}. All three now guard with {@code if (ticket.queueDeadline() != null)},
+ * through one of the call sites that were unguarded before this task's fix:
+ * {@code selectAndClaim}'s orphan-drop and {@code finishSubmit}. Both now guard with {@code if (ticket.queueDeadline() != null)},
  * matching {@code retire()}'s pre-existing guard.
  */
 class SchedulerEngineDeadlineGuardRegressionTest {
@@ -106,24 +104,6 @@ class SchedulerEngineDeadlineGuardRegressionTest {
         assertThatCode(engine::tick).doesNotThrowAnyException();
 
         assertThatCode(() -> verify(dispatch).submit(leasedTargetTask))
-                .doesNotThrowAnyException();
-    }
-
-    @Test
-    void requeueCancelBranchOnANullDeadlineTicketDoesNotThrowWhileDeadlinesIsNonEmpty() {
-        engine.enqueue(new PendingEntry(targetTicket, targetTask));
-
-        // Input backpressure drives the requeue path; requeue() itself calls engine.remove() on
-        // the same (still-submitting) ticket first, which — because the ticket is mid-submit —
-        // only records a cancel request. requeue()'s cancel branch then applies it, hitting the
-        // second unguarded site.
-        doAnswer(invocation -> {
-            engine.remove(targetTicket.id());
-            throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-        }).when(dispatch).submit(leasedTargetTask);
-
-        assertThatCode(engine::tick).doesNotThrowAnyException();
-        assertThatCode(() -> verify(dispatch).removed(targetTask))
                 .doesNotThrowAnyException();
     }
 

@@ -195,6 +195,11 @@ final class OutcomeWeigher {
                     add(32);
                     yield value;
                 }
+                case it.unimib.datai.nanofaas.common.model.RawJson raw -> {
+                    // Immutable text of known size: nothing to walk, copy or bound by shape.
+                    add(64L + raw.length());
+                    yield raw;
+                }
                 case Map<?, ?> map -> walkMap(map, depth);
                 case List<?> list -> walkList(list, depth);
                 case Set<?> set -> walkSet(set, depth);

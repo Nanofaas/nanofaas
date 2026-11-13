@@ -17,6 +17,15 @@ public final class ManagedReplicaPool implements ManagedReplicaSet {
     private final Duration probeRetention;
     private final AtomicReference<List<String>> backends = new AtomicReference<>(List.of());
     private final AtomicBoolean closed = new AtomicBoolean();
+    /**
+     * Leases whose invocation has answered but whose release the runtime has not confirmed yet,
+     * with the moment past which a confirmation is no longer expected soon. Such a slot frees up
+     * within a few probes, so an invocation that finds every slot taken waits for it instead of
+     * being refused with a 503. Past the grace a lease is quarantined, and waiting for it would
+     * only turn a quick refusal into a slow one.
+     */
+    static final Duration RELEASE_GRACE = Duration.ofSeconds(1);
+    private final Map<ReplicaLease, Long> releasing = new ConcurrentHashMap<>();
     private final Map<String, OrdinarySlot> ordinary = new LinkedHashMap<>();
     private Set<String> readyBackends = Set.of();
     private final Set<String> unverifiedBackends = new HashSet<>();
@@ -50,11 +59,16 @@ public final class ManagedReplicaPool implements ManagedReplicaSet {
                 physical.cancelBeforeDispatch(); physical = null;
             }
             if (physical == null) {
-                if (!replicaSlots.awaitingAllocation()) return null;
+                // Wait only for a slot that is about to free: an allocation being resumed, or a
+                // finished invocation whose release proof is on its way. A replica still running
+                // its invocation is a real refusal.
+                boolean allocationResuming = replicaSlots.awaitingAllocation();
+                if (!allocationResuming && !releaseDue()) return null;
                 var pending = new Reservation(null, null, null);
                 inFlight++;
                 waiting.add(pending);
-                var admissionTimeout = timeout;
+                boolean releaseWait = !allocationResuming && timeout.compareTo(RELEASE_GRACE) > 0;
+                var admissionTimeout = releaseWait ? RELEASE_GRACE : timeout;
                 pending.waiter = new FutureTask<>(() -> {
                     try {
                         var lease = replicaSlots.acquireWhenResumed(executionId, attempt, admissionTimeout).orElseThrow();
@@ -65,6 +79,12 @@ public final class ManagedReplicaPool implements ManagedReplicaSet {
                         }
                         // Completion can enter the coordinator; never run it while holding the pool lock.
                         pending.readiness.complete(null);
+                    } catch (TimeoutException noneFreed) {
+                        // A slot expected to free up never did: the same refusal as finding no
+                        // replica at once, not a timeout of the invocation.
+                        pending.readiness.completeExceptionally(releaseWait
+                                ? new RejectedExecutionException("No admissible managed replica", noneFreed)
+                                : noneFreed);
                     } catch (Exception failure) {
                         pending.readiness.completeExceptionally(failure);
                     }
@@ -158,56 +178,82 @@ public final class ManagedReplicaPool implements ManagedReplicaSet {
                 inFlight--;
                 if (ordinarySlot != null) ordinarySlot.inFlight--;
                 if (physical != null && !physical.cancelBeforeDispatch()) {
+                    releasing.put(physical, System.nanoTime() + RELEASE_GRACE.toNanos());
                     try { executor.execute(() -> observeUntilReleased(physical)); }
                     catch (RejectedExecutionException shutdown) {
                         // Shutdown is not proof of physical release; preserve the lease.
+                        releasing.remove(physical);
                     }
                 }
             }
         }
     }
+    /**
+     * Serializes membership updates. Incarnation probes are HTTP calls and run under this lock
+     * only: the pool monitor, which acquire, markDispatched and close share with the dispatch
+     * path (markDispatched on a Netty event loop), is taken just to apply their result. Membership
+     * cannot change between a probe and its application because every writer holds this lock.
+     */
+    private final Object membershipUpdates = new Object();
+
     @Override
-    public synchronized void updateBackends(List<String> backendBaseUrls) {
+    public void updateBackends(List<String> backendBaseUrls) {
         var ready = backendBaseUrls == null ? List.<String>of() : List.copyOf(backendBaseUrls);
-        if(physicalSlots.get()) {
+        synchronized (membershipUpdates) {
+            boolean physical = physicalSlots.get();
             var incarnations = new java.util.LinkedHashMap<String,String>();
             var verified = new HashSet<String>();
-            for (var backend : ready) {
-                String incarnation;
-                try {
-                    incarnation = executionProbe.eligibleIncarnation(URI.create(backend));
-                    unverifiedBackends.add(backend);
-                    verified.add(backend);
-                } catch (IllegalStateException busyOrUnknown) {
-                    // An occupied lease retains its identity; a failed probe cannot release or replace it.
-                    incarnation = runtimeIncarnations.get(backend);
-                    if (incarnation == null || replicaSlots.occupied().stream().noneMatch(lease -> lease.backend().equals(backend))) {
-                        unverifiedBackends.add(backend);
-                        throw busyOrUnknown;
+            var quarantined = new HashSet<String>();
+            try {
+                if (physical) for (var backend : ready) {
+                    String incarnation;
+                    try {
+                        incarnation = executionProbe.eligibleIncarnation(URI.create(backend));
+                        verified.add(backend);
+                    } catch (IllegalStateException busyOrUnknown) {
+                        // An occupied lease retains its identity; a failed probe cannot release or replace it.
+                        incarnation = runtimeIncarnations.get(backend);
+                        if (incarnation == null || replicaSlots.occupied().stream().noneMatch(lease -> lease.backend().equals(backend))) {
+                            quarantined.add(backend);
+                            throw busyOrUnknown;
+                        }
                     }
+                    incarnations.put(backend, incarnation);
                 }
-                incarnations.put(backend, incarnation);
+            } catch (RuntimeException failure) {
+                // A failed update proves nothing: every backend it touched stays out of admission.
+                synchronized (this) { unverifiedBackends.addAll(verified); unverifiedBackends.addAll(quarantined); }
+                throw failure;
             }
-            runtimeIncarnations.putAll(incarnations);
-            replicaSlots.update(incarnations);
-            unverifiedBackends.removeAll(verified);
-            var occupiedBackends=replicaSlots.occupied().stream().map(ReplicaLease::backend).collect(java.util.stream.Collectors.toSet());
-            runtimeIncarnations.keySet().removeIf(id -> !ready.contains(id) && !occupiedBackends.contains(id));
+            synchronized (this) {
+                if (physical) {
+                    unverifiedBackends.addAll(verified);
+                    runtimeIncarnations.putAll(incarnations);
+                    replicaSlots.update(incarnations);
+                    unverifiedBackends.removeAll(verified);
+                    var occupiedBackends=replicaSlots.occupied().stream().map(ReplicaLease::backend).collect(java.util.stream.Collectors.toSet());
+                    runtimeIncarnations.keySet().removeIf(id -> !ready.contains(id) && !occupiedBackends.contains(id));
+                }
+                ordinary.forEach((id, slot) -> { if (!ready.contains(id)) slot.draining = true; });
+                ordinary.entrySet().removeIf(e -> !ready.contains(e.getKey()) && e.getValue().inFlight == 0);
+                ready.forEach(id -> ordinary.computeIfAbsent(id, ignored -> new OrdinarySlot()).draining = false);
+                unverifiedBackends.retainAll(ready);
+                backends.set(ready);
+                readyBackends = Set.copyOf(ready);
+            }
         }
-        ordinary.forEach((id, slot) -> { if (!ready.contains(id)) slot.draining = true; });
-        ordinary.entrySet().removeIf(e -> !ready.contains(e.getKey()) && e.getValue().inFlight == 0);
-        ready.forEach(id -> ordinary.computeIfAbsent(id, ignored -> new OrdinarySlot()).draining = false);
-        unverifiedBackends.retainAll(ready);
-        backends.set(ready);
-        readyBackends = Set.copyOf(ready);
     }
 
     @Override
-    public synchronized void enablePhysicalSlots() {
-        if(physicalSlots.get()) return;
-        var incarnations = new java.util.LinkedHashMap<String,String>();
-        for(var backend:backends.get()) incarnations.put(backend, executionProbe.eligibleIncarnation(URI.create(backend)));
-        runtimeIncarnations.putAll(incarnations); replicaSlots.update(incarnations); physicalSlots.set(true);
+    public void enablePhysicalSlots() {
+        synchronized (membershipUpdates) {
+            if(physicalSlots.get()) return;
+            var incarnations = new java.util.LinkedHashMap<String,String>();
+            for(var backend:backends.get()) incarnations.put(backend, executionProbe.eligibleIncarnation(URI.create(backend)));
+            synchronized (this) {
+                runtimeIncarnations.putAll(incarnations); replicaSlots.update(incarnations); physicalSlots.set(true);
+            }
+        }
     }
     @Override public synchronized boolean backendReady(String backendId) {
         return !unverifiedBackends.contains(backendId) && (!physicalSlots.get() || replicaSlots.routable(backendId));
@@ -273,14 +319,28 @@ public final class ManagedReplicaPool implements ManagedReplicaSet {
         return executionProbe.observe(URI.create(lease.backend()), lease.executionId());
     }
 
+    private boolean releaseDue() {
+        long now = System.nanoTime();
+        return releasing.values().stream().anyMatch(until -> until - now > 0);
+    }
+
     void observeUntilReleased(ReplicaLease lease) {
-        long deadline=System.nanoTime()+probeRetention.toNanos();
-        while(!closed.get() && System.nanoTime()<deadline) {
-            if (!replicaSlots.occupied().contains(lease)) return;
-            if(lease.markReleased(executionProbe.observe(URI.create(lease.backend()),lease.executionId()))) return;
-            try { Thread.sleep(100); } catch(InterruptedException interrupted) { Thread.currentThread().interrupt(); return; }
+        try {
+            long deadline=System.nanoTime()+probeRetention.toNanos();
+            // The runtime records the release just after it writes the response, so the first
+            // probe usually still sees ACTIVE, and an invocation may be waiting for this slot:
+            // probe again after 1 ms, backing off to 100 ms for a slow one.
+            long pauseMillis = 1;
+            while(!closed.get() && System.nanoTime()<deadline) {
+                if (!replicaSlots.occupied().contains(lease)) return;
+                if(lease.markReleased(executionProbe.observe(URI.create(lease.backend()),lease.executionId()))) return;
+                try { Thread.sleep(pauseMillis); } catch(InterruptedException interrupted) { Thread.currentThread().interrupt(); return; }
+                pauseMillis = Math.min(100, pauseMillis * 2);
+            }
+            // Uncertain executions remain quarantined. Retention expiry is not evidence of release.
+        } finally {
+            releasing.remove(lease);
         }
-        // Uncertain executions remain quarantined. Retention expiry is not evidence of release.
     }
 
 }

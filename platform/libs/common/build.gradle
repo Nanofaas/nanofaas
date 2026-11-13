@@ -11,6 +11,11 @@ dependencyManagement {
 
 dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-annotations'
+    // Compile-only: RawJson writes itself through Jackson 3. Not a runtime dependency, and not
+    // exported: only the control plane - which always has Jackson 3 - ever loads that class. The
+    // SDKs and the CLI that share this module do not (the CLI is on Jackson 2). A module that
+    // calls RawJson's own methods needs the same compile-only line to see its supertype.
+    compileOnly 'tools.jackson.core:jackson-databind'
     api 'jakarta.validation:jakarta.validation-api:3.1.1'
 
     testImplementation 'org.junit.jupiter:junit-jupiter:6.1.3'

@@ -50,7 +50,6 @@ curl -X PATCH http://localhost:8080/v1/admin/runtime-config/control-plane \
   namespace exposes `rateMaxPerSecond` and partial updates for
   `maxExecutionsGlobal`, `maxExecutionsPerFunction`,
   `maxCanonicalInputBytesGlobal`, `maxCanonicalInputBytesPerFunction`,
-  `maxPhysicalInputCopyBytesGlobal`, `maxPhysicalInputCopyBytesPerFunction`,
   `maxWaitersGlobal`, and `maxWaitersPerFunction`.
 - Reducing a quota below current occupancy does not evict or reassign work.
   New reservations remain blocked until the corresponding owner count drains;

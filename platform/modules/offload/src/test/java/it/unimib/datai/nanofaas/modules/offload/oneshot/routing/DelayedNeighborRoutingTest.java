@@ -45,6 +45,20 @@ class DelayedNeighborRoutingTest {
         assertThat(router.route(task(),incoming(2,"b","b-run")).kind()).isEqualTo(PlannedInvocationRoute.Kind.REJECT);
     }
     @Test
+    void aPayloadKeptAsJsonTextMatchesItsCalibrationWhateverItsKeyOrder() {
+        var spec = new FunctionSpec("f", "img@" + DIGEST, null, null, null, null,
+                null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
+        // The same document task() carries as a map, as the control plane now receives it.
+        var text = RawJson.of("{\"payload\":\"value\",\"nested\":[1,2]}".getBytes(java.nio.charset.StandardCharsets.UTF_8), 9, 2, 5);
+        var raw = new InvocationTask("request", "f", spec, new InvocationRequest(text, Map.of()), null, null,
+                Instant.EPOCH, 1, InvocationKind.SYNC);
+
+        var route = router().route(raw, incoming(1, "b", "b-run"));
+
+        assertThat(route.kind()).isEqualTo(PlannedInvocationRoute.Kind.LOCAL);
+    }
+
+    @Test
     void delayedNeighborRequestUsesCurrentLocalAdmissionWithoutANewGrant() {
         var route = router().route(task(), incoming(1, "b", "b-run"));
         assertThat(route.kind()).isEqualTo(PlannedInvocationRoute.Kind.LOCAL);

@@ -44,8 +44,6 @@
             "executionsPerFunction",
             "canonicalInputBytesGlobal",
             "canonicalInputBytesPerFunction",
-            "physicalInputCopyBytesGlobal",
-            "physicalInputCopyBytesPerFunction",
             "waitersGlobal",
             "waitersPerFunction",
             "maxInputReferences",
@@ -73,14 +71,6 @@
               "minimum": 1
             },
             "canonicalInputBytesPerFunction": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "physicalInputCopyBytesGlobal": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "physicalInputCopyBytesPerFunction": {
               "type": "integer",
               "minimum": 1
             },

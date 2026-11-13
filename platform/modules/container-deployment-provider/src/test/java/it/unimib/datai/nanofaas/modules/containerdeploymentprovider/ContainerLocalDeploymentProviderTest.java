@@ -913,12 +913,13 @@ class ContainerLocalDeploymentProviderTest {
         }
     }
 
+    /** Fails the second replica (host port 19002) once; readiness waits run concurrently, so call order says nothing. */
     private static final class FailSecondOnceEndpointProbe implements EndpointProbe {
-        private final AtomicInteger calls = new AtomicInteger();
+        private final AtomicInteger failures = new AtomicInteger();
 
         @Override
         public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
-            if (calls.incrementAndGet() == 2) {
+            if (baseUrl.endsWith(":19002") && failures.getAndIncrement() == 0) {
                 throw new IllegalStateException("second replica failed");
             }
         }

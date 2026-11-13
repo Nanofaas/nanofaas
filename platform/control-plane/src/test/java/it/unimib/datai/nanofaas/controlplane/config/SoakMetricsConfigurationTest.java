@@ -21,7 +21,6 @@ class SoakMetricsConfigurationTest {
     private static final List<String> SOAK_METRICS = List.of(
             "invocation_execution_reservations",
             "invocation_canonical_input_bytes",
-            "invocation_physical_input_copy_bytes",
             "execution_waiters_retained",
             "execution_expiry_queue_depth",
             "function_capacity_retired_generations"
@@ -43,10 +42,6 @@ class SoakMetricsConfigurationTest {
             functions.register("fn", 2);
             var admission = invocations.reserve("fn", "execution", 11);
             admission.publish();
-            var inputCopy = invocations.reserveInputCopy(
-                    functions.activeGeneration("fn"),
-                    new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "execution/copy"),
-                    7);
             var waiter = waiters.reserve("fn", "execution");
             var lease = functions.tryAcquireLease("fn", 2);
             functions.remove("fn");
@@ -54,13 +49,11 @@ class SoakMetricsConfigurationTest {
 
             assertThat(gauge(meters, "invocation_execution_reservations")).isEqualTo(1);
             assertThat(gauge(meters, "invocation_canonical_input_bytes")).isEqualTo(11);
-            assertThat(gauge(meters, "invocation_physical_input_copy_bytes")).isEqualTo(7);
             assertThat(gauge(meters, "execution_waiters_retained")).isEqualTo(1);
             assertThat(gauge(meters, "execution_expiry_queue_depth")).isEqualTo(1);
             assertThat(gauge(meters, "function_capacity_retired_generations")).isEqualTo(1);
 
             waiter.close();
-            inputCopy.close();
             admission.rollback();
             lease.release();
             expiryTask.cancel(false);
@@ -102,7 +95,7 @@ class SoakMetricsConfigurationTest {
 
         @Bean
         InvocationCapacity invocationCapacity(FunctionCapacityRegistry functions) {
-            return new InvocationCapacity(functions, 10, 10, 100, 100, 100, 100, 2);
+            return new InvocationCapacity(functions, 10, 10, 100, 100, 2);
         }
 
         @Bean

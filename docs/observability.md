@@ -21,7 +21,6 @@ unlabelled, so each has cardinality `1` per process.
 |---|---|---|---|---|---|
 | Control plane | `invocation_execution_reservations` | reservations | Global logical-execution reservations in `InvocationCapacity` | The logical execution reservation closes on terminal settlement or abandonment | `1` |
 | Control plane | `invocation_canonical_input_bytes` | bytes | Global canonical-input reservations in `InvocationCapacity` | The canonical-input reservation closes with its logical execution | `1` |
-| Control plane | `invocation_physical_input_copy_bytes` | bytes | Global physical input-copy reservations in `InvocationCapacity` | The physical attempt releases its input-copy reservation | `1` |
 | Control plane | `execution_waiters_retained` | waiters | Retained synchronous waiters in `WaiterCapacity` | The waiter detaches on completion, cancellation, or timeout | `1` |
 | Control plane | `execution_expiry_queue_depth` | tasks | The execution-expiry executor queue | The expiry task executes or is cancelled and removed | `1` |
 | Control plane | `function_capacity_retired_generations` | generations | Retired and draining generations in `FunctionCapacityRegistry` | A retired generation finishes draining and is released | `1` |
@@ -89,7 +88,7 @@ independently of the selected queue module.
 
 In the `SYNC_QUEUE` admission profile, `sync_queue_depth` reads the engine's
 outstanding reservations: pending tickets plus a provisional claim or a submit
-until it settles, and input backpressure keeps the reservation. In other
+until it settles. In other
 admission profiles it is zero. `sync_queue_wait_seconds` and
 `sync_queue_timedout_total` no longer exist: nothing had recorded them since the
 queue moved into the shared scheduler engine. A sync caller whose ticket passes

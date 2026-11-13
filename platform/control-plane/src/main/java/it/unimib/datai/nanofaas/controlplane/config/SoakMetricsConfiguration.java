@@ -34,15 +34,6 @@ class SoakMetricsConfiguration {
     }
 
     @Bean
-    Gauge invocationPhysicalInputCopyBytes(MeterRegistry registry, InvocationCapacity capacity) {
-        return Gauge.builder(
-                        "invocation_physical_input_copy_bytes",
-                        capacity,
-                        InvocationCapacity::physicalInputCopyReservedGlobally)
-                .register(registry);
-    }
-
-    @Bean
     Gauge executionWaitersRetained(MeterRegistry registry, WaiterCapacity capacity) {
         return Gauge.builder(
                         "execution_waiters_retained",

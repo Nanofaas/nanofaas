@@ -229,18 +229,21 @@ public class FunctionService {
         });
     }
 
+    /**
+     * A read: it takes no per-function operation lock, which a scale holds for as long as the
+     * provider takes to start or drain replicas. The registry and the replica snapshot are safe
+     * to read concurrently; a function removed meanwhile reads as absent or as zero replicas.
+     */
     public Optional<ReplicaStatus> getReplicaStatus(String name) {
-        return locks.withLock(name, () -> {
-            requireNotPendingRemoval(name);
-            RegisteredFunction function = registry.getRegistered(name).orElse(null);
-            if (function == null) {
-                return Optional.empty();
-            }
-            if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
-                throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
-            }
-            return Optional.of(managedDeploymentCoordinator.getFreshReplicaStatus(requireManagedDeploymentTarget(function)));
-        });
+        requireNotPendingRemoval(name);
+        RegisteredFunction function = registry.getRegistered(name).orElse(null);
+        if (function == null) {
+            return Optional.empty();
+        }
+        if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
+            throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
+        }
+        return Optional.of(managedDeploymentCoordinator.getFreshReplicaStatus(requireManagedDeploymentTarget(function)));
     }
 
     /**

@@ -44,7 +44,11 @@ final class DirectReplicaFixture implements AutoCloseable {
                 request.headers().firstValue("X-Dispatch-Attempt").orElse("1"))) {
             if (target == null) return new Response(503, "busy", HttpHeaders.of(Map.of(), (a,b) -> true), request);
             try { target.ready().toCompletableFuture().get(timeout.toMillis(), TimeUnit.MILLISECONDS); }
-            catch (TimeoutException | ExecutionException failure) { return new Response(504, "timeout", HttpHeaders.of(Map.of(), (a,b) -> true), request); }
+            catch (TimeoutException | ExecutionException failure) {
+                // As ExternalDispatcher: a wait for a replica that ended without one is "busy".
+                boolean refused = failure.getCause() instanceof RejectedExecutionException;
+                return new Response(refused ? 503 : 504, refused ? "busy" : "timeout", HttpHeaders.of(Map.of(), (a,b) -> true), request);
+            }
             if (!target.markDispatched()) return new Response(503, "unavailable", HttpHeaders.of(Map.of(), (a,b) -> true), request);
             var direct = HttpRequest.newBuilder(request, (a,b) -> true).uri(URI.create(target.endpointUrl())).timeout(timeout).build();
             var response = client.send(direct, HttpResponse.BodyHandlers.ofString());

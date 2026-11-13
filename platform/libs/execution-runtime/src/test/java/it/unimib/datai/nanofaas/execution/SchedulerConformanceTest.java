@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
@@ -329,27 +328,6 @@ class SchedulerConformanceTest {
                 () -> assertThat(f.engine.reservedCount("echo")).isZero(),
                 () -> assertThat(f.store.claimedCount()).isZero(),
                 () -> assertThat(f.submitted).isEmpty());
-    }
-
-    @ParameterizedTest
-    @MethodSource("strategies")
-    void functionRemovalDuringSubmitCancelsAnInputBackpressureRequeue(SchedulingStrategy strategy) {
-        Fixture f = new Fixture(strategy);
-        SchedulingTicket ticket = f.admit("submitting", InvocationKind.ASYNC, f.echo, 0);
-        doAnswer(invocation -> {
-            assertThat(f.store.submittingCount()).isEqualTo(1);
-            when(f.readiness.runnable(f.echo)).thenReturn(false);
-            f.engine.removeAllFor("echo");
-            throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-        }).when(f.dispatch).submit(any());
-
-        f.engine.tick();
-
-        assertAll(
-                () -> assertThat(f.removed).containsExactly("submitting"),
-                () -> assertThat(f.store.get(ticket.id())).isNull(),
-                () -> assertThat(f.engine.reservedCount("echo")).isZero(),
-                () -> assertThat(f.store.submittingCount()).isZero());
     }
 
     @ParameterizedTest

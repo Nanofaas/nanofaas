@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection;
@@ -392,23 +391,23 @@ class SchedulerEngineSwitchTest {
     }
 
     @Test
-    void aSubmittingTicketDoesNotBlockTheSwitchAndRequeuesIntoTheNewIndex() {
+    void aSubmittingTicketDoesNotBlockTheSwitchAndStaysOutOfTheNewIndex() {
         SchedulingTicket submitting = admit("e1", 0);
         admit("e2", 1);
         doAnswer(invocation -> {
             // Committed to dispatch: the reservation is held and the ticket is in no index.
             assertThat(store.submittingCount()).isEqualTo(1);
             engine.switchTo("shared-queue");
-            throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
+            return null;
         }).when(dispatch).submit(any());
 
         engine.tick();
 
         RecordingIndex candidate = activeIndex();
-        assertThat(candidate.ids()).containsExactly(new TicketId("e2", 1), submitting.id());
+        assertThat(candidate.ids()).containsExactly(new TicketId("e2", 1));
         assertThat(store.submittingCount()).isZero();
-        assertThat(store.pendingCount()).isEqualTo(2);
-        assertThat(store.get(submitting.id())).isNotNull();
+        assertThat(store.pendingCount()).isEqualTo(1);
+        assertThat(store.get(submitting.id())).isNull();
         verify(dispatch, never()).rejected(any(), any());
     }
 

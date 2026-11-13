@@ -187,22 +187,8 @@ class PendingWorkStoreTest {
                 .containsExactly(one, three, five);
     }
 
-    @Test void requeueSubmitClearsSubmittingButKeepsEntryPending() {
-        var store = new PendingWorkStore(1);
-        var t = ticket("e1", 0);
-        store.offer(new PendingEntry(t, mock(InvocationTask.class)));
-        store.claim(t.id());
-        store.commit(t.id());
-
-        store.requeueSubmit(t.id());
-
-        assertThat(store.submittingCount()).isZero();
-        assertThat(store.pendingCount()).isEqualTo(1);
-        assertThat(store.snapshotPending()).extracting(PendingEntry::ticket).containsExactly(t);
-    }
-
     @Test
-    void reservationsFollowEntriesAcrossBackpressureAndRepeatedSettlement() {
+    void reservationsFollowEntriesAcrossSubmitAndRepeatedSettlement() {
         var store = new PendingWorkStore(1);
         var t = ticket("e1", 0);
         var entry = new PendingEntry(t, mock(InvocationTask.class));
@@ -214,9 +200,6 @@ class PendingWorkStoreTest {
         store.commit(t.id());
         assertThat(store.remove(t.id())).isNull();
         assertThat(store.reservedCount("echo")).isEqualTo(1);
-        store.requeueSubmit(t.id());
-        store.claim(t.id());
-        store.commit(t.id());
         store.finishSubmit(t.id());
         store.finishSubmit(t.id());
         assertThat(store.remove(t.id())).isNull();

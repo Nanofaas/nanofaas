@@ -25,6 +25,21 @@ class OutcomeWeigherTest {
     }
 
     @Test
+    void jsonKeptAsTextIsCacheableWhateverItsShapeAndWeighsItsBytes() {
+        // 300 members, 6 levels deep: as an object tree neither would be cacheable.
+        String json = "[[[[[[" + "1,".repeat(299) + "1]]]]]]";
+        var raw = it.unimib.datai.nanofaas.common.model.RawJson.of(
+                json.getBytes(java.nio.charset.StandardCharsets.UTF_8), 312, 6, 301);
+
+        var frozen = OutcomeWeigher.freeze(ID, outcome(raw));
+
+        assertThat(frozen).isNotNull();
+        assertThat(frozen.outcome().output()).isSameAs(raw);
+        assertThat(frozen.weight() - OutcomeWeigher.freeze(ID, outcome(null)).weight())
+                .isEqualTo(json.length() + 64);
+    }
+
+    @Test
     void deepPayloadsBeyondTheTraversalLimitAreNotCacheable() {
         Object payload = "x".repeat(1024);
         for (int i = 0; i < 5; i++) {

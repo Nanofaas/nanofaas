@@ -74,7 +74,11 @@ public final class PlanRouter {
         }
         var configured=settings.get().functions().get(task.functionName());
         if(!ServiceProfileStore.imageMatches(task.functionSpec().image(),configured.imageDigest())) return PlannedInvocationRoute.reject("workload image differs from calibration");
-        if(!ServiceProfileStore.hash(mapper.writeValueAsBytes(task.request().input())).equals(configured.inputHash())) return PlannedInvocationRoute.reject("workload input differs from calibration");
+        // The calibration hash is of the canonical form (keys sorted), so a payload kept as JSON
+        // text is read into a tree here - the one place the control plane looks inside it.
+        Object input=task.request().input();
+        if(input instanceof it.unimib.datai.nanofaas.common.model.RawJson raw) input=mapper.readValue(raw.json(),Object.class);
+        if(!ServiceProfileStore.hash(mapper.writeValueAsBytes(input)).equals(configured.inputHash())) return PlannedInvocationRoute.reject("workload input differs from calibration");
         var metadata=context.metadata();
         if(context.offloadedHop() && (metadata==null || peers.activeNeighbors().stream().noneMatch(p->p.peerId().equals(metadata.origin()) && p.incarnation().equals(metadata.originIncarnation()))))
             return PlannedInvocationRoute.reject("native ready assignment required");

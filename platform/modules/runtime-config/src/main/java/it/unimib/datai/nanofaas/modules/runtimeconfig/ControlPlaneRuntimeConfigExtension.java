@@ -16,15 +16,12 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
     private static final String EXECUTIONS_PER_FUNCTION = "maxExecutionsPerFunction";
     private static final String CANONICAL_INPUT_GLOBAL = "maxCanonicalInputBytesGlobal";
     private static final String CANONICAL_INPUT_PER_FUNCTION = "maxCanonicalInputBytesPerFunction";
-    private static final String PHYSICAL_INPUT_GLOBAL = "maxPhysicalInputCopyBytesGlobal";
-    private static final String PHYSICAL_INPUT_PER_FUNCTION = "maxPhysicalInputCopyBytesPerFunction";
     private static final String WAITERS_GLOBAL = "maxWaitersGlobal";
     private static final String WAITERS_PER_FUNCTION = "maxWaitersPerFunction";
     private static final Set<String> SUPPORTED = Set.of(
             RATE_MAX_PER_SECOND,
             EXECUTIONS_GLOBAL, EXECUTIONS_PER_FUNCTION,
             CANONICAL_INPUT_GLOBAL, CANONICAL_INPUT_PER_FUNCTION,
-            PHYSICAL_INPUT_GLOBAL, PHYSICAL_INPUT_PER_FUNCTION,
             WAITERS_GLOBAL, WAITERS_PER_FUNCTION);
 
     private final AdmissionLimitsControl limits;
@@ -47,8 +44,6 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
         result.put(EXECUTIONS_PER_FUNCTION, current.executions().perFunction());
         result.put(CANONICAL_INPUT_GLOBAL, current.canonicalInputBytes().global());
         result.put(CANONICAL_INPUT_PER_FUNCTION, current.canonicalInputBytes().perFunction());
-        result.put(PHYSICAL_INPUT_GLOBAL, current.physicalInputCopyBytes().global());
-        result.put(PHYSICAL_INPUT_PER_FUNCTION, current.physicalInputCopyBytes().perFunction());
         result.put(WAITERS_GLOBAL, current.waiters().global());
         result.put(WAITERS_PER_FUNCTION, current.waiters().perFunction());
         return Map.copyOf(result);
@@ -79,7 +74,6 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
         candidate.putAll(patch);
         validatePair(candidate, EXECUTIONS_GLOBAL, EXECUTIONS_PER_FUNCTION, errors);
         validatePair(candidate, CANONICAL_INPUT_GLOBAL, CANONICAL_INPUT_PER_FUNCTION, errors);
-        validatePair(candidate, PHYSICAL_INPUT_GLOBAL, PHYSICAL_INPUT_PER_FUNCTION, errors);
         validatePair(candidate, WAITERS_GLOBAL, WAITERS_PER_FUNCTION, errors);
         return List.copyOf(errors);
     }
@@ -112,7 +106,6 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
                 Math.toIntExact(requiredLong(values, RATE_MAX_PER_SECOND)),
                 pair(values, EXECUTIONS_GLOBAL, EXECUTIONS_PER_FUNCTION),
                 pair(values, CANONICAL_INPUT_GLOBAL, CANONICAL_INPUT_PER_FUNCTION),
-                pair(values, PHYSICAL_INPUT_GLOBAL, PHYSICAL_INPUT_PER_FUNCTION),
                 pair(values, WAITERS_GLOBAL, WAITERS_PER_FUNCTION)));
     }
 

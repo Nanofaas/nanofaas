@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.dispatch;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
+import it.unimib.datai.nanofaas.controlplane.json.RawJsonReader;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedInvocationTarget;
 import io.netty.handler.timeout.ReadTimeoutException;
@@ -54,6 +55,8 @@ public class ExternalDispatcher implements Dispatcher {
     public CompletableFuture<DispatchResult> dispatch(InvocationTask task, ManagedInvocationTarget target) {
         InvocationLogs.event(LOG, task, "dispatch-external-started");
         long timeoutMs = task.functionSpec().timeoutMs();
+        java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean();
+        Runnable release = () -> { if (target != null && released.compareAndSet(false, true)) target.close(); };
         return Mono.defer(() -> target == null ? send(task, null)
                         : Mono.fromCompletionStage(target.ready()).then(Mono.defer(() -> send(task, target))))
                 .flatMap(result -> target == null || result.result().success() ? Mono.just(result)
@@ -61,13 +64,24 @@ public class ExternalDispatcher implements Dispatcher {
                             .onErrorReturn(false)
                             .map(executed -> new DispatchResult(result.result(), result.coldStart(),
                                     result.initDurationMs(), result.retryNotBefore(), executed)))
+                // Release the replica as soon as it has answered (and any execution evidence is
+                // in), before the result runs the completion chain behind the returned future.
+                // That chain gives the function's capacity back first; released only in
+                // doFinally, the replica still looked reserved to the invocation admitted next,
+                // which was refused with a 503. doFinally still covers every path that ends
+                // without an answer.
+                .doOnNext(ignored -> release.run())
                 .timeout(Duration.ofMillis(timeoutMs))
+                // A reservation that waited for a replica and got none is the same refusal as a
+                // reservation the pool could not make at once (DispatcherRouter): no replica.
+                .onErrorResume(java.util.concurrent.RejectedExecutionException.class, ex -> Mono.just(
+                        DispatchResult.warm(platformFailure(503, "RUNTIME_HANDLER_SATURATED", ex.getMessage(), null))))
                 .onErrorResume(ExternalDispatcher::isTimeout, ex -> Mono.just(
                         DispatchResult.warm(platformFailure(504, "EXTERNAL_TIMEOUT", "External request timed out after " + timeoutMs + "ms", null))))
                 .onErrorResume(ex -> Mono.just(
                         DispatchResult.warm(platformFailure(502, "EXTERNAL_ERROR", ex.getMessage(), null))))
                 .doOnNext(ignored -> InvocationLogs.event(LOG, task, "dispatch-external-completed"))
-                .doFinally(ignored -> { if (target != null) target.close(); })
+                .doFinally(ignored -> release.run())
                 .toFuture();
     }
 
@@ -250,28 +264,46 @@ public class ExternalDispatcher implements Dispatcher {
      * </ul>
      */
     private static Mono<Object> decodeBody(ClientResponse response, boolean lenientJsonFallback) {
-        MediaType contentType = response.headers().contentType().orElse(MediaType.APPLICATION_JSON);
-        if (lenientJsonFallback) {
-            return response.bodyToMono(String.class)
-                    .flatMap(raw -> {
-                        if (raw.isBlank()) {
-                            return Mono.empty();
-                        }
-                        try {
-                            return Mono.justOrEmpty(JSON_FALLBACK_MAPPER.readValue(raw, Object.class));
-                        } catch (JacksonException ex) {
-                            // Malformed body on the marker path is a genuine transport/serialization
-                            // failure, not an empty response — must not be silently reported as
-                            // success=true with output=null. Propagate so the outer onErrorResume
-                            // turns it into an EXTERNAL_ERROR (success=false, retryable).
-                            return Mono.error(ex);
-                        }
-                    });
+        java.util.Optional<MediaType> declared = response.headers().contentType();
+        if (lenientJsonFallback || declared.filter(ExternalDispatcher::isJson).isPresent()) {
+            // Read the body once, as bytes: the Reactor Netty receiver allows one subscription,
+            // and a malformed body must surface as an error (the outer onErrorResume turns it
+            // into EXTERNAL_ERROR) - never as success=true with output=null.
+            return response.bodyToMono(byte[].class)
+                    .flatMap(body -> Mono.justOrEmpty(decodeJson(body, lenientJsonFallback)));
         }
-        if (MediaType.TEXT_PLAIN.isCompatibleWith(contentType)) {
+        if (MediaType.TEXT_PLAIN.isCompatibleWith(declared.orElse(MediaType.APPLICATION_JSON))) {
             return response.bodyToMono(String.class).cast(Object.class);
         }
         return response.bodyToMono(Object.class);
+    }
+
+    private static boolean isJson(MediaType type) {
+        return MediaType.APPLICATION_JSON.isCompatibleWith(type) || type.getSubtype().endsWith("+json");
+    }
+
+    /**
+     * An object or array is kept as the bytes the function sent: the control plane only forwards
+     * a result, so building objects for it and serializing them again was pure overhead, and what
+     * it retains is then the text rather than a tree several times its size. A scalar is small
+     * whatever it is, and stays the plain value it always was.
+     */
+    private static Object decodeJson(byte[] body, boolean blankIsEmpty) {
+        int first = 0;
+        while (first < body.length && isJsonWhitespace(body[first])) {
+            first++;
+        }
+        if (first == body.length && blankIsEmpty) {
+            return null;
+        }
+        if (first < body.length && (body[first] == '{' || body[first] == '[')) {
+            return RawJsonReader.read(body);
+        }
+        return JSON_FALLBACK_MAPPER.readValue(body, Object.class);
+    }
+
+    private static boolean isJsonWhitespace(byte b) {
+        return b == ' ' || b == '\n' || b == '\r' || b == '\t';
     }
 
     private static Map<String, String> extractAllowedHeaders(HttpHeaders headers) {

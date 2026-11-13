@@ -41,8 +41,8 @@ public final class EngineWorkloadMetricsSource implements WorkloadMetricsSource 
      *       a decision (commit or abort) before the next pass starts — see
      *       {@code SchedulerEngine}'s own "one selection per pass" contract.</li>
      *   <li>{@code submitting} does not span an execution's lifetime: {@code EngineDispatch.submit}
-     *       is contractually non-blocking and releases the reservation (via {@code finishSubmit}
-     *       or {@code requeue}) at hand-off, in the same {@code carry()} call that set it — an
+     *       is contractually non-blocking and releases the reservation (via {@code finishSubmit})
+     *       at hand-off, in the same {@code carry()} call that set it — an
      *       in-flight execution's own duration is not counted here at all.</li>
      * </ul>
      *

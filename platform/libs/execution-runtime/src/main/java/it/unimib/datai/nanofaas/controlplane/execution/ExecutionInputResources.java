@@ -4,24 +4,15 @@ import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.QueuedInputLease;
 import it.unimib.datai.nanofaas.controlplane.capacity.ResourceOwner;
-import it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuota;
 import it.unimib.datai.nanofaas.controlplane.capacity.RetainedInputLease;
-import it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInput;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 
 /** Capacity ownership attached to one logical execution without duplicating generation identity. */
 final class ExecutionInputResources {
-    private final InvocationCapacity capacity;
     private final InvocationCapacity.Admission admission;
-    private final CanonicalInvocationInput.Accepted canonical;
 
-    ExecutionInputResources(
-            InvocationCapacity capacity,
-            InvocationCapacity.Admission admission,
-            CanonicalInvocationInput.Accepted canonical) {
-        this.capacity = capacity;
+    ExecutionInputResources(InvocationCapacity.Admission admission) {
         this.admission = admission;
-        this.canonical = canonical;
     }
 
     void publish() {
@@ -48,28 +39,15 @@ final class ExecutionInputResources {
         return new QueuedInputLease(reference::close);
     }
 
+    /**
+     * One more owner of the retained input, for as long as an attempt's transport may read it.
+     * The input is immutable text (or a scalar), so the attempt reads the retained value itself:
+     * there is no per-attempt copy to make or to account for.
+     */
     ExecutionRecord.PhysicalInput open(InvocationTask source) {
-        String attemptIdentity = source.executionId() + "/attempt-" + source.attempt();
         RetainedInputLease.Reference shared = admission.canonicalInput().retain(
-                new ResourceOwner(ResourceOwner.Scope.PHYSICAL_ATTEMPT, attemptIdentity));
-        ResourceQuota.Reservation copy = null;
-        try {
-            InvocationTask physicalTask = source;
-            if (canonical.requiresMaterialization()) {
-                copy = capacity.reserveInputCopy(
-                        admission.canonicalInput().generation(),
-                        new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, attemptIdentity + "/materialized"),
-                        canonical.retainedBytes());
-                physicalTask = new InvocationTask(
-                        source.executionId(), source.functionName(), source.functionSpec(),
-                        canonical.materializeRequest(), source.idempotencyKey(), source.traceId(),
-                        source.enqueuedAt(), source.attempt(), source.kind(), source.dispatchLease());
-            }
-            return new ExecutionRecord.PhysicalInput(physicalTask, shared, copy);
-        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
-            if (copy != null) copy.close();
-            shared.close();
-            throw failure;
-        }
+                new ResourceOwner(ResourceOwner.Scope.PHYSICAL_ATTEMPT,
+                        source.executionId() + "/attempt-" + source.attempt()));
+        return new ExecutionRecord.PhysicalInput(source, shared);
     }
 }

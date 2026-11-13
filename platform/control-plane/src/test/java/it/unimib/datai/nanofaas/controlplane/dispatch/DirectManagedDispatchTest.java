@@ -62,6 +62,41 @@ class DirectManagedDispatchTest {
             }
         }
     }
+    /**
+     * The reservation must be released when the replica answers, not after the whole completion
+     * chain behind the returned future has run: that chain gives the function's capacity back
+     * first, and an invocation admitted in between finds the replica still reserved - a 503.
+     */
+    @Test void theReplicaIsReleasedBeforeTheResultReachesTheRestOfTheControlPlane() throws Exception {
+        for (int status : new int[]{200, 500}) {
+            try (var server = new MockWebServer()) {
+                server.enqueue(new MockResponse().setResponseCode(status).setBody("{\"value\":7}")
+                        .addHeader("Content-Type", "application/json"));
+                server.start();
+                var target = new Target(server.url("/invoke").toString());
+                var closedWhenCompleted = new CompletableFuture<Integer>();
+
+                new ExternalDispatcher(WebClient.create()).dispatch(task(1000), target)
+                        .whenComplete((result, error) -> closedWhenCompleted.complete(target.closes.get()));
+
+                assertThat(closedWhenCompleted.get(2, TimeUnit.SECONDS)).as("status %d", status).isEqualTo(1);
+                awaitClosed(target);
+            }
+        }
+    }
+
+    @Test void aReplicaThatNeverFreedUpIsTheSame503AsNoReplicaAtAll() throws Exception {
+        var target = new Target("http://unused.invalid/invoke");
+        target.ready = CompletableFuture.failedFuture(
+                new RejectedExecutionException("No managed replica freed up within the release grace"));
+
+        var result = new ExternalDispatcher(WebClient.create()).dispatch(task(5000), target).get(2, TimeUnit.SECONDS);
+
+        assertThat(result.result().success()).isFalse();
+        assertThat(result.result().statusCode()).isEqualTo(503);
+        assertThat(result.result().error().code()).isEqualTo("RUNTIME_HANDLER_SATURATED");
+        awaitClosed(target); assertThat(target.sent.get()).isZero();
+    }
     private static void awaitClosed(Target target) throws Exception {
         assertThat(target.closed.await(1, TimeUnit.SECONDS)).isTrue(); assertThat(target.closes.get()).isEqualTo(1);
     }
@@ -73,7 +108,9 @@ class DirectManagedDispatchTest {
     private static final class Target implements ManagedInvocationTarget {
         final String endpoint; final AtomicInteger sent = new AtomicInteger(); final AtomicInteger closes = new AtomicInteger();
         final CountDownLatch closed = new CountDownLatch(1); boolean evidence;
+        CompletionStage<Void> ready = CompletableFuture.completedFuture(null);
         Target(String endpoint) { this.endpoint = endpoint; }
+        public CompletionStage<Void> ready() { return ready; }
         public String endpointUrl() { return endpoint; }
         public String replicaId() { return "replica"; }
         public boolean markDispatched() { sent.incrementAndGet(); return true; }

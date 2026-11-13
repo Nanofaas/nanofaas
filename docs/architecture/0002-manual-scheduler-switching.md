@@ -93,7 +93,7 @@ deadlock or to violate I1–I4:
 3. **The index gate never waits for completion.** It does not block on the shared completion
    future, on a dispatch/transport handle, or on any I/O. `submit` is documented as non-blocking
    (Task 4's `EngineDispatch.submit` contract); a ticket whose dispatch fails synchronously returns
-   the lease and requeues, all outside the gate.
+   the lease and is rejected to the lifecycle, all outside the gate.
 
 **Clarification (2026-09-23, admission ownership).** Admission may observe the active generation
 while holding the engine gate. The permitted lock order is engine gate → capacity-registry entry

@@ -543,7 +543,8 @@ already selected terminal result. Two defects were reproduced during migration: 
 expiry returned `QUEUE_TIMEOUT` to waiters but archived a null error; scheduler dispatch rejection
 released a slot but left the accepted execution live. Expiry now archives the same selected
 `QUEUE_TIMEOUT` while retaining `TIMEOUT` state; rejection now settles `DISPATCH_REJECTED`.
-Input-quota backpressure still requeues. Logical settlement does not release physical work's
+Input-quota backpressure no longer exists: payloads are retained as immutable text and read
+in place, so an attempt has no per-attempt copy to be refused. Logical settlement does not release physical work's
 lease/input before actual drain. I1–I10 and protected-key/replay semantics remain binding.
 
 Architecture RED/GREEN, per-consumer lifecycle tests, profile integrations, suite results,

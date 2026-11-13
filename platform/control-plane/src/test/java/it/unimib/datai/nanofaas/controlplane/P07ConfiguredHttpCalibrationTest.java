@@ -117,13 +117,13 @@ class P07ConfiguredHttpCalibrationTest {
                 "P07-HTTP-T1 profile=none offered=%d admitted=%d elapsedMs=%.3f opsPerSecond=%.1f "
                         + "p50us=%.3f p95us=%.3f allocatedBytes=%d allocatedBytesPerAdmitted=%.1f "
                         + "%s finalOutcomes=%d finalKeys=%d drainExecutions=%d drainInputBytes=%d "
-                        + "drainInputCopyBytes=%d drainWaiters=%d drainLive=%d%n",
+                        + "drainWaiters=%d drainLive=%d%n",
                 T1_OFFERED, admitted, elapsed / 1_000_000d,
                 T1_OFFERED * 1_000_000_000d / elapsed,
                 percentile(latencyNanos, 0.50) / 1_000d, percentile(latencyNanos, 0.95) / 1_000d,
                 allocated, perAdmission(allocated, admitted), populations.summary(), executions.size(), keys.size(),
                 invocations.executionReservedGlobally(), invocations.inputReservedGlobally(),
-                invocations.physicalInputCopyReservedGlobally(), waiters.reservedGlobally(),
+                waiters.reservedGlobally(),
                 executions.inFlightCount());
     }
 
@@ -163,7 +163,7 @@ class P07ConfiguredHttpCalibrationTest {
                     JsonNode error = objectMapper.readTree(result.getResponseBody());
                     assertThat(error.path("error").asText()).isEqualTo("invocation_quota_exceeded");
                     String resource = error.path("resource").asText();
-                    assertThat(resource).isIn("execution", "input", "input_copy");
+                    assertThat(resource).isIn("execution", "input");
                     refusalResources.merge(resource, 1, Integer::sum);
                     quotaRefused++;
                 }
@@ -192,14 +192,14 @@ class P07ConfiguredHttpCalibrationTest {
                             + "refusalResources=%s "
                             + "p50us=%.3f p95us=%.3f allocatedBytes=%d allocatedBytesPerAdmitted=%.1f "
                             + "%s outcomes=%d keys=%d replayStatus=%d redispatchAfterReplay=%d "
-                            + "drainExecutions=%d drainInputBytes=%d drainInputCopyBytes=%d drainWaiters=%d "
+                            + "drainExecutions=%d drainInputBytes=%d drainWaiters=%d "
                             + "drainLive=%d%n",
                     shape.getKey(), T2_OFFERED_PER_SHAPE, admitted, quotaRefused, refusalResources,
                     percentile(latencyNanos, 0.50) / 1_000d, percentile(latencyNanos, 0.95) / 1_000d,
                     allocated, perAdmission(allocated, admitted), populations.summary(), executions.size(), keys.size(),
                     replay.getStatus().value(), dispatches.get() - beforeReplay,
                     invocations.executionReservedGlobally(), invocations.inputReservedGlobally(),
-                    invocations.physicalInputCopyReservedGlobally(), waiters.reservedGlobally(),
+                    waiters.reservedGlobally(),
                     executions.inFlightCount());
             functions.remove(function);
         }
@@ -232,8 +232,6 @@ class P07ConfiguredHttpCalibrationTest {
         assertThat(properties.getExecutionsPerFunction()).isEqualTo(512);
         assertThat(properties.getCanonicalInputBytesGlobal()).isEqualTo(134_217_728L);
         assertThat(properties.getCanonicalInputBytesPerFunction()).isEqualTo(33_554_432L);
-        assertThat(properties.getPhysicalInputCopyBytesGlobal()).isEqualTo(67_108_864L);
-        assertThat(properties.getPhysicalInputCopyBytesPerFunction()).isEqualTo(16_777_216L);
         assertThat(properties.getWaitersGlobal()).isEqualTo(8_192);
         assertThat(properties.getWaitersPerFunction()).isEqualTo(1_024);
         assertThat(properties.getMaxInputReferences()).isEqualTo(64);
@@ -247,7 +245,6 @@ class P07ConfiguredHttpCalibrationTest {
         await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
             assertThat(invocations.executionReservedGlobally()).isZero();
             assertThat(invocations.inputReservedGlobally()).isZero();
-            assertThat(invocations.physicalInputCopyReservedGlobally()).isZero();
             assertThat(waiters.reservedGlobally()).isZero();
             assertThat(executions.inFlightCount()).isZero();
         });
@@ -262,7 +259,8 @@ class P07ConfiguredHttpCalibrationTest {
         ArrayList<Object> wide = new ArrayList<>();
         for (int i = 0; i < 4_096; i++) wide.add(i);
         shapes.put("wide", wide);
-        shapes.put("large", "x".repeat(256 * 1_024));
+        // Retained as JSON text, one byte per char: 100 of these exceed the 32 MiB function quota.
+        shapes.put("large", "x".repeat(512 * 1_024));
         return shapes;
     }
 
@@ -300,7 +298,6 @@ class P07ConfiguredHttpCalibrationTest {
                 while (running.get()) {
                     sample("peakExecutions", invocations.executionReservedGlobally());
                     sample("peakInputBytes", invocations.inputReservedGlobally());
-                    sample("peakInputCopyBytes", invocations.physicalInputCopyReservedGlobally());
                     sample("peakWaiters", waiters.reservedGlobally());
                     sample("peakLive", executions.inFlightCount());
                     sample("peakOutcomes", executions.size());
@@ -317,7 +314,6 @@ class P07ConfiguredHttpCalibrationTest {
         String summary() {
             return "peakExecutions=" + peak("peakExecutions")
                     + " peakInputBytes=" + peak("peakInputBytes")
-                    + " peakInputCopyBytes=" + peak("peakInputCopyBytes")
                     + " peakWaiters=" + peak("peakWaiters")
                     + " peakLive=" + peak("peakLive")
                     + " peakOutcomes=" + peak("peakOutcomes")

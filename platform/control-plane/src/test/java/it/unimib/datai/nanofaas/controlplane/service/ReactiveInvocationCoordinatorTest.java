@@ -78,6 +78,20 @@ class ReactiveInvocationCoordinatorTest {
         assertThat(response.error().code()).isEqualTo("EXECUTION_FAILED");
     }
 
+    @Test
+    void exceptionalCompletionStillReportsTheNodeThatRanTheExecution() {
+        FunctionSpec spec = spec("fn-boom");
+        InvocationExecutionFactory.ExecutionLookup lookup =
+                factory.createOrReuseExecution("fn-boom", spec, new InvocationRequest("p", Map.of()), null, null, InvocationKind.SYNC);
+        lookup.executionRecord().attributeExecutionNode("edge-7");
+        lookup.executionRecord().completion().completeExceptionally(new RuntimeException("boom"));
+
+        SyncInvocation invocation = coordinator.invoke(lookup, spec, 1000).block();
+
+        assertThat(invocation.response().error().code()).isEqualTo("EXECUTION_FAILED");
+        assertThat(invocation.executionNode()).isEqualTo("edge-7");
+    }
+
     private static FunctionSpec spec(String name) {
         return new FunctionSpec(name, "img", List.of(), Map.of(), null,
                 1000, 1, 10, 0, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);

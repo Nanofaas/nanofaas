@@ -14,8 +14,6 @@ public final class InvocationCapacityProperties {
     private long executionsPerFunction = 512;
     private long canonicalInputBytesGlobal = 134_217_728L;
     private long canonicalInputBytesPerFunction = 33_554_432L;
-    private long physicalInputCopyBytesGlobal = 67_108_864L;
-    private long physicalInputCopyBytesPerFunction = 16_777_216L;
     private long waitersGlobal = 8_192;
     private long waitersPerFunction = 1_024;
     private int maxInputReferences = 64;
@@ -31,7 +29,6 @@ public final class InvocationCapacityProperties {
         }
         pair("executions", executionsGlobal, executionsPerFunction);
         pair("canonical-input-bytes", canonicalInputBytesGlobal, canonicalInputBytesPerFunction);
-        pair("physical-input-copy-bytes", physicalInputCopyBytesGlobal, physicalInputCopyBytesPerFunction);
         pair("waiters", waitersGlobal, waitersPerFunction);
         positive("max-input-references", maxInputReferences);
         positive("retained-input-max-depth", retainedInputMaxDepth);
@@ -41,10 +38,6 @@ public final class InvocationCapacityProperties {
         if (retainedInputMaxBytesPerExecution > canonicalInputBytesPerFunction) {
             throw new IllegalArgumentException(
                     "retained-input-max-bytes-per-execution must not exceed canonical-input-bytes-per-function");
-        }
-        if (retainedInputMaxBytesPerExecution > physicalInputCopyBytesPerFunction) {
-            throw new IllegalArgumentException(
-                    "retained-input-max-bytes-per-execution must not exceed physical-input-copy-bytes-per-function");
         }
     }
 
@@ -72,10 +65,6 @@ public final class InvocationCapacityProperties {
     public void setCanonicalInputBytesGlobal(long value) { canonicalInputBytesGlobal = value; }
     public long getCanonicalInputBytesPerFunction() { return canonicalInputBytesPerFunction; }
     public void setCanonicalInputBytesPerFunction(long value) { canonicalInputBytesPerFunction = value; }
-    public long getPhysicalInputCopyBytesGlobal() { return physicalInputCopyBytesGlobal; }
-    public void setPhysicalInputCopyBytesGlobal(long value) { physicalInputCopyBytesGlobal = value; }
-    public long getPhysicalInputCopyBytesPerFunction() { return physicalInputCopyBytesPerFunction; }
-    public void setPhysicalInputCopyBytesPerFunction(long value) { physicalInputCopyBytesPerFunction = value; }
     public long getWaitersGlobal() { return waitersGlobal; }
     public void setWaitersGlobal(long value) { waitersGlobal = value; }
     public long getWaitersPerFunction() { return waitersPerFunction; }

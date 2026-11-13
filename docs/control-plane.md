@@ -203,8 +203,7 @@ outside its own correctness transaction: a throwing observer can never turn a
 committed switch into a reported failure or vice versa.
 
 In the SYNC_QUEUE admission profile, `sync_queue_depth` reads the engine's outstanding
-reservations, including a provisional claim or submit until settlement. Input backpressure keeps
-the reservation. Runtime deactivation stops fresh sync queue admission but does not change
+reservations, including a provisional claim or submit until settlement. Runtime deactivation stops fresh sync queue admission but does not change
 attribution or stop queued work and retries from draining. In other admission profiles, the sync
 queue depth is zero.
 
@@ -284,14 +283,14 @@ response) — the strategy configured at startup wins again on the next boot.
 The shared queue examines up to 64 tickets per selection. When that window contains no
 runnable ticket, it rotates before the next scan so blocked functions cannot indefinitely
 hide ready work further back. Function removal withdraws pending tickets and provisional
-claims, and cancels any submitting ticket that returns to the queue under input backpressure.
+claims; a ticket already submitting belongs to its attempt and is left to conclude.
 Admission checks the function generation under the engine's gate before inserting a ticket:
 removal retires the generation before it drains the engine, so an admission that overlaps a
 removal is either drained by it (and reported as `FUNCTION_REMOVED`) or refused before it
 becomes a reservation. A refused ticket is rejected to its caller, never reported as removed.
 
 Per-function queue limits are checked atomically with admission. A queue reservation remains
-occupied through selection and submit, including input backpressure. Reservations still
+occupied through selection and submit. Reservations still
 submitting for a removed generation count against the same function name until their submit
 finishes; registering a new generation does not reset that occupancy.
 
@@ -444,8 +443,7 @@ the Helm chart's minimum supported 512 MiB control-plane container:
 |---|---:|---|
 | `ingress-body-bytes` | 1,048,576 | received request bytes before parsing |
 | `executions-global` / `executions-per-function` | 4,096 / 512 | logical execution owners |
-| `canonical-input-bytes-global` / `canonical-input-bytes-per-function` | 134,217,728 / 33,554,432 | canonical retained Java representation |
-| `physical-input-copy-bytes-global` / `physical-input-copy-bytes-per-function` | 67,108,864 / 16,777,216 | additional runtime/transport materializations |
+| `canonical-input-bytes-global` / `canonical-input-bytes-per-function` | 134,217,728 / 33,554,432 | retained input: JSON text for a structured payload, the Java value for a scalar |
 | `waiters-global` / `waiters-per-function` | 8,192 / 1,024 | attached synchronous callers, including replay |
 | `max-input-references` | 64 | physical/queue references to one canonical input |
 | `retained-input-max-depth` | 32 | bounded estimator depth |
@@ -460,16 +458,16 @@ fit WebFlux's integer codec limit. Invalid or overflowing configuration aborts s
 For invocation HTTP requests the ordering is: ingress/body boundary (413), JSON and request
 validation, function/rate checks, then idempotency lookup. A genuinely new request claims its key
 when present,
-canonicalizes the input, reserves execution and canonical-input ownership, and publishes the live
+prices and bounds the input, reserves execution and canonical-input ownership, and publishes the live
 record before a synchronous waiter is admitted. If waiter admission fails, that newly published
 record, key claim and both owners are rolled back before the 429 response. A replay does not create
 or publish any of those owners; it only reserves its own transient waiter before attaching to the
 existing live or archived result. Async admission has no waiter and publishes to its queue only
 after the new execution/input owners exist. Thus replay cannot bypass body validation or waiter
 capacity, but it does reuse the existing execution and canonical input. A 413 is not overload.
-Saturated execution, canonical-input, physical-input-copy or waiter capacity returns 429 with
+Saturated execution, canonical-input or waiter capacity returns 429 with
 `Retry-After: 1` and the stable body
-`{"error":"invocation_quota_exceeded","resource":"execution|input|input_copy|waiter"}`. Other
+`{"error":"invocation_quota_exceeded","resource":"execution|input|waiter"}`. Other
 key, rate or queue saturation retains its existing 429 contract.
 
 When the optional runtime-config module is enabled, its `control-plane` namespace can change the

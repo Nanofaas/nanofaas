@@ -152,7 +152,7 @@ class ResourceQuotaTest {
         ResourceQuota executionQuota = new ResourceQuota(registry, 1, 1);
         ResourceQuota inputQuota = new ResourceQuota(registry, 1, 1);
         ResourceQuota.Reservation existingInput =
-                inputQuota.tryReserve(generation, new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "held"), 1)
+                inputQuota.tryReserve(generation, new ResourceOwner(ResourceOwner.Scope.PHYSICAL_ATTEMPT, "held"), 1)
                         .orElseThrow();
 
         try (ReservationBatch batch = new ReservationBatch()) {
@@ -160,7 +160,7 @@ class ResourceQuotaTest {
             assertThat(batch.tryReserve(
                     inputQuota,
                     generation,
-                    new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "exec-1/input"),
+                    new ResourceOwner(ResourceOwner.Scope.PHYSICAL_ATTEMPT, "exec-1/input"),
                     1)).isEmpty();
         }
 

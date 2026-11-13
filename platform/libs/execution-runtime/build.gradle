@@ -22,6 +22,9 @@ dependencies {
     // issue #208). It compiled before only because :control-plane declared both itself.
     api 'com.github.ben-manes.caffeine:caffeine'
     api 'io.micrometer:micrometer-core'
+    // RawJson (common) implements a Jackson interface; compiling against its methods needs the type.
+    compileOnly 'tools.jackson.core:jackson-databind'
+    testImplementation 'tools.jackson.core:jackson-databind'
 
     testImplementation 'org.junit.jupiter:junit-jupiter:6.1.3'
     testImplementation 'org.assertj:assertj-core'

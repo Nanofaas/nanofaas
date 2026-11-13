@@ -7,7 +7,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.DispatchAttempt;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
@@ -180,9 +179,6 @@ public final class AttemptCoordinator {
                                       ExecutionRecord.PhysicalInput physicalInput, Throwable inputFailure) {
         if (physicalInput != null) physicalInput.close();
         if (directLease != null) directLease.release();
-        if (inputFailure instanceof InvocationQuotaExceededException quotaFailure) {
-            throw quotaFailure;
-        }
         task.releaseQueuedInput();
         if (inputFailure instanceof Error error) {
             completeOffloadedExecution(task.executionId(), InvocationResult.error(

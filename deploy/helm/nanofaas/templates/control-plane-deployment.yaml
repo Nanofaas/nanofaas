@@ -85,10 +85,6 @@ spec:
               value: {{ .Values.controlPlane.invocationCapacity.canonicalInputBytesGlobal | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_CANONICAL_INPUT_BYTES_PER_FUNCTION
               value: {{ .Values.controlPlane.invocationCapacity.canonicalInputBytesPerFunction | int64 | quote }}
-            - name: NANOFAAS_INVOCATION_CAPACITY_PHYSICAL_INPUT_COPY_BYTES_GLOBAL
-              value: {{ .Values.controlPlane.invocationCapacity.physicalInputCopyBytesGlobal | int64 | quote }}
-            - name: NANOFAAS_INVOCATION_CAPACITY_PHYSICAL_INPUT_COPY_BYTES_PER_FUNCTION
-              value: {{ .Values.controlPlane.invocationCapacity.physicalInputCopyBytesPerFunction | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_WAITERS_GLOBAL
               value: {{ .Values.controlPlane.invocationCapacity.waitersGlobal | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_WAITERS_PER_FUNCTION

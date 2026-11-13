@@ -91,8 +91,6 @@ controlPlane:
     executionsPerFunction: 512
     canonicalInputBytesGlobal: 134217728
     canonicalInputBytesPerFunction: 33554432
-    physicalInputCopyBytesGlobal: 67108864
-    physicalInputCopyBytesPerFunction: 16777216
     waitersGlobal: 8192
     waitersPerFunction: 1024
     maxInputReferences: 64

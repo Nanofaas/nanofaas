@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
@@ -123,18 +122,14 @@ class SchedulerEngineBackoffTest {
         assertThat(store.reservedCount()).isZero();
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void terminalCompletionFindsRetryPublishedWhilePreviousAttemptIsSubmitting(boolean backpressured) {
+    @Test
+    void terminalCompletionFindsRetryPublishedWhilePreviousAttemptIsSubmitting() {
         SchedulingTicket first = admit(1, NOW, null);
         SchedulingTicket retry = new SchedulingTicket(new TicketId("e1", 3), GENERATION,
                 2, NOW, NOW.plusSeconds(1), null);
         doAnswer(call -> {
             assertThat(engine.enqueue(new PendingEntry(retry, task))).isTrue();
             engine.removeExecution(first.id().executionId());
-            if (backpressured) {
-                throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-            }
             return null;
         }).when(dispatch).submit(any());
 
@@ -143,7 +138,7 @@ class SchedulerEngineBackoffTest {
         engine.tick();
 
         verify(dispatch).submit(any());
-        verify(dispatch, times(backpressured ? 2 : 1)).removed(task);
+        verify(dispatch).removed(task);
         assertThat(store.reservedCount()).isZero();
         clearInvocations(store);
         engine.removeExecution("e1");
@@ -283,24 +278,6 @@ class SchedulerEngineBackoffTest {
         verify(dispatch, never()).removed(any());
     }
 
-    @Test
-    void inputBackpressureAfterBackwardClockRequeuesIntoDelay() {
-        admit(1, NOW, null);
-        doAnswer(call -> {
-            clockNow.set(NOW.minusSeconds(1));
-            throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-        }).when(dispatch).submit(any());
-        engine.tick();
-        assertThat(ready).isEmpty();
-        assertThat(store.reservedCount()).isEqualTo(1);
-        doNothing().when(dispatch).submit(any());
-        engine.tick();
-        verify(dispatch).submit(any());
-        clockNow.set(NOW);
-        engine.tick();
-        verify(dispatch, times(2)).submit(any());
-        assertThat(store.reservedCount()).isZero();
-    }
     @ParameterizedTest
     @ValueSource(strings = {"ticket", "function", "execution"})
     void repeatedRemovalReleasesDelayedReservationExactlyOnce(String kind) {
@@ -317,22 +294,6 @@ class SchedulerEngineBackoffTest {
         engine.tick();
         verify(dispatch).removed(task);
         verify(dispatch, never()).submit(any());
-        assertThat(store.reservedCount()).isZero();
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"execution", "dispose"})
-    void terminalRemovalDuringSubmittingPreventsBackpressureRequeue(String kind) {
-        SchedulingTicket ticket = admit(1, NOW, null);
-        doAnswer(call -> {
-            if (kind.equals("execution")) engine.removeExecution(ticket.id().executionId());
-            else engine.dispose();
-            throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-        }).when(dispatch).submit(any());
-        engine.tick();
-        engine.tick();
-        verify(dispatch).removed(task);
-        verify(dispatch).submit(any());
         assertThat(store.reservedCount()).isZero();
     }
 
