@@ -10,13 +10,11 @@ import org.springframework.core.annotation.Order;
 import org.springframework.core.codec.AbstractDataBufferDecoder;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.AbstractJacksonDecoder;
 import org.springframework.http.codec.DecoderHttpMessageReader;
 import org.springframework.http.codec.ServerCodecConfigurer;
-import org.springframework.http.server.PathContainer;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
 import org.springframework.stereotype.Component;
@@ -24,8 +22,6 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
-import org.springframework.web.util.pattern.PathPattern;
-import org.springframework.web.util.pattern.PathPatternParser;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -42,11 +38,6 @@ import reactor.core.publisher.Mono;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public final class IngressBodyLimitWebFilter implements WebFilter {
-
-    private static final PathPattern INVOKE_PATTERN =
-            PathPatternParser.defaultInstance.parse("/v1/functions/{name}:invoke");
-    private static final PathPattern ENQUEUE_PATTERN =
-            PathPatternParser.defaultInstance.parse("/v1/functions/{name}:enqueue");
 
     private final long maxBodyBytes;
 
@@ -114,7 +105,7 @@ public final class IngressBodyLimitWebFilter implements WebFilter {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        if (!isInvocationPath(exchange)) {
+        if (!InvocationPaths.matches(exchange)) {
             return chain.filter(exchange);
         }
 
@@ -151,13 +142,6 @@ public final class IngressBodyLimitWebFilter implements WebFilter {
         return exchange.getResponse().setComplete();
     }
 
-    private static boolean isInvocationPath(ServerWebExchange exchange) {
-        if (!HttpMethod.POST.equals(exchange.getRequest().getMethod())) {
-            return false;
-        }
-        PathContainer path = exchange.getRequest().getPath().pathWithinApplication();
-        return INVOKE_PATTERN.matches(path) || ENQUEUE_PATTERN.matches(path);
-    }
 
     private static final class PayloadTooLargeException extends ResponseStatusException {
         private PayloadTooLargeException() {

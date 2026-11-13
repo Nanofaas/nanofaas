@@ -2,15 +2,11 @@ package it.unimib.datai.nanofaas.controlplane.api;
 
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.server.PathContainer;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
-import org.springframework.web.util.pattern.PathPattern;
-import org.springframework.web.util.pattern.PathPatternParser;
 import reactor.core.publisher.Mono;
 
 /**
@@ -29,11 +25,6 @@ import reactor.core.publisher.Mono;
 @Component
 public class RateLimitWebFilter implements WebFilter {
 
-    private static final PathPattern INVOKE_PATTERN =
-            PathPatternParser.defaultInstance.parse("/v1/functions/{name}:invoke");
-    private static final PathPattern ENQUEUE_PATTERN =
-            PathPatternParser.defaultInstance.parse("/v1/functions/{name}:enqueue");
-
     private final RateLimiter rateLimiter;
 
     public RateLimitWebFilter(RateLimiter rateLimiter) {
@@ -42,7 +33,7 @@ public class RateLimitWebFilter implements WebFilter {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        if (!isInvocationPath(exchange) || rateLimiter.allow()) {
+        if (!InvocationPaths.matches(exchange) || rateLimiter.allow()) {
             return chain.filter(exchange);
         }
         // Drain the body instead of leaving it unread: reactor-netty otherwise has no
@@ -58,11 +49,4 @@ public class RateLimitWebFilter implements WebFilter {
                 }));
     }
 
-    private static boolean isInvocationPath(ServerWebExchange exchange) {
-        if (!HttpMethod.POST.equals(exchange.getRequest().getMethod())) {
-            return false;
-        }
-        PathContainer path = exchange.getRequest().getPath().pathWithinApplication();
-        return INVOKE_PATTERN.matches(path) || ENQUEUE_PATTERN.matches(path);
-    }
 }

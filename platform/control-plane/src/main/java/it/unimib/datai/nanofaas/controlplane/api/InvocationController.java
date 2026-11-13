@@ -290,8 +290,14 @@ public class InvocationController {
         InvocationRequest requestWithHeaders = withCallerHeaders(request, allHeaders);
         boolean forwarded = allHeaders.keySet().stream().anyMatch("X-NanoFaaS-Offload-Hop"::equalsIgnoreCase);
         observeExternalArrival(name, forwarded);
-        return Mono.fromCallable(() -> invocationService.invokeAsync(name, requestWithHeaders, idempotencyKey, traceId))
-                .subscribeOn(Schedulers.boundedElastic())
+        Mono<InvocationResponse> admission =
+                Mono.fromCallable(() -> invocationService.invokeAsync(name, requestWithHeaders, idempotencyKey, traceId));
+        // Only a keyed admission can park, waiting on another claimant of the same key. Without
+        // a key it is a few map operations, cheaper than a thread handoff (as on the sync path).
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            admission = admission.subscribeOn(Schedulers.boundedElastic());
+        }
+        return admission
                 .map(response -> ResponseEntity.status(HttpStatus.ACCEPTED).<Object>body(response))
                 .onErrorResume(FunctionNotFoundException.class, ex ->
                         Mono.just(ResponseEntity.notFound().<Object>build()))
