@@ -116,6 +116,25 @@ should drain work before a planned upgrade when completion matters.
 fencing mechanism for node partitions, forced deletion or other Kubernetes
 replacement events.
 
+### Removed after 0.23.0: the physical input-copy quota
+
+Invocation payloads are now retained as immutable JSON text and read in place, so
+no dispatch attempt makes a copy of its input any more, and the quota that bounded
+those copies is gone. Before upgrading past 0.23.0:
+
+- remove `controlPlane.invocationCapacity.physicalInputCopyBytesGlobal` and
+  `physicalInputCopyBytesPerFunction` from your values: the schema now rejects them;
+- remove `maxPhysicalInputCopyBytesGlobal` and `maxPhysicalInputCopyBytesPerFunction`
+  from any `control-plane` runtime-config patch: they are now rejected;
+- drop dashboards and alerts on `invocation_physical_input_copy_bytes`: the metric
+  is no longer exported;
+- clients matching the 429 body `"resource":"input_copy"` will no longer see it;
+  `execution`, `input` and `waiter` are unchanged.
+
+Retained input is also counted differently: a structured payload is charged its JSON
+text size rather than the size of its in-memory object tree, roughly a ninth for
+typical documents. The same `canonical-input-bytes-*` quotas therefore admit more work.
+
 ## Listening ports
 
 `controlPlane.service.ports.http` and `.actuator` configure both the Service ports

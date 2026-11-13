@@ -81,6 +81,28 @@ class InvocationPayloadPassthroughTest {
         org.mockito.Mockito.verifyNoInteractions(service);
     }
 
+    /**
+     * Only a keyed admission can park (waiting on another claimant of the same key); without a
+     * key, admission is a few map operations and handing it to another thread costs more than
+     * the work - the same rule the synchronous path follows.
+     */
+    @Test
+    void anAsyncInvocationLeavesTheCallingThreadOnlyWhenItCarriesAnIdempotencyKey() {
+        var threads = new java.util.concurrent.ConcurrentHashMap<String, String>();
+        when(service.invokeAsync(eq("fn"), any(), any(), any())).thenAnswer(call -> {
+            threads.put(call.getArgument(2) == null ? "unkeyed" : "keyed", Thread.currentThread().getName());
+            return new InvocationResponse("id", "queued", null, null);
+        });
+
+        client.post().uri("/v1/functions/fn:enqueue").contentType(MediaType.APPLICATION_JSON).bodyValue(BODY)
+                .exchange().expectStatus().isAccepted();
+        client.post().uri("/v1/functions/fn:enqueue").header("Idempotency-Key", "k")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(BODY).exchange().expectStatus().isAccepted();
+
+        assertThat(threads.get("keyed")).startsWith("boundedElastic");
+        assertThat(threads.get("unkeyed")).doesNotStartWith("boundedElastic");
+    }
+
     @Test
     void anAsyncInvocationDoesToo() {
         when(service.invokeAsync(eq("fn"), any(), any(), any()))

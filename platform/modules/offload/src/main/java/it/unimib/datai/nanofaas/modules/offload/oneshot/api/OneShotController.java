@@ -26,8 +26,16 @@ public final class OneShotController {
     public OneShotController(OneShotOperations operations,ServiceProfileStore profiles,EpochEventStore events,ClockHealth clock) { this(operations,profiles,events,clock,true); }
     public OneShotController(OneShotOperations operations,ServiceProfileStore profiles,EpochEventStore events,ClockHealth clock,boolean enabled) { this.operations=operations;this.profiles=profiles;this.events=events;this.clock=clock;this.enabled=enabled; }
     @ModelAttribute public void requireEnabled() { if(!enabled) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND); }
+    /**
+     * Status, configuration and preparation can wait on the per-function lock a scale holds while
+     * it starts or drains containers (ManagedDeploymentCoordinator.generationOf). Off the event
+     * loop, that wait stalls only this request rather than every invocation sharing the loop.
+     */
+    private static <T> Mono<T> blocking(java.util.concurrent.Callable<T> work) {
+        return Mono.fromCallable(work).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
+    }
     private Mono<byte[]> body(Flux<DataBuffer> body) {
-        return DataBufferUtils.join(body,8*1024*1024).map(buffer->{byte[] bytes=new byte[buffer.readableByteCount()];try {buffer.read(bytes);}finally {DataBufferUtils.release(buffer);}return bytes;}).switchIfEmpty(Mono.error(new IllegalArgumentException("body missing")));
+        return DataBufferUtils.join(body,8*1024*1024).publishOn(reactor.core.scheduler.Schedulers.boundedElastic()).map(buffer->{byte[] bytes=new byte[buffer.readableByteCount()];try {buffer.read(bytes);}finally {DataBufferUtils.release(buffer);}return bytes;}).switchIfEmpty(Mono.error(new IllegalArgumentException("body missing")));
     }
     @PutMapping(value="/config",consumes="application/json")
     public Mono<OneShotConfigurationStore.Snapshot> configure(@RequestHeader("If-Match") long revision,@RequestBody Flux<DataBuffer> body) {
@@ -44,7 +52,7 @@ public final class OneShotController {
         return body(body).map(bytes->profiles.replace(id,revision,hash,bytes));
     }
     @PostMapping("/drain-and-release") public Mono<Boolean> release() { return operations.drainAndRelease(); }
-    @GetMapping("/status") public Map<String,Object> status() { return operations.status(); }
+    @GetMapping("/status") public Mono<Map<String,Object>> status() { return blocking(operations::status); }
     @GetMapping("/epochs/{epoch}/events") public Map<String,Object> events(@PathVariable("epoch") long epoch,@RequestParam(value="after",defaultValue="0") long after,@RequestParam(value="limit",defaultValue="100") int limit) {
         var entries=events.page(epoch,after,limit);return Map.of("schemaVersion",1,"contentHash",ServiceProfileStore.hash(mapper.writeValueAsBytes(entries)),"entries",entries);
     }

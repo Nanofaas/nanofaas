@@ -1,6 +1,8 @@
 package it.unimib.datai.nanofaas.modules.offload.oneshot.api;
 import org.junit.jupiter.api.Test;
 import java.time.*;
+import java.util.Map;
+import reactor.core.publisher.Mono;
 import static org.assertj.core.api.Assertions.*;
 class OneShotApiTest {
     @Test void oldClockReportCannotRefreshHealthAndHttpRejectsInvalidProfile() {
@@ -48,6 +50,43 @@ class OneShotApiTest {
                     .contentType(org.springframework.http.MediaType.APPLICATION_JSON).bodyValue(malformed).exchange().expectStatus().isBadRequest();
         }
         org.mockito.Mockito.verify(operations,org.mockito.Mockito.never()).configure(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.any());
+    }
+
+    /**
+     * Status, configuration and preparation reach ManagedDeploymentCoordinator.generationOf, which
+     * takes the per-function lock a scale holds while it starts or drains containers. On a Netty
+     * event loop that stalls every invocation sharing the loop for as long as the scale lasts.
+     */
+    @Test void endpointsThatCanWaitForAScaleLeaveTheEventLoop() throws Exception {
+        var threads=new java.util.concurrent.ConcurrentHashMap<String,String>();
+        java.util.function.Consumer<String> record=name->threads.put(name,Thread.currentThread().getName());
+        var operations=org.mockito.Mockito.mock(OneShotOperations.class);
+        org.mockito.Mockito.when(operations.status()).thenAnswer(a->{record.accept("status");return Map.of();});
+        org.mockito.Mockito.when(operations.configure(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(a->{record.accept("configure");return new OneShotConfigurationStore.Snapshot(1,a.getArgument(1));});
+        org.mockito.Mockito.when(operations.prepare(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenAnswer(a->{record.accept("prepare");return Mono.empty();});
+        org.mockito.Mockito.when(operations.prepareLogical(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(a->{record.accept("prepareLogical");return Mono.empty();});
+        org.mockito.Mockito.when(operations.startSession(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(a->{record.accept("startSession");return Map.of();});
+        var clock=new it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.ClockHealth(Duration.ofMillis(100),Duration.ofSeconds(10),Instant::now);
+        var client=org.springframework.test.web.reactive.server.WebTestClient.bindToController(new OneShotController(operations,new ServiceProfileStore(),new EpochEventStore(2),clock)).build();
+        byte[] config;try(var in=getClass().getResourceAsStream("/oneshot/config.json")) {config=in.readAllBytes();}
+        var json=org.springframework.http.MediaType.APPLICATION_JSON;
+        String base="/v1/admin/offload/one-shot";
+
+        client.get().uri(base+"/status").exchange().expectStatus().isOk();
+        client.put().uri(base+"/config").header("If-Match","0").contentType(json).bodyValue(config).exchange().expectStatus().isOk();
+        client.post().uri(base+"/epochs/1/prepare").contentType(json)
+                .bodyValue("{\"startsAt\":\"2026-10-04T10:00:00Z\",\"endsAt\":\"2026-10-04T10:00:30Z\"}").exchange();
+        client.post().uri(base+"/sessions/s/epochs/1/prepare").contentType(json)
+                .bodyValue("{\"startsAt\":\"2026-10-04T10:00:00Z\",\"endsAt\":\"2026-10-04T10:00:30Z\",\"activationDelay\":\"PT6S\"}").exchange();
+        client.post().uri(base+"/sessions/s/start").contentType(json)
+                .bodyValue("{\"firstEpoch\":1,\"activationDelay\":\"PT6S\"}").exchange();
+
+        assertThat(threads.keySet()).containsExactlyInAnyOrder("status","configure","prepare","prepareLogical","startSession");
+        assertThat(threads.values()).allSatisfy(thread->assertThat(thread).startsWith("boundedElastic"));
     }
 
     @Test void boundedEventsRemainPagedAndCensored() {
