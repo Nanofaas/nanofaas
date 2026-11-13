@@ -1,22 +1,17 @@
 package it.unimib.datai.nanofaas.controlplane.input;
 
-import java.lang.reflect.Array;
-import java.util.IdentityHashMap;
-import java.util.OptionalLong;
+import it.unimib.datai.nanofaas.common.model.RawJson;
 
 /**
- * Conservatively prices a retained invocation representation without reflection or an
- * unbounded object-graph walk. This is an accounting policy, not a whole-heap measurement:
- * allocator padding, framework buffers and transport copies remain outside this estimate.
+ * Prices what an invocation retains for its input, and bounds its shape.
  *
- * <p>Only arrays containing JSON-like scalar values are accepted as containers. Collection APIs
- * expose logical membership but not backing capacity, so even JDK lists and maps are rejected:
- * their retained bytes cannot be conservatively bounded from {@code size()}. Callers must convert
- * them to an explicitly bounded array representation before admission and retain only that
- * representation.
+ * <p>A structured payload reaches the control plane as {@link RawJson}: JSON kept as text, whose
+ * retained size is its bytes and whose shape was counted once, when it was read. A scalar is
+ * priced by its Java representation. Nothing else is accepted: a collection or any other object
+ * has no size that can be bounded from the outside, and no caller that produces one.
  *
- * <p>The estimator keeps no state between calls. Shared references and cycles are identified by
- * identity during one estimate and charged as references after their first visit.
+ * <p>This is an accounting policy, not a whole-heap measurement: allocator padding, framework
+ * buffers and transport copies remain outside it.
  */
 public final class RetainedInputEstimator {
 
@@ -24,6 +19,8 @@ public final class RetainedInputEstimator {
     private static final long OBJECT_HEADER_BYTES = 16;
     private static final long ARRAY_HEADER_BYTES = 24;
     private static final long BOXED_SCALAR_BYTES = 24;
+    /** The holder object (header, three counts, array reference) plus its byte array's header. */
+    private static final long RAW_JSON_OVERHEAD_BYTES = 64;
 
     private final Limits limits;
 
@@ -32,9 +29,30 @@ public final class RetainedInputEstimator {
     }
 
     public Result estimate(Object input) {
-        State state = new State(limits);
-        Rejection rejection = state.visit(input, 0);
-        return rejection == null ? new Measured(state.bytes) : new Rejected(rejection);
+        long bytes;
+        if (input == null) {
+            bytes = REFERENCE_BYTES;
+        } else if (input instanceof String string) {
+            bytes = OBJECT_HEADER_BYTES + ARRAY_HEADER_BYTES + (long) string.length() * Character.BYTES;
+        } else if (input instanceof Boolean || input instanceof Byte || input instanceof Short
+                || input instanceof Integer || input instanceof Long || input instanceof Float
+                || input instanceof Double || input instanceof Character) {
+            bytes = BOXED_SCALAR_BYTES;
+        } else if (input instanceof RawJson raw) {
+            if (raw.depth() > limits.maxDepth()) {
+                return new Rejected(Rejection.DEPTH_LIMIT);
+            }
+            if (raw.width() > limits.maxContainerEntries()) {
+                return new Rejected(Rejection.CONTAINER_WIDTH_LIMIT);
+            }
+            if (raw.nodes() > limits.maxVisitedNodes()) {
+                return new Rejected(Rejection.NODE_LIMIT);
+            }
+            bytes = RAW_JSON_OVERHEAD_BYTES + raw.length();
+        } else {
+            return new Rejected(Rejection.UNSUPPORTED_REPRESENTATION);
+        }
+        return bytes > limits.maxRetainedBytes() ? new Rejected(Rejection.BYTE_LIMIT) : new Measured(bytes);
     }
 
     public record Limits(int maxDepth, int maxContainerEntries, int maxVisitedNodes,
@@ -72,113 +90,5 @@ public final class RetainedInputEstimator {
         NODE_LIMIT,
         BYTE_LIMIT,
         UNSUPPORTED_REPRESENTATION
-    }
-
-    static OptionalLong addWithinLimit(long current, long increment, long limit) {
-        if (current < 0 || increment < 0 || limit < 0 || current > limit
-                || increment > limit - current) {
-            return OptionalLong.empty();
-        }
-        return OptionalLong.of(current + increment);
-    }
-
-    private static final class State {
-        private final Limits limits;
-        private final IdentityHashMap<Object, Boolean> visited = new IdentityHashMap<>();
-        private int nodes;
-        private long bytes;
-
-        private State(Limits limits) {
-            this.limits = limits;
-        }
-
-        private Rejection visit(Object value, int depth) {
-            if (depth > limits.maxDepth()) {
-                return Rejection.DEPTH_LIMIT;
-            }
-            if (++nodes > limits.maxVisitedNodes()) {
-                return Rejection.NODE_LIMIT;
-            }
-            if (value == null) {
-                return add(REFERENCE_BYTES);
-            }
-            if (value instanceof String string) {
-                Rejection rejection = add(OBJECT_HEADER_BYTES + ARRAY_HEADER_BYTES);
-                return rejection != null ? rejection : addProduct(string.length(), Character.BYTES);
-            }
-            if (value instanceof Boolean || value instanceof Byte || value instanceof Short
-                    || value instanceof Integer || value instanceof Long || value instanceof Float
-                    || value instanceof Double || value instanceof Character) {
-                return add(BOXED_SCALAR_BYTES);
-            }
-
-            Class<?> type = value.getClass();
-            if (type.isArray()) {
-                return visitArray(value, type.getComponentType(), depth);
-            }
-            return Rejection.UNSUPPORTED_REPRESENTATION;
-        }
-
-        private Rejection visitArray(Object array, Class<?> componentType, int depth) {
-            if (visited.put(array, Boolean.TRUE) != null) {
-                return add(REFERENCE_BYTES);
-            }
-            int length = Array.getLength(array);
-            if (length > limits.maxContainerEntries()) {
-                return Rejection.CONTAINER_WIDTH_LIMIT;
-            }
-            Rejection rejection = add(ARRAY_HEADER_BYTES);
-            if (rejection != null) {
-                return rejection;
-            }
-            if (componentType.isPrimitive()) {
-                return addProduct(length, primitiveBytes(componentType));
-            }
-            rejection = addProduct(length, REFERENCE_BYTES);
-            if (rejection != null) {
-                return rejection;
-            }
-            for (int index = 0; index < length; index++) {
-                rejection = visit(Array.get(array, index), depth + 1);
-                if (rejection != null) {
-                    return rejection;
-                }
-            }
-            return null;
-        }
-
-        private Rejection addProduct(long left, long right) {
-            OptionalLong product = multiplyWithinLimit(left, right, limits.maxRetainedBytes());
-            return product.isPresent() ? add(product.getAsLong()) : Rejection.BYTE_LIMIT;
-        }
-
-        private Rejection add(long increment) {
-            OptionalLong next = addWithinLimit(bytes, increment, limits.maxRetainedBytes());
-            if (next.isEmpty()) {
-                return Rejection.BYTE_LIMIT;
-            }
-            bytes = next.getAsLong();
-            return null;
-        }
-
-        private static int primitiveBytes(Class<?> type) {
-            if (type == boolean.class || type == byte.class) {
-                return 1;
-            }
-            if (type == char.class || type == short.class) {
-                return 2;
-            }
-            if (type == int.class || type == float.class) {
-                return 4;
-            }
-            return 8;
-        }
-
-        private static OptionalLong multiplyWithinLimit(long left, long right, long limit) {
-            if (left < 0 || right < 0 || limit < 0 || (left != 0 && right > limit / left)) {
-                return OptionalLong.empty();
-            }
-            return OptionalLong.of(left * right);
-        }
     }
 }

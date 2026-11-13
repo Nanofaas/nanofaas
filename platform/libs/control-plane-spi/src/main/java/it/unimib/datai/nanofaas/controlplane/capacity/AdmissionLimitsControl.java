@@ -22,7 +22,6 @@ public interface AdmissionLimitsControl {
     record Snapshot(int rateMaxPerSecond,
                     Pair executions,
                     Pair canonicalInputBytes,
-                    Pair physicalInputCopyBytes,
                     Pair waiters) {
     }
 

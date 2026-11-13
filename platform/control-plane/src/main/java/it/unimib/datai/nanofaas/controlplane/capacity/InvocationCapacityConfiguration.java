@@ -35,7 +35,6 @@ class InvocationCapacityConfiguration {
                 generations,
                 properties.getExecutionsGlobal(), properties.getExecutionsPerFunction(),
                 properties.getCanonicalInputBytesGlobal(), properties.getCanonicalInputBytesPerFunction(),
-                properties.getPhysicalInputCopyBytesGlobal(), properties.getPhysicalInputCopyBytesPerFunction(),
                 properties.getMaxInputReferences());
     }
 

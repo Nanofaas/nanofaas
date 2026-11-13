@@ -64,8 +64,8 @@ class ExternalDispatcherTest {
         var original=org.springframework.web.reactive.function.client.ClientResponse.create(org.springframework.http.HttpStatus.ACCEPTED)
                 .header("Content-Type","text/plain").header("X-NanoFaaS-Function-Status","true").body(body).build();
         var response=org.mockito.Mockito.spy(original);
-        org.mockito.Mockito.doAnswer(invocation->original.bodyToMono(String.class)
-                .doOnSubscribe(subscription->subscriptions.incrementAndGet())).when(response).bodyToMono(String.class);
+        org.mockito.Mockito.doAnswer(invocation->original.bodyToMono(byte[].class)
+                .doOnSubscribe(subscription->subscriptions.incrementAndGet())).when(response).bodyToMono(byte[].class);
         var client=WebClient.builder().exchangeFunction(request->reactor.core.publisher.Mono.just(response)).build();
         try(var server=new MockWebServer()) {
             server.start();
@@ -84,7 +84,7 @@ class ExternalDispatcherTest {
             server.start();
             var result=new ExternalDispatcher(WebClient.create()).dispatch(taskFor(server)).get(5,TimeUnit.SECONDS).result();
             assertTrue(result.success());
-            Object expected=switch(type) { case "hello" -> "hello";case "object" -> Map.of("answer",42);case "number" -> 42;case "boolean" -> true;default -> null; };
+            Object expected=switch(type) { case "hello" -> "hello";case "object" -> it.unimib.datai.nanofaas.common.model.RawJson.of(wire.getBytes(java.nio.charset.StandardCharsets.UTF_8),4,1,3);case "number" -> 42;case "boolean" -> true;default -> null; };
             assertEquals(expected,result.output());assertEquals(202,result.statusCode());
             assertEquals("/answer",result.headers().get("Location"));assertEquals("base64",result.encoding());
             assertEquals(1,server.getRequestCount());

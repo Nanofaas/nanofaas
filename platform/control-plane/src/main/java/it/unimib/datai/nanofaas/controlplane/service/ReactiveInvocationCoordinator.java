@@ -160,7 +160,7 @@ public final class ReactiveInvocationCoordinator {
                     // record ERROR while leaving it un-settled (P05). completeExecution is a no-op
                     // on an already-settled record, so the waiter still gets the error response.
                     completionHandler.completeExecution(executionRecord.executionId(), failure);
-                    return Mono.just(new SyncInvocation(responseMapper.toResponse(executionRecord, failure), offloadedTarget.get()));
+                    return Mono.just(new SyncInvocation(responseMapper.toResponse(executionRecord, failure), offloadedTarget.get(), executionRecord.executionNode()));
                 });
     }
 
@@ -173,16 +173,7 @@ public final class ReactiveInvocationCoordinator {
                        FunctionSpec spec,
                        OffloadContext context,
                        AtomicReference<String> offloadedTarget) {
-        it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute route;
-        if (offloadGateway.hasPlannedRouting(spec)) {
-            // Calibration hashes describe dispatch JSON, not the retained array tree.
-            // Account for this temporary representation through the existing input lease.
-            try (var input = executionRecord.openPhysicalInput(executionRecord.task())) {
-                route = offloadGateway.planRoute(input.task(), context);
-            }
-        } else {
-            route = offloadGateway.planRoute(executionRecord.task(), context);
-        }
+        var route = offloadGateway.planRoute(executionRecord.task(), context);
         // Existing external gateways and Mockito mocks may have no planned decision.
         if(route!=null && route.kind()!=it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LEGACY) {
             executionRecord.pinPlannedRoute(route);

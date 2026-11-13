@@ -125,7 +125,7 @@ components:
           description: |
             Partial namespace patch. The `control-plane` namespace supports
             `rateMaxPerSecond` plus the global/per-function execution,
-            canonical-input, physical-input-copy and waiter limits. Reducing a
+            canonical-input and waiter limits. Reducing a
             limit below occupancy never evicts live work; new reservations pause
             until usage drains below the replacement limit.
 

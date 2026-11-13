@@ -25,7 +25,7 @@ class InvocationCapacityConfigurationTest {
     }
 
     @Test
-    void configuredExecutionCanonicalPhysicalAndWaiterOwnersAllDrainToZero() {
+    void configuredExecutionCanonicalAndWaiterOwnersAllDrainToZero() {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             FunctionCapacityRegistry generations = context.getBean(FunctionCapacityRegistry.class);
@@ -36,18 +36,14 @@ class InvocationCapacityConfigurationTest {
 
             InvocationCapacity.Admission admission = invocations.reserve("fn", "e1", 128);
             admission.publish();
-            ResourceQuota.Reservation copy = invocations.reserveInputCopy(
-                    generation, new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "e1/copy"), 128);
             WaiterCapacity.Waiter waiter = waiters.reserve(generation, "e1");
 
             waiter.close();
-            copy.close();
             admission.logicalExecution().close();
             admission.canonicalInput().close();
 
             assertThat(invocations.executionReservedGlobally()).isZero();
             assertThat(invocations.inputReservedGlobally()).isZero();
-            assertThat(invocations.physicalInputCopyReservedGlobally()).isZero();
             assertThat(waiters.reservedGlobally()).isZero();
         });
     }

@@ -20,6 +20,8 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class InvocationService {
@@ -67,13 +69,13 @@ public class InvocationService {
                                                    Integer timeoutOverrideMs,
                                                    OffloadContext offloadContext) {
         record Prepared(FunctionSpec spec, InvocationExecutionFactory.ExecutionLookup lookup) {}
-        Mono<Prepared> prepared = Mono.fromCallable(() -> {
+        java.util.concurrent.Callable<Prepared> prepare = () -> {
             FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
             refuseEarlyIfQueueFull(functionName, spec, idempotencyKey, InvocationKind.SYNC);
             return new Prepared(spec,
                     executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId,
                             InvocationKind.SYNC));
-        });
+        };
         // Hop only when there is something to hop for. createOrReuseExecution parks
         // only inside its idempotency loop, and returns on its first branch without
         // touching a lock when there is no key; the rest of the block is a rate
@@ -84,10 +86,37 @@ public class InvocationService {
         //
         // Requests that will be refused paid it too, which is the part worth
         // removing: deciding a 429 should not need a second thread.
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            prepared = prepared.subscribeOn(Schedulers.boundedElastic());
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return Mono.fromCallable(prepare)
+                    .flatMap(p -> reactiveCoordinator.invoke(p.lookup(), p.spec(), timeoutOverrideMs, offloadContext));
         }
-        return prepared.flatMap(p -> reactiveCoordinator.invoke(p.lookup(), p.spec(), timeoutOverrideMs, offloadContext));
+        // A keyed execution is prepared on another thread, so its caller can go away in between.
+        // The value is then dropped unseen (Reactor neither emits it nor reports it discarded), and the
+        // coordinator - where a new execution is otherwise published or abandoned - never runs:
+        // the key claim would stay pending until max-lifetime, with every duplicate of that key
+        // polling for it. Whoever takes the value out of `owned` owns its fate: the coordinator,
+        // or the cancellation, which abandons it.
+        AtomicReference<Prepared> owned = new AtomicReference<>();
+        AtomicBoolean cancelled = new AtomicBoolean();
+        return Mono.fromCallable(() -> {
+                    Prepared p = prepare.call();
+                    owned.set(p);
+                    if (cancelled.get() && owned.compareAndSet(p, null)) {
+                        p.lookup().abandonAdmission();
+                    }
+                    return p;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnCancel(() -> {
+                    cancelled.set(true);
+                    Prepared dropped = owned.getAndSet(null);
+                    if (dropped != null) {
+                        dropped.lookup().abandonAdmission();
+                    }
+                })
+                .flatMap(p -> owned.compareAndSet(p, null)
+                        ? reactiveCoordinator.invoke(p.lookup(), p.spec(), timeoutOverrideMs, offloadContext)
+                        : Mono.empty());
     }
 
     public InvocationResponse invokeAsync(String functionName,

@@ -38,7 +38,6 @@ public final class HotAdmissionLimits implements AdmissionLimitsControl {
                 rateLimiter.getMaxPerSecond(),
                 pair(invocation.executions()),
                 pair(invocation.canonicalInputBytes()),
-                pair(invocation.physicalInputCopyBytes()),
                 pair(waiters));
     }
 
@@ -48,8 +47,7 @@ public final class HotAdmissionLimits implements AdmissionLimitsControl {
         rateLimiter.setMaxPerSecond(limits.rateMaxPerSecond());
         invocationCapacity.updateLimits(new InvocationCapacity.Limits(
                 quota(limits.executions()),
-                quota(limits.canonicalInputBytes()),
-                quota(limits.physicalInputCopyBytes())));
+                quota(limits.canonicalInputBytes())));
         waiterCapacity.updateLimits(limits.waiters().global(), limits.waiters().perFunction());
     }
 

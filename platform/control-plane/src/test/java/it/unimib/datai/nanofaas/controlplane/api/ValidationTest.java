@@ -187,6 +187,20 @@ class ValidationTest {
     }
 
     @Test
+    void invoke_withTimeoutOverrideOutsideTheDocumentedRange_returns400() {
+        for (String timeout : new String[]{"0", "-5", "300001"}) {
+            webClient.post()
+                    .uri("/v1/functions/fn:invoke")
+                    .header("X-Timeout-Ms", timeout)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(new InvocationRequest("payload", null))
+                    .exchange()
+                    .expectStatus().isBadRequest();
+        }
+        org.mockito.Mockito.verifyNoInteractions(invocationService);
+    }
+
+    @Test
     void invoke_withNullInput_returns400() {
         InvocationRequest request = new InvocationRequest(null, null);
 

@@ -41,6 +41,38 @@ class FunctionControllerTest {
     @MockitoBean
     private FunctionService functionService;
 
+    /**
+     * Registering, scaling and removing a function start and drain containers: seconds of blocking
+     * work. On a Netty event loop that stalls every invocation sharing the loop.
+     */
+    @Test
+    void lifecycleOperationsLeaveTheEventLoop() {
+        var threads = new java.util.concurrent.ConcurrentHashMap<String, String>();
+        org.mockito.stubbing.Answer<Object> record = call -> {
+            threads.put(call.getMethod().getName(), Thread.currentThread().getName());
+            return java.util.Optional.empty();
+        };
+        when(functionService.register(org.mockito.ArgumentMatchers.any())).thenAnswer(record);
+        when(functionService.update(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any())).thenAnswer(record);
+        when(functionService.setReplicas(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(record);
+        when(functionService.getReplicaStatus(org.mockito.ArgumentMatchers.anyString())).thenAnswer(record);
+        when(functionService.remove(org.mockito.ArgumentMatchers.anyString())).thenAnswer(record);
+
+        webClient.post().uri("/v1/functions").contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .bodyValue("{\"name\":\"fn\",\"image\":\"img\"}").exchange().expectStatus().isEqualTo(409);
+        webClient.patch().uri("/v1/functions/fn").contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .bodyValue("{\"concurrency\":2}").exchange().expectStatus().isNotFound();
+        webClient.put().uri("/v1/functions/fn/replicas").contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .bodyValue("{\"replicas\":2}").exchange().expectStatus().isNotFound();
+        webClient.get().uri("/v1/functions/fn/replicas").exchange().expectStatus().isNotFound();
+        webClient.delete().uri("/v1/functions/fn").exchange().expectStatus().isNotFound();
+
+        org.assertj.core.api.Assertions.assertThat(threads.keySet())
+                .containsExactlyInAnyOrder("register", "update", "setReplicas", "getReplicaStatus", "remove");
+        org.assertj.core.api.Assertions.assertThat(threads.values())
+                .allSatisfy(thread -> org.assertj.core.api.Assertions.assertThat(thread).startsWith("boundedElastic"));
+    }
+
     @Test
     void list_returnsRegisteredFunctions() {
         when(functionService.listRegistered()).thenReturn(List.of(

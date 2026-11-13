@@ -11,6 +11,8 @@ import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collection;
@@ -39,20 +41,22 @@ public class FunctionController {
     }
 
     @PostMapping
-    public ResponseEntity<Object> register(@Valid @RequestBody FunctionSpec spec) {
-        try {
-            return functionService.register(spec)
-                    .map(registered -> ResponseEntity.status(HttpStatus.CREATED).<Object>body(FunctionResponse.from(registered)))
-                    .orElse(ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body(
-                            "FUNCTION_ALREADY_EXISTS", "Function already exists")));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
-        } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
-        } catch (IllegalStateException ex) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
-        }
+    public Mono<ResponseEntity<Object>> register(@Valid @RequestBody FunctionSpec spec) {
+        return blocking(() -> {
+            try {
+                return functionService.register(spec)
+                        .map(registered -> ResponseEntity.status(HttpStatus.CREATED).<Object>body(FunctionResponse.from(registered)))
+                        .orElse(ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body(
+                                "FUNCTION_ALREADY_EXISTS", "Function already exists")));
+            } catch (IllegalArgumentException ex) {
+                return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
+            } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
+            } catch (IllegalStateException ex) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
+            }
+        });
     }
 
     @GetMapping("/{name}")
@@ -66,75 +70,92 @@ public class FunctionController {
     }
 
     @PatchMapping("/{name}")
-    public ResponseEntity<Object> update(
+    public Mono<ResponseEntity<Object>> update(
             @PathVariable @NotBlank(message = "Function name is required") String name,
             @Valid @RequestBody FunctionUpdateRequest request) {
-        try {
-            Optional<RegisteredFunction> updated = functionService.update(name, request);
-            if (updated.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
-                        ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
+        return blocking(() -> {
+            try {
+                Optional<RegisteredFunction> updated = functionService.update(name, request);
+                if (updated.isEmpty()) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                            ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
+                }
+                return ResponseEntity.status(HttpStatus.OK).<Object>body(FunctionResponse.from(updated.get()));
+            } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
+            } catch (IllegalArgumentException ex) {
+                return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
             }
-            return ResponseEntity.status(HttpStatus.OK).<Object>body(FunctionResponse.from(updated.get()));
-        } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
-        }
+        });
     }
 
     @PutMapping("/{name}/replicas")
-    public ResponseEntity<Object> setReplicas(
+    public Mono<ResponseEntity<Object>> setReplicas(
             @PathVariable @NotBlank(message = "Function name is required") String name,
             @Valid @RequestBody ReplicaRequest request) {
-        try {
-            Optional<Integer> replicas = functionService.setReplicas(name, request.replicas());
-            if (replicas.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
-                        ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
+        return blocking(() -> {
+            try {
+                Optional<Integer> replicas = functionService.setReplicas(name, request.replicas());
+                if (replicas.isEmpty()) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                            ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
+                }
+                return ResponseEntity.status(HttpStatus.OK).<Object>body(new ReplicaResponse(name, replicas.get()));
+            } catch (IllegalArgumentException ex) {
+                return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
+            } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
+            } catch (IllegalStateException ex) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
             }
-            return ResponseEntity.status(HttpStatus.OK).<Object>body(new ReplicaResponse(name, replicas.get()));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
-        } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
-        } catch (IllegalStateException ex) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
-        }
+        });
     }
 
     @GetMapping("/{name}/replicas")
-    public ResponseEntity<Object> getReplicas(
+    public Mono<ResponseEntity<Object>> getReplicas(
             @PathVariable @NotBlank(message = "Function name is required") String name) {
-        try {
-            Optional<ReplicaStatus> status = functionService.getReplicaStatus(name);
-            if (status.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
-                        ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
+        return blocking(() -> {
+            try {
+                Optional<ReplicaStatus> status = functionService.getReplicaStatus(name);
+                if (status.isEmpty()) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                            ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
+                }
+                return ResponseEntity.status(HttpStatus.OK).<Object>body(new ReplicaStatusResponse(
+                        name,
+                        status.get().desiredReplicas(),
+                        status.get().readyReplicas()
+                ));
+            } catch (IllegalArgumentException ex) {
+                return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
+            } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
+            } catch (IllegalStateException ex) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
             }
-            return ResponseEntity.status(HttpStatus.OK).<Object>body(new ReplicaStatusResponse(
-                    name,
-                    status.get().desiredReplicas(),
-                    status.get().readyReplicas()
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
-        } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
-        } catch (IllegalStateException ex) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
-        }
+        });
     }
 
     @DeleteMapping("/{name}")
-    public ResponseEntity<Object> delete(
+    public Mono<ResponseEntity<Object>> delete(
             @PathVariable @NotBlank(message = "Function name is required") String name) {
-        if (functionService.remove(name).isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
-                        ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
-        }
-        return ResponseEntity.noContent().build();
+        return blocking(() -> {
+            if (functionService.remove(name).isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                            ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
+            }
+            return ResponseEntity.noContent().build();
+        });
+    }
+
+    /**
+     * Lifecycle operations block for as long as the provider takes to start, probe or drain
+     * replicas - seconds. A controller method returning a plain value runs on the Netty event
+     * loop, where that stalls every invocation sharing the loop.
+     */
+    private static Mono<ResponseEntity<Object>> blocking(java.util.concurrent.Callable<ResponseEntity<Object>> work) {
+        return Mono.fromCallable(work).subscribeOn(Schedulers.boundedElastic());
     }
 }

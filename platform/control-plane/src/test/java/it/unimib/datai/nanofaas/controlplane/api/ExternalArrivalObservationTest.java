@@ -58,10 +58,21 @@ class ExternalArrivalObservationTest {
                         ? Mono.error(new IllegalStateException("internal failure"))
                         : Mono.just(SyncInvocation.local(new InvocationResponse("id", "success", "out", null)))));
         new InvocationController(service, events::add, capacity).invokeSync("f",
-                new InvocationRequest("payload", Map.of()), null, null, null, null, null, null,
+                "{\"input\":\"payload\"}".getBytes(), null, null, null, null, null, null,
                 new org.springframework.util.LinkedMultiValueMap<>()).retry(1).block();
         assertThat(attempts.get()).isEqualTo(2);
         assertThat(events).hasSize(1);
+    }
+    @Test void arrivalIdentityDoesNotDrawFromSecureRandomOnTheInvocationPath() {
+        setupFunction();
+        try (var uuid = mockStatic(java.util.UUID.class, CALLS_REAL_METHODS)) {
+            new InvocationController(service, events::add, capacity).invokeSync("f",
+                    "{\"input\":\"payload\"}".getBytes(), null, null, null, null, null, null,
+                    new org.springframework.util.LinkedMultiValueMap<>()).block();
+            uuid.verify(java.util.UUID::randomUUID, never());
+        }
+        assertThat(events).hasSize(1);
+        assertThat(events.getFirst().requestId()).isNotBlank();
     }
     @Test void asyncHttpArrivalsAreObservedAndForwardedArrivalsExcluded() {
         setupFunction();

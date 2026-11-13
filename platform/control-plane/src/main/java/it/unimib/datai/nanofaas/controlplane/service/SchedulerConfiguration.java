@@ -5,7 +5,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.CapacityView;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.config.SchedulerProperties;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
@@ -393,20 +392,11 @@ public class SchedulerConfiguration {
             return capacityRegistry.tryAcquireLease(ticket.generation(), held -> wake.run());
         }
 
-        /**
-         * Settled exactly at the engine's own {@code finishSubmit}/{@code requeue} boundary.
-         * {@code SchedulerEngine.submit} takes the requeue branch precisely when this call throws
-         * {@code InvocationQuotaExceededException} (input backpressure) — any other outcome,
-         * including a throw of anything else, is the {@code finishSubmit} branch.
-         */
+        /** Settled exactly at the engine's own {@code finishSubmit} boundary, whatever the outcome. */
         @Override
         public void submit(InvocationTask task) {
             try {
                 invocationService.dispatch(task);
-            } catch (InvocationQuotaExceededException requeue) {
-                // The engine requeues this ticket; it still occupies its reservation, so this
-                // attempt does not feed the wait estimator.
-                throw requeue;
             } catch (RuntimeException | Error other) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 settle(task);
                 throw other;

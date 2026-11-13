@@ -65,7 +65,8 @@ class QueuedAllocationTransitionTest {
             var metrics = new Metrics(new SimpleMeterRegistry());
             var runtime = TestWaiterCapacity.runtime(new ExecutionStore(), new IdempotencyStore(), metrics, "f");
             var lookup = runtime.factory().createOrReuseExecution("f", spec,
-                    new InvocationRequest(Map.of("value", 1), Map.of()), null, null, InvocationKind.SYNC);
+                    new InvocationRequest(it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read(
+                            "{\"value\":1}".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of()), null, null, InvocationKind.SYNC);
             var gateway = mock(OffloadGateway.class);
             when(gateway.planRoute(any(), any())).thenReturn(PlannedInvocationRoute.local("edge"));
             var queue = mock(SyncQueueGateway.class);

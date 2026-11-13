@@ -12,38 +12,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RetainedInputEstimatorTest {
 
     @Test
-    void flatExplicitArrayRepresentationGetsAConservativePositiveMeasurement() {
+    void scalarsArePricedByTheirJavaRepresentation() {
         RetainedInputEstimator estimator = estimator(4, 8, 32, 10_000);
-        Object[] input = {"enabled", true, "name", "café", "values",
-                new Object[]{1, 2L, null}};
 
-        RetainedInputEstimator.Result result = estimator.estimate(input);
-
-        assertThat(result).isInstanceOf(RetainedInputEstimator.Measured.class);
-        assertThat(((RetainedInputEstimator.Measured) result).retainedBytes()).isGreaterThan(13L);
+        assertThat(estimator.estimate("café")).isEqualTo(new RetainedInputEstimator.Measured(48));
+        assertThat(estimator.estimate(42L)).isEqualTo(new RetainedInputEstimator.Measured(24));
+        assertThat(estimator.estimate(true)).isEqualTo(new RetainedInputEstimator.Measured(24));
+        assertThat(estimator.estimate(null)).isEqualTo(new RetainedInputEstimator.Measured(8));
     }
 
     @Test
-    void shapeBeyondTheDepthBoundIsRejectedInsteadOfAssignedAFrontierToken() {
-        RetainedInputEstimator estimator = estimator(3, 8, 32, 10_000);
-        Object input = "leaf";
-        for (int depth = 0; depth < 4; depth++) {
-            input = new Object[]{input};
-        }
-
-        assertThat(estimator.estimate(input))
-                .isEqualTo(new RetainedInputEstimator.Rejected(
-                        RetainedInputEstimator.Rejection.DEPTH_LIMIT));
-    }
-
-    @Test
-    void wideExplicitArrayIsRejectedAtTheConfiguredWidth() {
-        Object[] input = new Object[9];
+    void anArrayIsNotARepresentationEither() {
         RetainedInputEstimator estimator = estimator(4, 8, 32, 10_000);
 
-        assertThat(estimator.estimate(input))
+        assertThat(estimator.estimate(new Object[]{"a", 1}))
                 .isEqualTo(new RetainedInputEstimator.Rejected(
-                        RetainedInputEstimator.Rejection.CONTAINER_WIDTH_LIMIT));
+                        RetainedInputEstimator.Rejection.UNSUPPORTED_REPRESENTATION));
     }
 
     @Test
@@ -53,17 +37,6 @@ class RetainedInputEstimatorTest {
         assertThat(estimator.estimate("x".repeat(128)))
                 .isEqualTo(new RetainedInputEstimator.Rejected(
                         RetainedInputEstimator.Rejection.BYTE_LIMIT));
-        assertThat(RetainedInputEstimator.addWithinLimit(Long.MAX_VALUE - 2, 3, Long.MAX_VALUE))
-                .isEmpty();
-    }
-
-    @Test
-    void nodeLimitBoundsTraversalEvenWhenDepthAndWidthStillAllowTheShape() {
-        RetainedInputEstimator estimator = estimator(8, 8, 4, 10_000);
-
-        assertThat(estimator.estimate(new Object[]{1, 2, 3, 4}))
-                .isEqualTo(new RetainedInputEstimator.Rejected(
-                        RetainedInputEstimator.Rejection.NODE_LIMIT));
     }
 
     @Test
@@ -124,7 +97,7 @@ class RetainedInputEstimatorTest {
                     .isInstanceOf(RetainedInputEstimator.Rejected.class);
         }
 
-        assertThat(estimator.estimate(new Object[]{"accepted", "after rejections"}))
+        assertThat(estimator.estimate("accepted after rejections"))
                 .isInstanceOf(RetainedInputEstimator.Measured.class);
     }
 

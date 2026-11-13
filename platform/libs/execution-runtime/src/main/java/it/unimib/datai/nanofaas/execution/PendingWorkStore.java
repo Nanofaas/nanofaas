@@ -100,11 +100,6 @@ public final class PendingWorkStore {
         releaseReservation(entries.remove(id));
     }
 
-    /** Clears the submitting state, leaving the entry pending for another submit attempt. */
-    public void requeueSubmit(TicketId id) {
-        submitting.remove(id);
-    }
-
     /**
      * Removes a pending or claimed ticket, returning its entry so the caller can clean up
      * outside the gate. A ticket already in {@code submitting} is left untouched and {@code null}
@@ -142,7 +137,7 @@ public final class PendingWorkStore {
         reserved--; // NOSONAR (java:S3078): single writer under the engine gate; volatile only publishes to gauges
     }
 
-    /** All reservations, including provisional claims and submits that may requeue. */
+    /** All reservations, including provisional claims and submits in progress. */
     public List<PendingEntry> snapshotAll() {
         return List.copyOf(entries.values());
     }

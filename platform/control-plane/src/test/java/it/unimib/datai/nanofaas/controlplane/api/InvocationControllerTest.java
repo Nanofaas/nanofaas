@@ -269,7 +269,6 @@ class InvocationControllerTest {
     @CsvSource({
             "EXECUTION,execution",
             "INPUT,input",
-            "INPUT_COPY,input_copy",
             "WAITER,waiter"
     })
     void invokeSync_quotaRefusalPrecedesGenericQueueMapping(
@@ -289,11 +288,6 @@ class InvocationControllerTest {
                 .jsonPath("$.resource").isEqualTo(wireResource);
     }
 
-    @Test
-    void physicalInputCopyHasADistinctQuotaResource() {
-        assertThatCode(() -> InvocationQuotaExceededException.Resource.valueOf("INPUT_COPY"))
-                .doesNotThrowAnyException();
-    }
 
     @Test
     void invokeSync_functionDecidedStatusCode_usedAsRealHttpStatus() {
@@ -491,7 +485,7 @@ class InvocationControllerTest {
 
         ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
         verify(invocationService).invokeAsync(eq("echo"), captor.capture(), eq("idem-1"), eq("trace-1"));
-        assertThat(captor.getValue().input()).isEqualTo("payload");
+        assertThat(captor.getValue().input()).hasToString("\"payload\"");
         assertThat(captor.getValue().metadata()).isEqualTo(Map.of("x", "y"));
     }
 
@@ -499,7 +493,6 @@ class InvocationControllerTest {
     @CsvSource({
             "EXECUTION,execution",
             "INPUT,input",
-            "INPUT_COPY,input_copy",
             "WAITER,waiter"
     })
     void invokeAsync_quotaRefusalPrecedesGenericQueueMapping(

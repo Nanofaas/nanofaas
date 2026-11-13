@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.containerdeployment;
 
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedInvocationTarget;
 import org.junit.jupiter.api.Test;
 import java.net.URI;
 import java.time.Duration;
@@ -9,6 +10,153 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.*;
 
 class ManagedReplicaPoolTest {
+    /** A runtime that keeps answering ACTIVE for an execution until told its handler was released. */
+    private static final class LaggingRelease implements RuntimeExecutionProbe {
+        final java.util.concurrent.atomic.AtomicInteger activeAnswersLeft = new java.util.concurrent.atomic.AtomicInteger(Integer.MAX_VALUE);
+        public String eligibleIncarnation(URI backend) { return "inc"; }
+        public ExecutionObservation observe(URI backend, String id) {
+            return new ExecutionObservation(activeAnswersLeft.getAndDecrement() > 0 ? "ACTIVE" : "RELEASED", "inc", id, "1", true);
+        }
+    }
+
+    @Test void theNextInvocationWaitsForAReplicaWhoseReleaseProofIsStillOnItsWay() throws Exception {
+        var runtime = new LaggingRelease();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var pool = pool(executor, runtime)) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            var first = pool.acquire("first", "1");
+            assertThat(first.markDispatched()).isTrue();
+            first.close();   // the response is back; the runtime has not reported the release yet
+
+            // The function's capacity is free again, so the next invocation is dispatched at once.
+            var next = pool.acquire("next", "1");
+
+            assertThat(next).as("refusing here is a 503 for a replica that is about to be free").isNotNull();
+            assertThat(next.ready().toCompletableFuture()).isNotDone();
+            runtime.activeAnswersLeft.set(0);
+            next.ready().toCompletableFuture().get(2, TimeUnit.SECONDS);
+            assertThat(next.replicaId()).isEqualTo("http://a");
+            assertThat(next.markDispatched()).isTrue();
+            next.close();
+        }
+    }
+
+    @Test void aReleaseThatNeverComesIsNotWaitedForPastTheGrace() throws Exception {
+        var runtime = new LaggingRelease();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var pool = pool(executor, runtime)) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            var stuck = pool.acquire("stuck", "1");
+            assertThat(stuck.markDispatched()).isTrue();
+            stuck.close();
+
+            var waiting = pool.acquire("waiting", "1");
+            assertThat(waiting).isNotNull();
+            assertThatThrownBy(() -> waiting.ready().toCompletableFuture()
+                    .get(ManagedReplicaPool.RELEASE_GRACE.toMillis() + 1_000, TimeUnit.MILLISECONDS))
+                    .as("the wait ends at the grace, not at the function's timeout, as a refusal")
+                    .isInstanceOf(java.util.concurrent.ExecutionException.class)
+                    .hasCauseInstanceOf(RejectedExecutionException.class);
+            waiting.close();
+
+            assertThat(pool.acquire("later", "1")).as("a quarantined replica is refused at once").isNull();
+        }
+    }
+
+    @Test void aReplicaStillRunningItsInvocationIsNotWaitedFor() {
+        var runtime = new LaggingRelease();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var pool = pool(executor, runtime)) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            var running = pool.acquire("running", "1");
+            assertThat(running.markDispatched()).isTrue();
+
+            assertThat(pool.acquire("next", "1")).isNull();
+            running.close();
+        }
+    }
+
+    /**
+     * The runtime records the release just after it writes the response, so the first probe,
+     * sent the moment the response arrives, usually still sees ACTIVE. The next one must follow
+     * at once: every millisecond here is a millisecond the replica sits idle per invocation.
+     */
+    @Test void aReleaseOneProbeLateCostsAboutAMillisecond() throws Exception {
+        var runtime = new LaggingRelease();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var pool = pool(executor, runtime)) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            int invocations = 40;
+            long total = 0;
+            for (int i = 0; i < invocations; i++) {
+                var current = pool.acquire("e" + i, "1");
+                current.ready().toCompletableFuture().get(2, TimeUnit.SECONDS);
+                assertThat(current.markDispatched()).isTrue();
+                runtime.activeAnswersLeft.set(1);
+                long start = System.nanoTime();
+                current.close();
+                var next = pool.acquire("probe" + i, "1");
+                next.ready().toCompletableFuture().get(2, TimeUnit.SECONDS);
+                total += System.nanoTime() - start;
+                next.close();   // never dispatched: its slot returns at once
+            }
+            assertThat(Duration.ofNanos(total / invocations)).isLessThan(Duration.ofMillis(4));
+        }
+    }
+
+    @Test void theReleaseProofIsPickedUpQuicklyWhenItLagsTheResponseByAFewProbes() throws Exception {
+        var runtime = new LaggingRelease();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var pool = pool(executor, runtime)) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            var first = pool.acquire("first", "1");
+            assertThat(first.markDispatched()).isTrue();
+            runtime.activeAnswersLeft.set(3);
+            long start = System.nanoTime();
+            first.close();
+
+            ManagedInvocationTarget next = null;
+            while (next == null || !next.ready().toCompletableFuture().isDone()) {
+                if (next == null) next = pool.acquire("next", "1");
+                assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofMillis(150));
+                Thread.onSpinWait();
+            }
+            next.close();
+        }
+    }
+
+    @Test void incarnationProbeOfANewReplicaDoesNotStallInFlightDispatch() throws Exception {
+        var slowProbe = new CountDownLatch(1);
+        var probing = new CountDownLatch(1);
+        var probe = new RuntimeExecutionProbe() {
+            public String eligibleIncarnation(URI backend) {
+                if (backend.getHost().equals("b")) {
+                    probing.countDown();
+                    try { slowProbe.await(); } catch (InterruptedException e) { throw new IllegalStateException(e); }
+                }
+                return "inc-" + backend.getHost();
+            }
+            public ExecutionObservation observe(URI backend, String id) { return ExecutionObservation.unknown(); }
+        };
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var pool = pool(executor, probe)) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            var inFlight = pool.acquire("in-flight", "1");
+            var update = CompletableFuture.runAsync(() -> pool.updateBackends(List.of("http://a", "http://b")));
+            try {
+                assertThat(probing.await(2, TimeUnit.SECONDS)).isTrue();
+                // markDispatched runs on a Netty event loop and close on request completion.
+                assertThat(CompletableFuture.supplyAsync(inFlight::markDispatched).get(1, TimeUnit.SECONDS)).isTrue();
+                CompletableFuture.runAsync(inFlight::close).get(1, TimeUnit.SECONDS);
+                // The replica still being verified is not admissible before its proof is applied:
+                // an early invocation may wait for a slot, but is handed none yet.
+                var early = CompletableFuture.supplyAsync(() -> pool.acquire("early", "1")).get(1, TimeUnit.SECONDS);
+                assertThat(early == null || !early.ready().toCompletableFuture().isDone()).isTrue();
+                if (early != null) early.close();
+            } finally {
+                slowProbe.countDown();
+                update.get(2, TimeUnit.SECONDS);
+            }
+            var next = pool.acquire("next", "1");
+            assertThat(next.replicaId()).isEqualTo("http://b");
+            next.close();
+        }
+    }
+
     @Test void busyReplicaDuringMembershipUpdateReturnsAfterCorrelatedRelease() throws Exception {
         var busy = new java.util.concurrent.atomic.AtomicBoolean();
         var probe = new RuntimeExecutionProbe() {
@@ -125,7 +273,11 @@ class ManagedReplicaPoolTest {
         try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var pool = pool(executor, probe)) {
             pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
             var target = pool.acquire("work", "2"); assertThat(target.markDispatched()).isTrue(); target.close();
-            assertThat(pool.acquire("other", "1")).isNull();
+            // Without a correlated release proof the slot is never handed on: a waiting
+            // invocation stays unready.
+            var other = pool.acquire("other", "1");
+            assertThat(other == null || !other.ready().toCompletableFuture().isDone()).isTrue();
+            if (other != null) other.close();
             probe.observation.set(new ExecutionObservation("RELEASED", "run", "work", "1", true));
             assertThat(pool.awaitDrained("http://a", Duration.ofMillis(10))).isFalse();
             probe.observation.set(new ExecutionObservation("RELEASED", "old-run", "work", "2", true));

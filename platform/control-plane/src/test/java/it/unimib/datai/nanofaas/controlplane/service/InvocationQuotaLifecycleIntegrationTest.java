@@ -41,8 +41,8 @@ class InvocationQuotaLifecycleIntegrationTest {
     @Test
     void newExecutionPublishesCanonicalInputAndTerminalStateWaitsForPhysicalDrain() {
         Fixture fixture = new Fixture(10, 1_000_000);
-        LinkedHashMap<String, Object> source = new LinkedHashMap<>();
-        source.put("items", new ArrayList<>(java.util.List.of("a", "b")));
+        var source = it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read(
+                "{\"items\":[\"a\",\"b\"]}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         var lookup = fixture.factory.createOrReuseExecution(
                 "fn", spec(), new InvocationRequest(source, Map.of()), null, "trace", InvocationKind.SYNC);
@@ -51,29 +51,27 @@ class InvocationQuotaLifecycleIntegrationTest {
 
         assertThat(fixture.capacity.executionReservedGlobally()).isOne();
         assertThat(canonicalBytes).isPositive();
-        assertThat(executionRecord.task().request().input()).isInstanceOf(Object[].class).isNotSameAs(source);
+        // Immutable text: what is retained is what arrived, with no second representation.
+        assertThat(executionRecord.task().request().input()).isSameAs(source);
 
         ExecutionRecord.PhysicalInput physical = executionRecord.openPhysicalInput(executionRecord.task());
-        assertThat(physical.task().request().input()).isInstanceOf(Map.class).isNotSameAs(source);
+        assertThat(physical.task().request().input()).isSameAs(source);
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         executionRecord.markSuccess("ok");
         fixture.store.settle(executionRecord);
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         physical.close();
         assertThat(fixture.capacity.inputReservedGlobally()).isZero();
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     @Test
     void replayAndRetryReuseTheExistingCanonicalReservation() {
         Fixture fixture = new Fixture(10, 1_000_000);
         InvocationRequest request = new InvocationRequest(
-                new ArrayList<>(java.util.List.of("payload")), Map.of());
+                it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read("[\"payload\"]".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of());
         var first = fixture.factory.createOrReuseExecution(
                 "fn", spec(), request, "same", "trace-1", InvocationKind.SYNC);
         first.publishAdmission();
@@ -91,9 +89,7 @@ class InvocationQuotaLifecycleIntegrationTest {
         var retryAttempt = executionRecord.openPhysicalInput(executionRecord.task());
         assertThat(fixture.capacity.executionReservedGlobally()).isOne();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(retained);
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(retained);
         retryAttempt.close();
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
 
         executionRecord.markSuccess("ok");
         fixture.store.settle(executionRecord);
@@ -116,7 +112,7 @@ class InvocationQuotaLifecycleIntegrationTest {
                 capacity, INPUT_LIMITS);
 
         var spec = spec();
-        var request = new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of());
+        var request = new InvocationRequest(it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read("[\"x\"]".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of());
         assertThatThrownBy(() -> factory.createOrReuseExecution(
                 "fn", spec, request, null, null, InvocationKind.SYNC))
                 .isInstanceOf(IllegalStateException.class)
@@ -147,7 +143,7 @@ class InvocationQuotaLifecycleIntegrationTest {
             @Override
             public CompletableFuture<DispatchResult> dispatch(
                     it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask task) {
-                assertThat(task.request().input()).isInstanceOf(java.util.List.class);
+                assertThat(task.request().input()).hasToString("[\"x\"]");
                 return rawWork;
             }
         };
@@ -155,25 +151,22 @@ class InvocationQuotaLifecycleIntegrationTest {
                 fixture.store, null, new DispatcherRouter(local, null),
                 new Metrics(new SimpleMeterRegistry()), null, fixture.generations);
         var lookup = fixture.factory.createOrReuseExecution(
-                "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of()),
+                "fn", spec(), new InvocationRequest(it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read("[\"x\"]".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of()),
                 null, null, InvocationKind.SYNC);
         ExecutionRecord executionRecord = lookup.executionRecord();
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
         handler.dispatchDirect(executionRecord.task());
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         executionRecord.markTimeout();
         fixture.store.settle(executionRecord);
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         rawWork.complete(DispatchResult.warm(
                 it.unimib.datai.nanofaas.common.model.InvocationResult.success("late")));
         assertThat(fixture.capacity.inputReservedGlobally()).isZero();
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     @Test
@@ -192,32 +185,27 @@ class InvocationQuotaLifecycleIntegrationTest {
                 null, new Metrics(new SimpleMeterRegistry()), null, gateway, handler,
                 new InvocationResponseMapper(), new WaiterCapacity(fixture.generations, 10_000, 1_000));
         var lookup = fixture.factory.createOrReuseExecution(
-                "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of()),
+                "fn", spec(), new InvocationRequest(it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read("[\"x\"]".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of()),
                 null, null, InvocationKind.SYNC);
         ExecutionRecord executionRecord = lookup.executionRecord();
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
         coordinator.invoke(lookup, spec(), 10_000, OffloadContext.none());
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         executionRecord.markTimeout();
         fixture.store.settle(executionRecord);
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         remote.complete(InvocationResult.success("late"));
         assertThat(fixture.capacity.inputReservedGlobally()).isZero();
-        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     @Test
     void repeatedInputSaturationDoesNotGrowReservations() {
         InvocationRequest request = new InvocationRequest(
-                new ArrayList<>(java.util.List.of("bounded-payload")), Map.of());
-        long retained = ((it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInput.Accepted)
-                it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInput.canonicalize(
-                        request, INPUT_LIMITS)).retainedBytes();
+                it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read("[\"bounded-payload\"]".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of());
+        long retained = ((it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimator.Measured) new it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimator(INPUT_LIMITS).estimate(request.input())).retainedBytes();
         Fixture fixture = new Fixture(10, retained);
         var admitted = fixture.factory.createOrReuseExecution(
                 "fn", spec(), request, null, null, InvocationKind.SYNC);
@@ -242,7 +230,7 @@ class InvocationQuotaLifecycleIntegrationTest {
     void oldGenerationPhysicalDrainCannotReleaseNewGenerationInput() {
         Fixture fixture = new Fixture(10, 1_000_000);
         InvocationRequest request = new InvocationRequest(
-                new ArrayList<>(java.util.List.of("payload")), Map.of());
+                it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read("[\"payload\"]".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of());
         var oldLookup = fixture.factory.createOrReuseExecution(
                 "fn", spec(), request, null, null, InvocationKind.SYNC);
         ExecutionRecord oldRecord = oldLookup.executionRecord();
@@ -259,18 +247,15 @@ class InvocationQuotaLifecycleIntegrationTest {
         fixture.store.settle(oldRecord);
         assertThat(fixture.capacity.executionReservedForFunction("fn")).isOne();
         assertThat(fixture.capacity.inputReservedForFunction("fn")).isEqualTo(oneCanonical * 2);
-        assertThat(fixture.capacity.physicalInputCopyReservedForFunction("fn")).isEqualTo(oneCanonical);
 
         oldPhysical.close();
         assertThat(fixture.capacity.executionReservedForFunction("fn")).isOne();
         assertThat(fixture.capacity.inputReservedForFunction("fn")).isEqualTo(oneCanonical);
-        assertThat(fixture.capacity.physicalInputCopyReservedForFunction("fn")).isZero();
 
         currentRecord.markSuccess("current");
         fixture.store.settle(currentRecord);
         assertThat(fixture.capacity.executionReservedForFunction("fn")).isZero();
         assertThat(fixture.capacity.inputReservedForFunction("fn")).isZero();
-        assertThat(fixture.capacity.physicalInputCopyReservedForFunction("fn")).isZero();
     }
 
     @Test
@@ -289,7 +274,7 @@ class InvocationQuotaLifecycleIntegrationTest {
                 null, new Metrics(new SimpleMeterRegistry()), null, gateway, handler,
                 new InvocationResponseMapper(), new WaiterCapacity(fixture.generations, 10_000, 1_000));
         var lookup = fixture.factory.createOrReuseExecution(
-                "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of()),
+                "fn", spec(), new InvocationRequest(it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read("[\"x\"]".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of()),
                 null, null, InvocationKind.SYNC);
 
         var response = coordinator.invoke(lookup, spec(), 10_000, OffloadContext.none());
@@ -305,7 +290,7 @@ class InvocationQuotaLifecycleIntegrationTest {
     void administrativelySettledQueueEntryKeepsCanonicalInputUntilTheEntryIsRemoved() {
         Fixture fixture = new Fixture(10, 1_000_000);
         var lookup = fixture.factory.createOrReuseExecution(
-                "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("queued")), Map.of()),
+                "fn", spec(), new InvocationRequest(it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read("[\"queued\"]".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of()),
                 null, null, InvocationKind.SYNC);
         ExecutionRecord executionRecord = lookup.executionRecord();
         var queuedTask = executionRecord.prepareForQueue();

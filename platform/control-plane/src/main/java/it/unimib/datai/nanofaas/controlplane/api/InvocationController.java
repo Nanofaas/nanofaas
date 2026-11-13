@@ -33,7 +33,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.util.MultiValueMap;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ServerWebInputException;
 import reactor.core.publisher.Mono;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectReader;
+import tools.jackson.databind.json.JsonMapper;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.HashSet;
@@ -61,6 +65,7 @@ public class InvocationController {
     private final InvocationService invocationService;
     private final ExternalArrivalObserver arrivalObserver;
     private final FunctionCapacityRegistry capacity;
+    private final ObjectReader bodies;
 
     public InvocationController(InvocationService invocationService) {
         this(invocationService, ExternalArrivalObserver.noOp(), null);
@@ -69,24 +74,59 @@ public class InvocationController {
     @Autowired
     public InvocationController(InvocationService invocationService,
             ObjectProvider<ExternalArrivalObserver> observer,
-            ObjectProvider<FunctionCapacityRegistry> capacity) {
-        this(invocationService, observer.getIfAvailable(ExternalArrivalObserver::noOp), capacity.getIfAvailable());
+            ObjectProvider<FunctionCapacityRegistry> capacity,
+            ObjectProvider<JsonMapper> mapper) {
+        this(invocationService, observer.getIfAvailable(ExternalArrivalObserver::noOp), capacity.getIfAvailable(),
+                mapper.getIfAvailable(JsonMapper::shared));
     }
 
     public InvocationController(InvocationService invocationService,
             ExternalArrivalObserver observer,
             FunctionCapacityRegistry capacity) {
+        this(invocationService, observer, capacity, JsonMapper.shared());
+    }
+
+    private InvocationController(InvocationService invocationService,
+            ExternalArrivalObserver observer,
+            FunctionCapacityRegistry capacity,
+            JsonMapper mapper) {
         this.invocationService = invocationService;
         this.arrivalObserver = observer;
         this.capacity = capacity;
+        this.bodies = mapper.readerFor(IngressInvocationRequest.class);
+    }
+
+    /**
+     * The body arrives as bytes and is read here rather than bound by the framework, so the
+     * payload can be cut out of those bytes untouched instead of being rebuilt token by token.
+     * Refusals keep the shape binding gave them: malformed JSON is a 400 BAD_REQUEST.
+     */
+    private IngressInvocationRequest read(byte[] body) {
+        try {
+            IngressInvocationRequest request = bodies.withAttribute(RawJsonDeserializer.SOURCE, body).readValue(body);
+            if (request == null) {
+                throw new ServerWebInputException("Request body is missing");
+            }
+            return request;
+        } catch (JacksonException | IllegalArgumentException | IllegalStateException malformed) {
+            throw new ServerWebInputException("Failed to read HTTP message", null, malformed);
+        }
+    }
+
+    private static Mono<ResponseEntity<Object>> inputRequired() {
+        return Mono.just(ResponseEntity.badRequest()
+                .body(ApiErrorResponses.validationBody(java.util.List.of("input: Input payload is required"))));
     }
 
     private void observeExternalArrival(String name, boolean forwarded) {
         if (forwarded || capacity == null) return;
         var generation = capacity.activeGeneration(name);
         if (generation == null) return;
+        // Uniqueness, not unpredictability: UUID.randomUUID() draws from a shared SecureRandom
+        // on every invocation.
+        var random = java.util.concurrent.ThreadLocalRandom.current();
         arrivalObserver.record(new ExternalArrival(
-                name, generation.id(), Instant.now(), UUID.randomUUID().toString()));
+                name, generation.id(), Instant.now(), new UUID(random.nextLong(), random.nextLong()).toString()));
     }
 
     /**
@@ -99,7 +139,7 @@ public class InvocationController {
      * caller's connection and must not reach the handler — and, when the invocation is later
      * offloaded, they must not reach the offload gateway, which only ever sees this map.
      */
-    private static InvocationRequest withCallerHeaders(InvocationRequest request,
+    private static InvocationRequest withCallerHeaders(IngressInvocationRequest request,
                                                        MultiValueMap<String, String> rawHeaders) {
         Set<String> connectionNominated = connectionNominatedHeaders(rawHeaders);
         Map<String, String> filtered = new LinkedHashMap<>();
@@ -150,18 +190,25 @@ public class InvocationController {
 
     // The 429 quota body travels as ResponseEntity<Object>, invisible to AOT's return-type
     // inference: without this a native image fails to serialize it exactly when it is under load.
-    @RegisterReflectionForBinding(InvocationQuotaError.class)
-    @PostMapping("/functions/{name}:invoke")
+    // The body is read by hand and RawJson travels inside Object-typed fields: AOT sees neither.
+    @RegisterReflectionForBinding({InvocationQuotaError.class, IngressInvocationRequest.class,
+            it.unimib.datai.nanofaas.common.model.RawJson.class})
+    @PostMapping(value = "/functions/{name}:invoke", consumes = {"application/json", "application/*+json"})
     public Mono<ResponseEntity<Object>> invokeSync(
             @PathVariable @NotBlank(message = "Function name is required") String name,
-            @RequestBody @Valid InvocationRequest request,
+            @RequestBody byte[] body,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
-            @RequestHeader(value = "X-Timeout-Ms", required = false) Integer timeoutMs,
+            @RequestHeader(value = "X-Timeout-Ms", required = false)
+            @jakarta.validation.constraints.Min(value = 1, message = "X-Timeout-Ms must be at least 1")
+            @jakarta.validation.constraints.Max(value = 300_000, message = "X-Timeout-Ms must be at most 300000")
+            Integer timeoutMs,
             @RequestHeader(value = "X-NanoFaaS-Offload-Hop", required = false) String offloadHop,
             @RequestHeader(value = "traceparent", required = false) String traceparent,
             @RequestHeader(value = "tracestate", required = false) String tracestate,
             @RequestHeader MultiValueMap<String, String> allHeaders) {
+        IngressInvocationRequest request = read(body);
+        if (request.input() == null) return inputRequired();
         OffloadContext offloadContext = OffloadContext.fromHttp(offloadHop,traceparent,tracestate,allHeaders);
         if(offloadContext.invalidMetadata()) return Mono.just(ResponseEntity.badRequest().body(Map.of("error","INVALID_ONE_SHOT_METADATA")));
         InvocationRequest requestWithHeaders = withCallerHeaders(request, allHeaders);
@@ -228,14 +275,18 @@ public class InvocationController {
         return builder.body(response);
     }
 
-    @RegisterReflectionForBinding(InvocationQuotaError.class)
-    @PostMapping("/functions/{name}:enqueue")
+    // The body is read by hand and RawJson travels inside Object-typed fields: AOT sees neither.
+    @RegisterReflectionForBinding({InvocationQuotaError.class, IngressInvocationRequest.class,
+            it.unimib.datai.nanofaas.common.model.RawJson.class})
+    @PostMapping(value = "/functions/{name}:enqueue", consumes = {"application/json", "application/*+json"})
     public Mono<ResponseEntity<Object>> invokeAsync(
             @PathVariable @NotBlank(message = "Function name is required") String name,
-            @RequestBody @Valid InvocationRequest request,
+            @RequestBody byte[] body,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
             @RequestHeader MultiValueMap<String, String> allHeaders) {
+        IngressInvocationRequest request = read(body);
+        if (request.input() == null) return inputRequired();
         InvocationRequest requestWithHeaders = withCallerHeaders(request, allHeaders);
         boolean forwarded = allHeaders.keySet().stream().anyMatch("X-NanoFaaS-Offload-Hop"::equalsIgnoreCase);
         observeExternalArrival(name, forwarded);
@@ -299,7 +350,6 @@ public class InvocationController {
         String resource = switch (ex.resource()) {
             case EXECUTION -> "execution";
             case INPUT -> "input";
-            case INPUT_COPY -> "input_copy";
             case WAITER -> "waiter";
         };
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)

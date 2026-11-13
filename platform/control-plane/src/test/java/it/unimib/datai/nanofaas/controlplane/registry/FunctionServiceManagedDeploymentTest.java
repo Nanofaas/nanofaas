@@ -63,6 +63,42 @@ class FunctionServiceManagedDeploymentTest {
     }
 
     @Test
+    void replicaStatusReadDoesNotWaitForAScaleInProgress() throws Exception {
+        ManagedDeploymentProvider provider = provider("k8s");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080/invoke", "k8s"));
+        when(provider.getReplicaStatus("fn"))
+                .thenReturn(new it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus(1, 1));
+        var scaling = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        org.mockito.Mockito.doAnswer(call -> { scaling.countDown(); release.await(); return null; })
+                .when(provider).setReplicas("fn", 3);
+        // A real refresh pool: the default test wiring owns none and rejects every fresh read.
+        var registry = new FunctionRegistry();
+        var locks = new FunctionOperationLocks();
+        var resolver = new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null));
+        try (var snapshot = it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot
+                     .withDefaults(java.time.InstantSource.system());
+             var coordinator = new ManagedDeploymentCoordinator(resolver, registry, locks,
+                     new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry(), snapshot)) {
+            FunctionService service = new FunctionService(registry, defaults, ImageValidator.noOp(), List.of(),
+                    resolver, locks, coordinator);
+            service.register(deploymentSpec("fn", null));
+
+            var scale = java.util.concurrent.CompletableFuture.supplyAsync(() -> service.setReplicas("fn", 3));
+            try {
+                assertThat(scaling.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var status = java.util.concurrent.CompletableFuture.supplyAsync(() -> service.getReplicaStatus("fn"))
+                        .get(1, java.util.concurrent.TimeUnit.SECONDS);
+                assertThat(status).isPresent();
+                assertThat(status.get().readyReplicas()).isEqualTo(1);
+            } finally {
+                release.countDown();
+                assertThat(scale.get(2, java.util.concurrent.TimeUnit.SECONDS)).contains(3);
+            }
+        }
+    }
+
+    @Test
     void register_withoutProviderAndWithEndpoint_degradesToPoolAndPersistsReason() {
         FunctionService service = serviceWithProviders();
 

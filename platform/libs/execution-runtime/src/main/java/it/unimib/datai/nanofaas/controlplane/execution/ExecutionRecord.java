@@ -5,7 +5,6 @@ import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
-import it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInput;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.slf4j.Logger;
@@ -138,11 +137,9 @@ public class ExecutionRecord {
     public static ExecutionRecord withInputResources(
             String executionId,
             InvocationTask task,
-            InvocationCapacity capacity,
-            InvocationCapacity.Admission admission,
-            CanonicalInvocationInput.Accepted canonical) {
+            InvocationCapacity.Admission admission) {
         return new ExecutionRecord(executionId, task, TimeSource.system(),
-                new ExecutionInputResources(capacity, admission, canonical));
+                new ExecutionInputResources(admission));
     }
 
     ExecutionRecord(String executionId, InvocationTask task, TimeSource timeSource,
@@ -487,9 +484,9 @@ public class ExecutionRecord {
         return true;
     }
 
-    /** Acquires the same-generation canonical-input reader and any real materialized copy. */
+    /** Acquires one more same-generation reader of the retained input, for an attempt's transport. */
     public PhysicalInput openPhysicalInput(InvocationTask source) {
-        if (inputResources == null) return new PhysicalInput(source, null, null);
+        if (inputResources == null) return new PhysicalInput(source, null);
         return inputResources.open(source);
     }
 
@@ -511,13 +508,11 @@ public class ExecutionRecord {
     public static final class PhysicalInput implements AutoCloseable {
         private final InvocationTask task;
         private final AutoCloseable sharedReference;
-        private final AutoCloseable copyReservation;
         private final AtomicBoolean closed = new AtomicBoolean();
 
-        PhysicalInput(InvocationTask task, AutoCloseable sharedReference, AutoCloseable copyReservation) {
+        PhysicalInput(InvocationTask task, AutoCloseable sharedReference) {
             this.task = task;
             this.sharedReference = sharedReference;
-            this.copyReservation = copyReservation;
         }
 
         public InvocationTask task() {
@@ -527,11 +522,7 @@ public class ExecutionRecord {
         @Override
         public void close() {
             if (!closed.compareAndSet(false, true)) return;
-            try {
-                closeUnchecked(copyReservation);
-            } finally {
-                closeUnchecked(sharedReference);
-            }
+            closeUnchecked(sharedReference);
         }
 
         private static void closeUnchecked(AutoCloseable closeable) {

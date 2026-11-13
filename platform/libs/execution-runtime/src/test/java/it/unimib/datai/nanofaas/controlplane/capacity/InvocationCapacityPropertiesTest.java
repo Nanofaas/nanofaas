@@ -18,8 +18,6 @@ class InvocationCapacityPropertiesTest {
         assertThat(properties.getExecutionsPerFunction()).isEqualTo(512);
         assertThat(properties.getCanonicalInputBytesGlobal()).isEqualTo(128L << 20);
         assertThat(properties.getCanonicalInputBytesPerFunction()).isEqualTo(32L << 20);
-        assertThat(properties.getPhysicalInputCopyBytesGlobal()).isEqualTo(64L << 20);
-        assertThat(properties.getPhysicalInputCopyBytesPerFunction()).isEqualTo(16L << 20);
         assertThat(properties.getWaitersGlobal()).isEqualTo(8_192);
         assertThat(properties.getWaitersPerFunction()).isEqualTo(1_024);
     }

@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
@@ -35,8 +34,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * The engine's dispatch protocol: one selection per tick, the claim/commit handshake against
- * {@link PendingWorkStore}, and the four ways a selection can end (no capacity, stale record,
- * input backpressure, submitted). Tests drive {@link SchedulerEngine#tick()} directly and never
+ * {@link PendingWorkStore}, and the three ways a selection can end (no capacity, stale record,
+ * submitted). Tests drive {@link SchedulerEngine#tick()} directly and never
  * start the worker thread.
  */
 class SchedulerEngineDispatchTest {
@@ -245,23 +244,6 @@ class SchedulerEngineDispatchTest {
     }
 
     @Test
-    void exhaustedInputQuotaKeepsTheReservationAndRequeues() {
-        doThrow(new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT))
-                .when(dispatch).submit(leasedTask);
-
-        engine.enqueue(new PendingEntry(ticket, task));
-        engine.tick();
-
-        verify(lease).release();
-        verify(dispatch, never()).rejected(any(), any());
-        assertThat(store.get(ticket.id())).isNotNull();
-        assertThat(store.pendingCount()).isEqualTo(1);
-        assertThat(store.submittingCount()).isZero();
-        // Same ticket, same sequence and deadlines, back into the index that is active now.
-        verify(index, times(2)).add(ticket);
-    }
-
-    @Test
     void aConcurrentEnqueueCannotTakeTheSlotReservedByAnInFlightSubmit() {
         PendingWorkStore singleSlot = new PendingWorkStore(1);
         SchedulerEngine singleSlotEngine = engineOver(singleSlot);
@@ -313,9 +295,8 @@ class SchedulerEngineDispatchTest {
     }
 
     @Test
-    void aThrowingLeaseReleaseDuringBackpressureStillSettlesReservation() {
-        doThrow(new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT))
-                .when(dispatch).submit(leasedTask);
+    void aThrowingLeaseReleaseAfterAFailedSubmitStillSettlesReservation() {
+        doThrow(new IllegalArgumentException("submit failed")).when(dispatch).submit(leasedTask);
         doThrow(new IllegalStateException("lease cleanup failed")).when(lease).release();
         engine.enqueue(new PendingEntry(ticket, task));
 
@@ -324,23 +305,6 @@ class SchedulerEngineDispatchTest {
         assertThat(store.submittingCount()).isZero();
         assertThat(store.get(ticket.id())).isNull();
         assertThat(engine.enqueue(new PendingEntry(ticket, task))).isTrue();
-    }
-
-    @Test
-    void removalDuringSubmitCancelsTheRequeueOfThatCommittedDispatch() {
-        doAnswer(invocation -> {
-            engine.remove(ticket.id());
-            throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-        }).when(dispatch).submit(leasedTask);
-
-        engine.enqueue(new PendingEntry(ticket, task));
-        engine.tick();
-
-        assertThat(store.get(ticket.id())).isNull();
-        assertThat(store.pendingCount()).isZero();
-        assertThat(store.submittingCount()).isZero();
-        verify(index, times(1)).add(ticket);
-        verify(dispatch).removed(task);
     }
 
     @Test

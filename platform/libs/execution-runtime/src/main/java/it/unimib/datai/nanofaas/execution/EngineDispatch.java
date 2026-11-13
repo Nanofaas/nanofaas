@@ -21,10 +21,7 @@ public interface EngineDispatch {
 
     /**
      * Hands the attempt, with its lease attached, to the transport. Non-blocking: it publishes
-     * the dispatch and returns. Throwing {@link
-     * it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException} means
-     * input backpressure and leaves the task eligible for requeue; any other throwable retires
-     * the attempt through {@link #rejected}.
+     * the dispatch and returns. A throwable retires the attempt through {@link #rejected}.
      */
     void submit(InvocationTask task);
 

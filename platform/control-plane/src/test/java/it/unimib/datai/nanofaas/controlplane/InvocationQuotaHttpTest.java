@@ -41,8 +41,6 @@ import static org.mockito.Mockito.when;
                 "nanofaas.invocation-capacity.executions-per-function=2",
                 "nanofaas.invocation-capacity.canonical-input-bytes-global=512",
                 "nanofaas.invocation-capacity.canonical-input-bytes-per-function=512",
-                "nanofaas.invocation-capacity.physical-input-copy-bytes-global=512",
-                "nanofaas.invocation-capacity.physical-input-copy-bytes-per-function=512",
                 "nanofaas.invocation-capacity.waiters-global=1",
                 "nanofaas.invocation-capacity.waiters-per-function=1",
                 "nanofaas.invocation-capacity.retained-input-max-bytes-per-execution=512",
@@ -78,7 +76,6 @@ class InvocationQuotaHttpTest {
         await().atMost(Duration.ofSeconds(3)).untilAsserted(() -> {
             assertThat(invocations.executionReservedGlobally()).isZero();
             assertThat(invocations.inputReservedGlobally()).isZero();
-            assertThat(invocations.physicalInputCopyReservedGlobally()).isZero();
             assertThat(waiters.reservedGlobally()).isZero();
         });
         functions.remove(FUNCTION);
@@ -111,7 +108,9 @@ class InvocationQuotaHttpTest {
         Assumptions.assumeTrue(enqueuer.supportsAsync(), "requires the async-queue profile");
 
         enqueueAccepted("x");
-        assertQuotaError("/v1/functions/{name}:enqueue", "input", "x".repeat(220));
+        // Retained as JSON text: 64 bytes of overhead plus the quoted string. 400 chars fit the
+        // 512-byte per-execution bound but not what the first execution left of the quota.
+        assertQuotaError("/v1/functions/{name}:enqueue", "input", "x".repeat(400));
 
         assertThat(invocations.executionReservedGlobally()).isOne();
         assertThat(invocations.inputReservedGlobally()).isPositive().isLessThan(512);

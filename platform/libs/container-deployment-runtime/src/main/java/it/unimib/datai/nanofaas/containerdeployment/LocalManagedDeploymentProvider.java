@@ -70,17 +70,15 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     public it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution acquireInvocationTarget(
             String functionName, Map<String, String> objects, String executionId, String attempt) {
         var unavailable = it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.UNAVAILABLE;
-        var lock = locks.get(functionName);
-        if (lock == null) return unavailable;
-        lock.lock();
-        try {
-            var state = states.get(functionName);
-            if (state == null || state.pendingRemoval || objects == null
-                    || !state.instance.equals(objects.get(DEPLOYMENT_INSTANCE))) return unavailable;
-            var target = state.proxy.acquire(executionId, attempt);
-            return target == null ? unavailable
-                    : it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.reserved(target);
-        } finally { lock.unlock(); }
+        // No lifecycle lock: it is held across container start, readiness waits and health probes,
+        // and dispatch to replicas that are already serving must not wait for those. The pool's
+        // own monitor fences what matters here (closed, draining, ready), again at markDispatched.
+        var state = states.get(functionName);
+        if (state == null || state.pendingRemoval || objects == null
+                || !state.instance.equals(objects.get(DEPLOYMENT_INSTANCE))) return unavailable;
+        var target = state.proxy.acquire(executionId, attempt);
+        return target == null ? unavailable
+                : it.unimib.datai.nanofaas.controlplane.deployment.ManagedTargetResolution.reserved(target);
     }
 
     @Override
@@ -256,6 +254,25 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     }
 
     /**
+     * Lets invocations already sent to a replica finish before its container is force-removed,
+     * as a scale-down does. Bounded by the function's own timeout: past it the dispatcher has
+     * given up on the invocation anyway, so removal never waits on a stuck one.
+     */
+    private void drainBeforeRemoval(FunctionState state) {
+        state.replicas.values().forEach(replica -> state.proxy.beginDrain(replica.baseUrl()));
+        long timeoutMs = state.spec.timeoutMs() == null ? DEFAULT_TIMEOUT_MS : state.spec.timeoutMs();
+        long deadline = System.nanoTime() + Duration.ofMillis(timeoutMs).toNanos();
+        for (var replica : state.replicas.values()) {
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0 || !state.proxy.awaitDrained(replica.baseUrl(), Duration.ofNanos(remaining))) {
+                log.warn("Removing function '{}' with invocations still in flight after {} ms",
+                        state.spec.name(), timeoutMs);
+                return;
+            }
+        }
+    }
+
+    /**
      * @return {@code true} when nothing is left for this function
      * @throws PartialDeprovisionException when something is
      */
@@ -274,6 +291,8 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                         throw new PartialDeprovisionException(functionName,backendId(),List.of(replica.containerName()),
                             List.of(new IllegalStateException("Physical drain not proven")));
                 }
+            } else {
+                drainBeforeRemoval(state);
             }
             try {
                 state.proxy.close();
@@ -425,33 +444,37 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     @Override
     public ReplicaStatus getReplicaStatus(String functionName) {
         ReentrantLock lock = locks.get(functionName);
-        if (lock == null) {
+        FunctionState state = states.get(functionName);
+        if (lock == null || state == null) {
             return new ReplicaStatus(0, 0);
         }
-        lock.lock();
-        try {
-            FunctionState state = states.get(functionName);
-            if (state == null) {
-                return new ReplicaStatus(0, 0);
+        // The health probes are HTTP calls and run without the lifecycle lock: a status read
+        // must not queue behind a scale-up, nor make dispatch-adjacent work queue behind it.
+        List<ReplicaState> observed = List.copyOf(state.replicas.values());
+        var ready = observed.stream()
+                .filter(replica -> endpointProbe.isReady(replica.baseUrl()))
+                .map(ReplicaState::baseUrl).toList();
+        // Publish readiness only if nothing changed while probing. A lifecycle operation in
+        // progress, or one that finished meanwhile, publishes its own; this older view would hide
+        // a replica it never saw.
+        if (lock.tryLock()) {
+            try {
+                if (states.get(functionName) == state && observed.equals(List.copyOf(state.replicas.values()))) {
+                    state.proxy.updateReadyBackends(ready);
+                }
+            } finally {
+                lock.unlock();
             }
-            var ready = state.replicas.values().stream()
-                    .filter(replica -> endpointProbe.isReady(replica.baseUrl()))
-                    .map(ReplicaState::baseUrl).toList();
-            state.proxy.updateReadyBackends(ready);
-            int admissible = (int) ready.stream().filter(backend -> !isOneShot(state.spec) || state.proxy.backendReady(backend)).count();
-            return new ReplicaStatus(state.replicas.size(), admissible);
-        } finally {
-            lock.unlock();
         }
+        int admissible = (int) ready.stream().filter(backend -> !isOneShot(state.spec) || state.proxy.backendReady(backend)).count();
+        return new ReplicaStatus(observed.size(), admissible);
     }
 
     private void scaleTo(FunctionState state, int desiredReplicas) {
         int currentReplicas = state.replicas.size();
         try {
             if (desiredReplicas > currentReplicas) {
-                for (int replicaIndex = currentReplicas + 1; replicaIndex <= desiredReplicas; replicaIndex++) {
-                    addReplica(state, replicaIndex);
-                }
+                addReplicas(state, currentReplicas + 1, desiredReplicas);
             } else if (desiredReplicas < currentReplicas) {
                 for (int replicaIndex = currentReplicas; replicaIndex > desiredReplicas; replicaIndex--) {
                     removeReplica(state, replicaIndex);
@@ -487,9 +510,75 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         state.proxy.updateLimits(maxInFlight, perReplicaConcurrency, Duration.ofMillis(timeoutMs));
     }
 
+    /**
+     * Adds replicas {@code first..last}. Containers are started one at a time, then all of them
+     * wait for readiness together: readiness is the function's boot time, and paying it once per
+     * replica made a scale-up by N cost N cold starts.
+     *
+     * <p>Replica indexes must stay contiguous (the current count is the next index minus one), so
+     * only the ready prefix is kept: a replica that became ready after one that did not is removed
+     * again, exactly as if it had never been started.
+     */
+    // ponytail: containers still start sequentially; runtime adapters are not known to be safe
+    // for concurrent runContainer. Parallelize that too if container start dominates a scale-up.
+    private void addReplicas(FunctionState state, int first, int last) {
+        List<ReplicaState> started = new ArrayList<>();
+        RuntimeException failure = null;
+        for (int replicaIndex = first; replicaIndex <= last && failure == null; replicaIndex++) {
+            try {
+                started.add(startReplica(state, replicaIndex));
+            } catch (RuntimeException startFailure) {
+                failure = startFailure;
+            }
+        }
+        RuntimeException firstFailure = null;
+        try (var readiness = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            List<java.util.concurrent.Future<?>> waits = new ArrayList<>();
+            for (ReplicaState replica : started) {
+                waits.add(readiness.submit(() -> endpointProbe.awaitReady(
+                        replica.baseUrl(), settings.readinessTimeout(), settings.readinessPollInterval())));
+            }
+            for (int offset = 0; offset < started.size(); offset++) {
+                ReplicaState replica = started.get(offset);
+                RuntimeException notReady = readinessFailure(waits.get(offset));
+                if (notReady == null && firstFailure == null) {
+                    state.replicas.put(first + offset, replica);
+                    continue;
+                }
+                if (firstFailure == null) firstFailure = notReady;
+                suppressCleanupFailure(firstFailure, () -> adapter.removeContainer(replica.containerName()));
+            }
+        }
+        if (firstFailure == null) firstFailure = failure;
+        if (firstFailure != null) throw firstFailure;
+    }
+
+    private static RuntimeException readinessFailure(java.util.concurrent.Future<?> wait) {
+        try {
+            wait.get();
+            return null;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return new IllegalStateException("Interrupted while waiting for endpoint readiness", interrupted);
+        } catch (java.util.concurrent.ExecutionException failed) {
+            return failed.getCause() instanceof RuntimeException cause ? cause : new IllegalStateException(failed.getCause());
+        }
+    }
+
     private void addReplica(FunctionState state, int replicaIndex) {
+        ReplicaState replica = startReplica(state, replicaIndex);
+        try {
+            endpointProbe.awaitReady(replica.baseUrl(), settings.readinessTimeout(), settings.readinessPollInterval());
+        } catch (RuntimeException e) {
+            suppressCleanupFailure(e, () -> adapter.removeContainer(replica.containerName()));
+            throw e;
+        }
+        state.replicas.put(replicaIndex, replica);
+    }
+
+    /** Starts one replica's container without tracking it; the caller tracks it once it is ready. */
+    private ReplicaState startReplica(FunctionState state, int replicaIndex) {
         String containerName = stateContainerName(state, replicaIndex);
-        String baseUrl;
         ContainerInstanceSpec instanceSpec = new ContainerInstanceSpec(
                 containerName,
                 state.spec.image(),
@@ -501,24 +590,18 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                         FUNCTION_LABEL, containerFunctionLabel(state.spec.name()),
                         REPLICA_LABEL, Integer.toString(replicaIndex))
         );
-
-        boolean created = false;
         try {
-            baseUrl = adapter.runContainer(instanceSpec).baseUrl();
-            created = true;
-            endpointProbe.awaitReady(baseUrl, settings.readinessTimeout(), settings.readinessPollInterval());
+            return new ReplicaState(containerName, adapter.runContainer(instanceSpec).baseUrl());
         } catch (RuntimeException e) {
-            boolean createdHere = created;
             if (!(e instanceof ContainerNameConflictException)) {
                 suppressCleanupFailure(e, () -> {
-                    boolean owned = createdHere || adapter.listManagedContainers(containerFunctionLabel(state.spec.name())).stream()
+                    boolean owned = adapter.listManagedContainers(containerFunctionLabel(state.spec.name())).stream()
                             .anyMatch(container -> container.name().equals(containerName));
                     if (owned) adapter.removeContainer(containerName);
                 });
             }
             throw e;
         }
-        state.replicas.put(replicaIndex, new ReplicaState(containerName, baseUrl));
     }
 
     /**
@@ -703,7 +786,9 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         private ReplicaSlots.QuiesceToken quiesceToken;
         private final String prefix;
         private final String instance = java.util.UUID.randomUUID().toString();
-        private final LinkedHashMap<Integer, ReplicaState> replicas = new LinkedHashMap<>();
+        // Written under the lifecycle lock; a status read iterates it without that lock.
+        private final java.util.concurrent.ConcurrentSkipListMap<Integer, ReplicaState> replicas =
+                new java.util.concurrent.ConcurrentSkipListMap<>();
         /**
          * Set by a deprovision that could not finish. The state then exists only to be cleaned up:
          * its proxy is closed, whatever replicas are still listed are the ones that survived the

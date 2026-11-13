@@ -70,14 +70,45 @@ class ManagedTargetResolutionTest {
         }
     }
 
+    @Test
+    void dispatchDoesNotWaitForAProviderScaleInProgress() throws Exception {
+        try (var f = new Fixture("container-local")) {
+            var generation = f.capacity.register("fn", 2).generation();
+            var ownership = f.capacity.tryAcquireLease(generation, ignored -> {});
+            var target = mock(ManagedInvocationTarget.class);
+            when(target.markDispatched()).thenReturn(true);
+            when(f.provider.acquireInvocationTarget(anyString(), anyMap(), anyString(), anyString()))
+                    .thenReturn(ManagedTargetResolution.reserved(target));
+            var coldStart = new java.util.concurrent.CountDownLatch(1);
+            var started = new java.util.concurrent.CountDownLatch(1);
+            doAnswer(call -> { started.countDown(); coldStart.await(); return null; })
+                    .when(f.provider).setReplicas("fn", 3);
+            var deployment = f.registry.getRegistered("fn").orElseThrow().managedDeploymentTarget().orElseThrow();
+            var scaling = java.util.concurrent.CompletableFuture.supplyAsync(() -> f.coordinator.setReplicas(deployment, 3));
+            try {
+                assertThat(started.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var reserved = java.util.concurrent.CompletableFuture.supplyAsync(() ->
+                        f.coordinator.acquireInvocationTarget(f.task(ExecutionMode.DEPLOYMENT, ownership)).target())
+                        .get(1, java.util.concurrent.TimeUnit.SECONDS);
+                assertThat(java.util.concurrent.CompletableFuture.supplyAsync(reserved::markDispatched)
+                        .get(1, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                reserved.close();
+            } finally {
+                coldStart.countDown();
+                assertThat(scaling.get(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                ownership.release();
+            }
+        }
+    }
+
     private static final class Fixture implements AutoCloseable {
         final ManagedDeploymentProvider provider = mock(ManagedDeploymentProvider.class);
         final FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
         final ReplicaStatusSnapshot snapshot = ReplicaStatusSnapshot.withDefaults(InstantSource.system());
         final ManagedDeploymentCoordinator coordinator;
+        final FunctionRegistry registry = new FunctionRegistry();
         Fixture(String backend) {
             when(provider.backendId()).thenReturn(backend);
-            var registry = new FunctionRegistry();
             registry.put(new RegisteredFunction(spec(ExecutionMode.DEPLOYMENT),
                     new DeploymentMetadata(ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT, backend, null)));
             coordinator = new ManagedDeploymentCoordinator(

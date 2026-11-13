@@ -55,7 +55,18 @@ public final class PeerCluster implements AutoCloseable {
     private volatile int port;
     private volatile boolean isolated;
     private final AtomicReference<EventLoopGroup> serverLoops = new AtomicReference<>();
-    private final Set<String> knownAddresses = ConcurrentHashMap.newKeySet();
+    static final int MAX_KNOWN_ADDRESSES = 1024;
+    /**
+     * Reconnect seeds: the most recently joined addresses, least recently joined evicted first.
+     * A removed peer stays so a restart can rejoin through it, but address churn is bounded.
+     */
+    private final Set<String> knownAddresses = java.util.Collections.synchronizedSet(
+            java.util.Collections.newSetFromMap(new java.util.LinkedHashMap<>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                    return size() > MAX_KNOWN_ADDRESSES;
+                }
+            }));
     private final String externalHost;
     private final List<String> seeds;
     private final Map<String, Handler> handlers = new ConcurrentHashMap<>();
@@ -75,7 +86,9 @@ public final class PeerCluster implements AutoCloseable {
     public Mono<Void> start() {
         leaving.clear();
         Set<String> joinSeeds = new LinkedHashSet<>(seeds);
-        joinSeeds.addAll(knownAddresses);
+        synchronized (knownAddresses) { // iteration of a synchronizedSet needs its monitor
+            joinSeeds.addAll(knownAddresses);
+        }
         return new ClusterImpl()
                 .config(c -> {
                     c = c.memberId(nodeId).memberAlias(nodeId);

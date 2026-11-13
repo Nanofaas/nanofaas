@@ -28,7 +28,6 @@ public record ResourceOwner(Scope scope, String identity) {
         CANONICAL_INPUT,
         QUEUE_ENTRY,
         PHYSICAL_ATTEMPT,
-        INPUT_COPY,
         WAITER
     }
 }
