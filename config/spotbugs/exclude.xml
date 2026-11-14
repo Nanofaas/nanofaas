@@ -44,6 +44,15 @@
         <Bug pattern="EI_EXPOSE_REP2"/>
     </Match>
 
+    <!-- The resource manager is the module's injected Spring singleton, not an owned value:
+         copying it would detach the namespace and client it resolves. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider"/>
+        <Field name="resourceManager"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
     <!-- The injected metrics reader is shared with the decision calculator to observe live workload state. -->
     <Match>
         <Class name="it.unimib.datai.nanofaas.modules.autoscaler.InternalScaler"/>

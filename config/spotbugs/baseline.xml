@@ -4111,32 +4111,6 @@
       <Message>At KubernetesClientConfig.java:[line 24]</Message>
     </SourceLine>
   </BugInstance>
-  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="5cb1ca32ed3c4ba4bdbce94be1fd85b1" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
-    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
-    <LongMessage>new it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider(KubernetesResourceManager) may expose internal representation by storing an externally mutable object into KubernetesManagedDeploymentProvider.resourceManager</LongMessage>
-    <Class classname="it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider" primary="true" classAnnotationNames="org.springframework.stereotype.Component">
-      <SourceLine classname="it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider" start="21" end="73" sourcefile="KubernetesManagedDeploymentProvider.java" sourcepath="it/unimib/datai/nanofaas/modules/k8s/deployment/KubernetesManagedDeploymentProvider.java" relSourcepath="java/it/unimib/datai/nanofaas/modules/k8s/deployment/KubernetesManagedDeploymentProvider.java">
-        <Message>At KubernetesManagedDeploymentProvider.java:[lines 21-73]</Message>
-      </SourceLine>
-      <Message>In class it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider</Message>
-    </Class>
-    <Method classname="it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider" name="&lt;init&gt;" signature="(Lit/unimib/datai/nanofaas/modules/k8s/dispatch/KubernetesResourceManager;)V" isStatic="false" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider" start="21" end="23" startBytecode="0" endBytecode="69" sourcefile="KubernetesManagedDeploymentProvider.java" sourcepath="it/unimib/datai/nanofaas/modules/k8s/deployment/KubernetesManagedDeploymentProvider.java" relSourcepath="java/it/unimib/datai/nanofaas/modules/k8s/deployment/KubernetesManagedDeploymentProvider.java" />
-      <Message>In method new it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider(KubernetesResourceManager)</Message>
-    </Method>
-    <Field classname="it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider" name="resourceManager" signature="Lit/unimib/datai/nanofaas/modules/k8s/dispatch/KubernetesResourceManager;" isStatic="false" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider" sourcefile="KubernetesManagedDeploymentProvider.java" sourcepath="it/unimib/datai/nanofaas/modules/k8s/deployment/KubernetesManagedDeploymentProvider.java" relSourcepath="java/it/unimib/datai/nanofaas/modules/k8s/deployment/KubernetesManagedDeploymentProvider.java">
-        <Message>In KubernetesManagedDeploymentProvider.java</Message>
-      </SourceLine>
-      <Message>Field it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider.resourceManager</Message>
-    </Field>
-    <LocalVariable name="resourceManager" register="1" pc="6" role="LOCAL_VARIABLE_NAMED">
-      <Message>Local variable named resourceManager</Message>
-    </LocalVariable>
-    <SourceLine classname="it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider" primary="true" start="22" end="22" startBytecode="6" endBytecode="6" sourcefile="KubernetesManagedDeploymentProvider.java" sourcepath="it/unimib/datai/nanofaas/modules/k8s/deployment/KubernetesManagedDeploymentProvider.java" relSourcepath="java/it/unimib/datai/nanofaas/modules/k8s/deployment/KubernetesManagedDeploymentProvider.java">
-      <Message>At KubernetesManagedDeploymentProvider.java:[line 22]</Message>
-    </SourceLine>
-  </BugInstance>
   <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="a89ea5426bdf4ab9f066bddbc853ccee" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
     <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
     <LongMessage>new it.unimib.datai.nanofaas.modules.p2pdiscovery.LatencyMonitor(PeerMessaging$Wire, PeerTable, Vivaldi, Duration, LongSupplier) may expose internal representation by storing an externally mutable object into LatencyMonitor.table</LongMessage>
