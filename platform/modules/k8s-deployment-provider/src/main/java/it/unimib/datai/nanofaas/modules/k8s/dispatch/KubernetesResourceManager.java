@@ -106,6 +106,9 @@ public class KubernetesResourceManager {
         }
         if (existingService == null) {
             createService(client, spec, names);
+        } else if (!KubernetesDeploymentBuilder.isHeadless(existingService)) {
+            deleteService(client, names.namespace(), names.service());
+            createService(client, spec, names);
         }
         if (isHpaManaged(spec)) {
             if (getHpa(client, names) == null) {
@@ -202,7 +205,13 @@ public class KubernetesResourceManager {
         var serviceResource = client.services()
                 .inNamespace(resolvedNamespace)
                 .withName(service.getMetadata().getName());
-        if (serviceResource.get() == null) {
+        Service existing = serviceResource.get();
+        if (existing != null && !KubernetesDeploymentBuilder.isHeadless(existing)) {
+            // clusterIP is immutable: a ClusterIP Service only becomes headless by being recreated.
+            deleteService(client, resolvedNamespace, service.getMetadata().getName());
+            existing = null;
+        }
+        if (existing == null) {
             client.services()
                     .inNamespace(resolvedNamespace)
                     .resource(service)
@@ -211,6 +220,13 @@ public class KubernetesResourceManager {
         }
         serviceResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(service));
         return false;
+    }
+
+    private static void deleteService(KubernetesClient client, String namespace, String name) {
+        var resource = client.services().inNamespace(namespace).withName(name);
+        resource.delete();
+        // Creating the same name while the old object is still being removed is a conflict.
+        resource.waitUntilCondition(java.util.Objects::isNull, 30, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     private boolean createOrPatchHpa(KubernetesClient client, HorizontalPodAutoscaler hpa) {

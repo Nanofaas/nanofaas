@@ -25,6 +25,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -71,6 +72,59 @@ class MockK8sDeploymentReplicaSetFlowTest {
                 null,
                 scaling
         );
+    }
+
+    /** {@code clusterIP} is immutable: a ClusterIP Service only becomes headless by being recreated. */
+    @Test
+    void reconcileRecreatesAServiceThatIsNotHeadless() {
+        client.services().inNamespace("default").resource(clusterIpService()).create();
+
+        resourceManager.reconcile(spec(), 1, persistedObjects());
+
+        var service = client.services().inNamespace("default").withName("fn-echo").get();
+        assertEquals("None", service.getSpec().getClusterIP());
+        assertNull(service.getMetadata().getAnnotations().get(ORIGINAL), "the old Service was patched, not recreated");
+    }
+
+    @Test
+    void provisionReplacesAServiceThatIsNotHeadless() {
+        client.services().inNamespace("default").resource(clusterIpService()).create();
+
+        resourceManager.provision(spec());
+
+        var service = client.services().inNamespace("default").withName("fn-echo").get();
+        assertEquals("None", service.getSpec().getClusterIP());
+        assertNull(service.getMetadata().getAnnotations().get(ORIGINAL), "the old Service was patched, not recreated");
+    }
+
+    @Test
+    void reconcileLeavesAHeadlessServiceAlone() {
+        var headless = new io.fabric8.kubernetes.api.model.ServiceBuilder(clusterIpService())
+                .editSpec().withClusterIP("None").endSpec().build();
+        client.services().inNamespace("default").resource(headless).create();
+
+        resourceManager.reconcile(spec(), 1, persistedObjects());
+
+        var service = client.services().inNamespace("default").withName("fn-echo").get();
+        assertEquals("true", service.getMetadata().getAnnotations().get(ORIGINAL));
+    }
+
+    private static final String ORIGINAL = "test.nanofaas/original";
+
+    private static io.fabric8.kubernetes.api.model.Service clusterIpService() {
+        return new io.fabric8.kubernetes.api.model.ServiceBuilder()
+                .withNewMetadata().withName("fn-echo").addToAnnotations(ORIGINAL, "true").endMetadata()
+                .withNewSpec().withType("ClusterIP").withClusterIP("10.43.0.9")
+                    .addToSelector("function", "echo")
+                    .addNewPort().withPort(8080).withTargetPort(new io.fabric8.kubernetes.api.model.IntOrString(8080)).endPort()
+                .endSpec().build();
+    }
+
+    private static Map<String, String> persistedObjects() {
+        return Map.of(
+                it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult.DEPLOYMENT, "fn-echo",
+                it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult.SERVICE, "fn-echo",
+                it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult.NAMESPACE, "default");
     }
 
     @Test
