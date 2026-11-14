@@ -167,7 +167,7 @@ class ContainerLocalDeprovisionRecoveryTest {
 
         assertThat(proxy.closes()).isEqualTo(1);
         assertThat(adapter.removed()).isEmpty();
-        assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
+        assertThat(adapter.live()).containsExactlyInAnyOrder("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
     }
 
     @Test
@@ -203,7 +203,7 @@ class ContainerLocalDeprovisionRecoveryTest {
                 .hasMessage("remove of nanofaas-echo-092c79e8f80e559e-r2 failed");
         // The container is still running, so the provider still claims it: a map entry dropped
         // before the removal is confirmed is a container nothing can find again.
-        assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
+        assertThat(adapter.live()).containsExactlyInAnyOrder("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
         assertThat(trackedContainers(provider, "echo"))
                 .containsExactly("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
     }
@@ -231,7 +231,7 @@ class ContainerLocalDeprovisionRecoveryTest {
         // The pending state is gone with the proxy it owned, so the function serves again.
         assertThat(provider.getReplicaStatus("echo").readyReplicas()).isEqualTo(1);
         provider.setReplicas("echo", 2);
-        assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
+        assertThat(adapter.live()).containsExactlyInAnyOrder("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
     }
 
     @Test
@@ -337,24 +337,24 @@ class ContainerLocalDeprovisionRecoveryTest {
         private String failingContainer;
         private boolean discoveryFails;
 
-        void failRemovalOf(String containerName) {
+        synchronized void failRemovalOf(String containerName) {
             this.failingContainer = containerName;
         }
 
-        void failDiscovery() {
+        synchronized void failDiscovery() {
             this.discoveryFails = true;
         }
 
-        void recover() {
+        synchronized void recover() {
             this.failingContainer = null;
             this.discoveryFails = false;
         }
 
-        List<String> live() {
+        synchronized List<String> live() {
             return List.copyOf(live);
         }
 
-        List<String> removed() {
+        synchronized List<String> removed() {
             return List.copyOf(removed);
         }
 
@@ -369,7 +369,7 @@ class ContainerLocalDeprovisionRecoveryTest {
         }
 
         @Override
-        public ManagedContainer runContainer(ContainerInstanceSpec spec) {
+        public synchronized ManagedContainer runContainer(ContainerInstanceSpec spec) {
             live.add(spec.containerName());
             functionLabels.put(spec.containerName(), spec.labels().get(ContainerLocalDeploymentProvider.FUNCTION_LABEL));
             return new ManagedContainer(spec.containerName(),
@@ -378,7 +378,7 @@ class ContainerLocalDeprovisionRecoveryTest {
         }
 
         @Override
-        public void removeContainer(String containerName) {
+        public synchronized void removeContainer(String containerName) {
             if (containerName.equals(failingContainer)) {
                 throw new IllegalStateException("remove of " + containerName + " failed");
             }
@@ -388,7 +388,7 @@ class ContainerLocalDeprovisionRecoveryTest {
         }
 
         @Override
-        public List<ManagedContainer> listManagedContainers(String functionName) {
+        public synchronized List<ManagedContainer> listManagedContainers(String functionName) {
             if (discoveryFails) {
                 throw new IllegalStateException("docker ps failed");
             }

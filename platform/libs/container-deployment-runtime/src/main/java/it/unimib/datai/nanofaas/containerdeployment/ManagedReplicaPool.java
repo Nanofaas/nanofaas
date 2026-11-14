@@ -53,6 +53,10 @@ public final class ManagedReplicaPool implements ManagedReplicaSet {
         if (physicalSlots.get()) {
             // A timeout is not permission to send the same execution to another physical slot.
             if (replicaSlots.occupied().stream().anyMatch(lease -> lease.executionId().equals(executionId))) return null;
+            // Read before trying the slots: the release thread frees a slot and only then forgets
+            // the pending release, so read afterwards a release finishing in between looked like
+            // "occupied, nothing pending" and refused a slot that was already free.
+            boolean releasePending = releaseDue();
             for (int i = 0; i < backends.get().size(); i++) {
                 physical = replicaSlots.tryAcquire(executionId, attempt).orElse(null);
                 if (physical == null || readyBackends.contains(physical.backend()) && !unverifiedBackends.contains(physical.backend())) break;
@@ -63,7 +67,7 @@ public final class ManagedReplicaPool implements ManagedReplicaSet {
                 // finished invocation whose release proof is on its way. A replica still running
                 // its invocation is a real refusal.
                 boolean allocationResuming = replicaSlots.awaitingAllocation();
-                if (!allocationResuming && !releaseDue()) return null;
+                if (!allocationResuming && !releasePending) return null;
                 var pending = new Reservation(null, null, null);
                 inFlight++;
                 waiting.add(pending);

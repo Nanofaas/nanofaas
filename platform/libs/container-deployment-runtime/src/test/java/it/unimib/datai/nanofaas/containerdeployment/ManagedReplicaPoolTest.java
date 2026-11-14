@@ -74,6 +74,31 @@ class ManagedReplicaPoolTest {
     }
 
     /**
+     * The release proof is collected on another thread, which frees the slot and then forgets the
+     * pending release. An invocation arriving in between must not see "occupied, and nothing
+     * pending" and be refused: the slot it wants is free or about to be.
+     */
+    @Test void anInvocationRacingTheReleaseOfTheOnlySlotIsNeverRefused() throws Exception {
+        var runtime = new LaggingRelease();
+        runtime.activeAnswersLeft.set(0);   // released at the first probe, as fast as possible
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var pool = pool(executor, runtime)) {
+            pool.enablePhysicalSlots(); pool.updateBackends(List.of("http://a"));
+            int refused = 0;
+            for (int i = 0; i < 3_000; i++) {
+                var current = pool.acquire("e" + i, "1");
+                current.ready().toCompletableFuture().get(2, TimeUnit.SECONDS);
+                assertThat(current.markDispatched()).isTrue();
+                current.close();
+                var next = pool.acquire("n" + i, "1");
+                if (next == null) { refused++; continue; }
+                next.ready().toCompletableFuture().get(2, TimeUnit.SECONDS);
+                next.close();   // never dispatched: its slot returns at once
+            }
+            assertThat(refused).as("invocations refused while the slot was being released").isZero();
+        }
+    }
+
+    /**
      * The runtime records the release just after it writes the response, so the first probe,
      * sent the moment the response arrives, usually still sees ACTIVE. The next one must follow
      * at once: every millisecond here is a millisecond the replica sits idle per invocation.

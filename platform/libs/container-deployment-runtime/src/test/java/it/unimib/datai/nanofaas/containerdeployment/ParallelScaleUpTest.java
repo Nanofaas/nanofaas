@@ -42,6 +42,47 @@ class ParallelScaleUpTest {
         }
     }
 
+    @Test void newContainersStartConcurrently() throws Exception {
+        var allStarting = new CountDownLatch(3);
+        try (var factory = new ManagedReplicaPoolFactory(); var provider = provider(factory)) {
+            provider.provision(spec());
+            doAnswer(call -> {
+                ContainerInstanceSpec instance = call.getArgument(0);
+                allStarting.countDown();
+                // Each start returns only once every start is under way: sequential starts never get there.
+                if (!allStarting.await(2, TimeUnit.SECONDS)) throw new IllegalStateException("starts are sequential");
+                int index = LocalManagedDeploymentProvider.replicaIndex(instance.containerName());
+                return new ManagedContainer(instance.containerName(), index, "http://replica" + index, true);
+            }).when(adapter).runContainer(any());
+
+            CompletableFuture.runAsync(() -> provider.setReplicas("f", 4)).get(5, TimeUnit.SECONDS);
+
+            assertThat(provider.getReplicaStatus("f")).isEqualTo(new ReplicaStatus(4, 4));
+        }
+    }
+
+    @Test void aContainerThatFailsToStartLeavesOnlyTheContiguousReadyOnes() {
+        try (var factory = new ManagedReplicaPoolFactory(); var provider = provider(factory)) {
+            var deployment = provider.provision(spec());
+            doAnswer(call -> {
+                ContainerInstanceSpec instance = call.getArgument(0);
+                int index = LocalManagedDeploymentProvider.replicaIndex(instance.containerName());
+                if (index == 3) throw new IllegalStateException("start failed");
+                return new ManagedContainer(instance.containerName(), index, "http://replica" + index, true);
+            }).when(adapter).runContainer(any());
+
+            assertThatThrownBy(() -> provider.setReplicas("f", 4)).hasMessage("start failed");
+
+            assertThat(provider.getReplicaStatus("f").desiredReplicas()).isEqualTo(2);
+            verify(adapter).removeContainer(endsWith("-r4"));
+            verify(adapter, never()).removeContainer(endsWith("-r2"));
+            var a = provider.acquireInvocationTarget("f", deployment.deploymentObjects(), "a", "1").target();
+            var b = provider.acquireInvocationTarget("f", deployment.deploymentObjects(), "b", "1").target();
+            assertThat(Set.of(a.replicaId(), b.replicaId())).containsExactlyInAnyOrder("http://replica1", "http://replica2");
+            a.close(); b.close();
+        }
+    }
+
     @Test void aReplicaThatNeverBecomesReadyLeavesOnlyTheContiguousReadyOnes() {
         try (var factory = new ManagedReplicaPoolFactory(); var provider = provider(factory)) {
             var deployment = provider.provision(spec());

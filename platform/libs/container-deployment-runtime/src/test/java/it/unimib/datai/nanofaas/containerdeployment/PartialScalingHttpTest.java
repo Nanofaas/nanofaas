@@ -14,7 +14,8 @@ import static org.mockito.Mockito.*;
 class PartialScalingHttpTest {
     @Test
     void partialScaleDownRefreshesProxy() throws Exception {
-        var servers = new ArrayList<HttpServer>();
+        // By container name, as a runtime does: replicas start concurrently, in no fixed order.
+        var servers = new java.util.concurrent.ConcurrentHashMap<String, HttpServer>();
         var adapter = mock(ContainerRuntimeAdapter.class);
         when(adapter.runContainer(any())).thenAnswer(invocation -> {
             ContainerInstanceSpec instance = invocation.getArgument(0);
@@ -25,14 +26,15 @@ class PartialScalingHttpTest {
                 exchange.getResponseBody().write(new byte[]{'o', 'k'});
                 exchange.close();
             });
-            server.start(); servers.add(server);
-            return new ManagedContainer(instance.containerName(), servers.size(),
+            server.start(); servers.put(instance.containerName(), server);
+            return new ManagedContainer(instance.containerName(),
+                    LocalManagedDeploymentProvider.replicaIndex(instance.containerName()),
                     "http://127.0.0.1:" + server.getAddress().getPort(), true);
         });
         doAnswer(invocation -> {
             String name = invocation.getArgument(0);
             if (name.endsWith("-r2")) throw new IllegalStateException("remove failed");
-            servers.get(2).stop(0); return null;
+            servers.get(name).stop(0); return null;
         }).when(adapter).removeContainer(anyString());
         try (var provider = provider(adapter, new ManagedReplicaPoolFactory());
              var client = HttpClient.newHttpClient()) {
@@ -50,7 +52,7 @@ class PartialScalingHttpTest {
             doNothing().when(adapter).removeContainer(anyString());
             provider.setReplicas("echo", 1);
             assertThat(provider.getReplicaStatus("echo").readyReplicas()).isEqualTo(1);
-        } finally { servers.forEach(server -> server.stop(0)); }
+        } finally { servers.values().forEach(server -> server.stop(0)); }
     }
 
     @Test
