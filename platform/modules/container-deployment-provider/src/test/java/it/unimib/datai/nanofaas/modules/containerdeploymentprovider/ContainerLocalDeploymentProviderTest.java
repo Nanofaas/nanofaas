@@ -23,7 +23,6 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -880,7 +879,8 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     private static final class MutableEndpointProbe implements EndpointProbe {
-        private final Set<String> readyEndpoints = new LinkedHashSet<>();
+        // Replicas wait for readiness concurrently.
+        private final Set<String> readyEndpoints = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
         void markReady(String baseUrl) {
             readyEndpoints.add(baseUrl);
