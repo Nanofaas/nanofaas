@@ -1,6 +1,8 @@
 package it.unimib.datai.nanofaas.controlplane.config;
 
+import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
+import it.unimib.datai.nanofaas.common.model.RawJson;
 import org.springframework.aot.hint.BindingReflectionHintsRegistrar;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
@@ -39,7 +41,11 @@ public class InvocationLifecycleRuntimeHints implements RuntimeHintsRegistrar {
     @Override
     public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
         // ResponseEntity<Object> hides the envelope (and nested ErrorInfo) from HTTP binding inference.
-        new BindingReflectionHintsRegistrar().registerReflectionHints(hints.reflection(), InvocationResponse.class);
+        // The request side is hidden too: the controller reads the body as bytes, so InvocationRequest
+        // - what the dispatcher serializes to every function runtime - appears in no HTTP signature.
+        // RawJson rides inside it. (IngressInvocationRequest is registered on the controller itself.)
+        new BindingReflectionHintsRegistrar().registerReflectionHints(hints.reflection(),
+                InvocationResponse.class, InvocationRequest.class, RawJson.class);
         // Metadata compiled into the image at build time, not runtime reflection. Nothing here
         // discovers a strategy by reflection or by a plugin scan: the strategies are plain beans
         // handed to StrategyRegistry's constructor, and an id absent from that list is refused.

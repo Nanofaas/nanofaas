@@ -75,7 +75,8 @@ public final class RawJson implements JacksonSerializable {
     private record Text(byte[] utf8) implements SerializableString {
         @Override public String getValue() { return new String(utf8, StandardCharsets.UTF_8); }
         @Override public int charLength() { return getValue().length(); }
-        @Override public byte[] asUnquotedUTF8() { return utf8; }
+        // A copy: the caller may keep or modify it. Generators prefer the append/write forms.
+        @Override public byte[] asUnquotedUTF8() { return utf8.clone(); }
 
         @Override public int appendUnquotedUTF8(byte[] buffer, int offset) {
             if (utf8.length > buffer.length - offset) {
