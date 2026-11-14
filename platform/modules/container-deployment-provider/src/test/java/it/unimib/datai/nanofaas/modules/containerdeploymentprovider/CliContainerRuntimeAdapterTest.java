@@ -30,7 +30,7 @@ class CliContainerRuntimeAdapterTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(()->provider.setReplicas("echo",1))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("removal denied");
         assertThat(provider.getReplicaStatus("echo").desiredReplicas()).isEqualTo(2);
-        org.mockito.Mockito.verify(proxy).updateBackends(List.of("http://127.0.0.1:18080","http://127.0.0.1:18081"));
+        org.mockito.Mockito.verify(proxy).updateBackends(List.of(backend(executor,prefix+"-r1"),backend(executor,prefix+"-r2")));
         executor.withResult(ExecutionResult.success("removed r2"));
         provider.setReplicas("echo",1);
         assertThat(provider.getReplicaStatus("echo").desiredReplicas()).isEqualTo(1);
@@ -71,6 +71,13 @@ class CliContainerRuntimeAdapterTest {
         assertThat(executor.commands()).containsExactly(
                 List.of("docker","rm","-f","gone"),List.of("docker","ps","-a","--format","{{.Names}}"),
                 List.of("docker","rm","-f","gone"),List.of("docker","ps","-a","--format","{{.Names}}"));
+    }
+
+    /** The endpoint a replica was started on: replicas start concurrently and draw ports in no fixed order. */
+    private static String backend(RecordingCliCommandExecutor executor, String container) {
+        List<String> run = executor.commands().stream()
+                .filter(command -> command.contains("run") && command.contains(container)).findFirst().orElseThrow();
+        return "http://127.0.0.1:" + run.get(run.indexOf("-p") + 1).split(":")[0];
     }
 
     private static ContainerLocalDeploymentProvider provider(RecordingCliCommandExecutor executor,
@@ -195,17 +202,17 @@ class CliContainerRuntimeAdapterTest {
         private final List<List<String>> commands = new ArrayList<>();
         private final List<ExecutionResult> results = new ArrayList<>();
 
-        RecordingCliCommandExecutor withResult(ExecutionResult result) {
+        synchronized RecordingCliCommandExecutor withResult(ExecutionResult result) {
             results.add(result);
             return this;
         }
 
-        List<List<String>> commands() {
-            return commands;
+        synchronized List<List<String>> commands() {
+            return List.copyOf(commands);
         }
 
         @Override
-        public ExecutionResult run(List<String> command) {
+        public synchronized ExecutionResult run(List<String> command) {
             commands.add(List.copyOf(command));
             if (results.isEmpty()) {
                 return ExecutionResult.success("");

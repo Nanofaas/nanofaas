@@ -511,60 +511,66 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     }
 
     /**
-     * Adds replicas {@code first..last}. Containers are started one at a time, then all of them
-     * wait for readiness together: readiness is the function's boot time, and paying it once per
-     * replica made a scale-up by N cost N cold starts.
+     * Adds replicas {@code first..last}, all at once: each replica starts its container and waits
+     * for its own readiness concurrently with the others. Started one after another, a scale-up by
+     * N paid N container starts and N function boots end to end.
      *
      * <p>Replica indexes must stay contiguous (the current count is the next index minus one), so
-     * only the ready prefix is kept: a replica that became ready after one that did not is removed
-     * again, exactly as if it had never been started.
+     * only the ready prefix is kept, in index order: a replica that came up after one that did not
+     * is removed again, exactly as if it had never been started. A replica whose container never
+     * started has nothing to remove ({@link #startReplica} already cleaned up after itself).
      */
-    // ponytail: containers still start sequentially; runtime adapters are not known to be safe
-    // for concurrent runContainer. Parallelize that too if container start dominates a scale-up.
     private void addReplicas(FunctionState state, int first, int last) {
-        List<ReplicaState> started = new ArrayList<>();
-        RuntimeException failure = null;
-        for (int replicaIndex = first; replicaIndex <= last && failure == null; replicaIndex++) {
-            try {
-                started.add(startReplica(state, replicaIndex));
-            } catch (RuntimeException startFailure) {
-                failure = startFailure;
+        record Launch(ReplicaState replica, RuntimeException failure) {}
+        List<java.util.concurrent.Future<Launch>> launches = new ArrayList<>();
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int replicaIndex = first; replicaIndex <= last; replicaIndex++) {
+                int index = replicaIndex;
+                launches.add(executor.submit(() -> {
+                    ReplicaState replica;
+                    try {
+                        replica = startReplica(state, index);
+                    } catch (RuntimeException startFailure) {
+                        return new Launch(null, startFailure);
+                    }
+                    try {
+                        endpointProbe.awaitReady(replica.baseUrl(), settings.readinessTimeout(), settings.readinessPollInterval());
+                        return new Launch(replica, null);
+                    } catch (RuntimeException notReady) {
+                        return new Launch(replica, notReady);
+                    }
+                }));
             }
         }
         RuntimeException firstFailure = null;
-        try (var readiness = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-            List<java.util.concurrent.Future<?>> waits = new ArrayList<>();
-            for (ReplicaState replica : started) {
-                waits.add(readiness.submit(() -> endpointProbe.awaitReady(
-                        replica.baseUrl(), settings.readinessTimeout(), settings.readinessPollInterval())));
+        for (int offset = 0; offset < launches.size(); offset++) {
+            Launch launch = launchOutcome(launches.get(offset));
+            if (launch.failure() == null && firstFailure == null) {
+                state.replicas.put(first + offset, launch.replica());
+                continue;
             }
-            for (int offset = 0; offset < started.size(); offset++) {
-                ReplicaState replica = started.get(offset);
-                RuntimeException notReady = readinessFailure(waits.get(offset));
-                if (notReady == null && firstFailure == null) {
-                    state.replicas.put(first + offset, replica);
-                    continue;
-                }
-                if (firstFailure == null) firstFailure = notReady;
-                suppressCleanupFailure(firstFailure, () -> adapter.removeContainer(replica.containerName()));
+            if (firstFailure == null) firstFailure = launch.failure();
+            if (launch.replica() != null) {
+                ReplicaState started = launch.replica();
+                suppressCleanupFailure(firstFailure, () -> adapter.removeContainer(started.containerName()));
             }
         }
-        if (firstFailure == null) firstFailure = failure;
         if (firstFailure != null) throw firstFailure;
     }
 
-    private static RuntimeException readinessFailure(java.util.concurrent.Future<?> wait) {
+    private static <T> T launchOutcome(java.util.concurrent.Future<T> launch) {
         try {
-            wait.get();
-            return null;
+            return launch.get();
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            return new IllegalStateException("Interrupted while waiting for endpoint readiness", interrupted);
+            throw new IllegalStateException("Interrupted while adding replicas", interrupted);
         } catch (java.util.concurrent.ExecutionException failed) {
-            return failed.getCause() instanceof RuntimeException cause ? cause : new IllegalStateException(failed.getCause());
+            // Every launch catches its own failures; this is an Error escaping one of them.
+            throw failed.getCause() instanceof RuntimeException cause ? cause : new IllegalStateException(failed.getCause());
         }
     }
 
+    // ponytail: reconcile (control-plane restart) still adds missing replicas one at a time.
     private void addReplica(FunctionState state, int replicaIndex) {
         ReplicaState replica = startReplica(state, replicaIndex);
         try {

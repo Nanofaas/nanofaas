@@ -63,7 +63,7 @@ class ContainerIdentityHttpTest {
         private final Map<String, HttpServer> servers = new LinkedHashMap<>();
         public boolean isAvailable() { return true; }
         public void pullImage(String image) { }
-        public ManagedContainer runContainer(ContainerInstanceSpec spec) {
+        public synchronized ManagedContainer runContainer(ContainerInstanceSpec spec) {
             try {
                 // Model Docker's old replacement behavior so a naming collision kills the first endpoint.
                 var previous = servers.remove(spec.containerName());
@@ -84,11 +84,11 @@ class ContainerIdentityHttpTest {
                 throw new IllegalStateException(error);
             }
         }
-        public void removeContainer(String name) {
+        public synchronized void removeContainer(String name) {
             var server = servers.remove(name);
             if (server != null) server.stop(0);
         }
-        public List<ManagedContainer> listManagedContainers(String function) { return List.of(); }
-        public void close() { servers.values().forEach(server -> server.stop(0)); }
+        public synchronized List<ManagedContainer> listManagedContainers(String function) { return List.of(); }
+        public synchronized void close() { servers.values().forEach(server -> server.stop(0)); }
     }
 }

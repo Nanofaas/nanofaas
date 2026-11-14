@@ -96,8 +96,9 @@ class ContainerLocalDeploymentProviderTest {
 
         assertThat(result.backendId()).isEqualTo("container-local");
         assertThat(result.endpointUrl()).isNull();
-        assertThat(adapter.startedPorts()).containsExactly(19001, 19002);
-        assertThat(proxy.backends()).containsExactly(
+        // Replicas start concurrently, so which one draws which port is not fixed.
+        assertThat(adapter.startedPorts()).containsExactlyInAnyOrder(19001, 19002);
+        assertThat(proxy.backends()).containsExactlyInAnyOrder(
                 "http://127.0.0.1:19001",
                 "http://127.0.0.1:19002"
         );
@@ -232,7 +233,7 @@ class ContainerLocalDeploymentProviderTest {
         String prefix = result.deploymentObjects().get(ProvisionResult.CONTAINER_NAME_PREFIX);
         assertThat(prefix).isEqualTo("nanofaas-word-stats-f1153f98e2d7b875");
         assertThat(adapter.startedSpecs().stream().map(ContainerInstanceSpec::containerName))
-                .containsExactly(prefix + "-r1", prefix + "-r2");
+                .containsExactlyInAnyOrder(prefix + "-r1", prefix + "-r2");
     }
 
     @Test
@@ -457,8 +458,9 @@ class ContainerLocalDeploymentProviderTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("second replica failed");
 
+        // The probe fails whichever replica drew port 19002: concurrent starts draw in no fixed order.
         assertThat(adapter.removedContainers())
-                .containsExactly("nanofaas-echo-092c79e8f80e559e-r2", "nanofaas-echo-092c79e8f80e559e-r1");
+                .containsExactlyInAnyOrder("nanofaas-echo-092c79e8f80e559e-r2", "nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(firstProxy.isClosed()).isTrue();
         assertThat(provider.provision(spec("echo", 2)).endpointUrl()).isNull();
         assertThat(proxyCreations.get()).isEqualTo(2);
@@ -793,7 +795,7 @@ class ContainerLocalDeploymentProviderTest {
         }
 
         @Override
-        public ManagedContainer runContainer(ContainerInstanceSpec spec) {
+        public synchronized ManagedContainer runContainer(ContainerInstanceSpec spec) {
             started.add(spec);
             Integer hostPort = properties.networkName() == null ? ports.nextPort() : null;
             startedPorts.add(hostPort);
@@ -808,13 +810,13 @@ class ContainerLocalDeploymentProviderTest {
         }
 
         @Override
-        public void removeContainer(String containerName) {
+        public synchronized void removeContainer(String containerName) {
             removed.add(containerName);
             managedContainers = managedContainers.stream().filter(c -> !c.name().equals(containerName)).toList();
         }
 
         @Override
-        public List<ManagedContainer> listManagedContainers(String functionName) {
+        public synchronized List<ManagedContainer> listManagedContainers(String functionName) {
             return managedContainers;
         }
 
@@ -986,7 +988,7 @@ class ContainerLocalDeploymentProviderTest {
         }
 
         @Override
-        public int nextPort() {
+        public synchronized int nextPort() {
             return ports.removeFirst();
         }
     }

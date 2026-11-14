@@ -114,6 +114,37 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
         }
     }
 
+    /** A scale-up starts its replicas at once, through one adapter and one Docker client. */
+    @Test
+    void startsReplicasConcurrentlyOnDistinctHostPorts() throws Exception {
+        String prefix = "nanofaas-concurrent-start-" + UUID.randomUUID() + "-r";
+        var client = ContainerDeploymentProviderConfiguration.createDockerClient();
+        var adapter = new DockerJavaContainerRuntimeAdapter(client);
+        assumeTrue(adapter.isAvailable(), "Docker Engine is unavailable");
+        pullTestImage(client);
+        List<String> names = java.util.stream.IntStream.rangeClosed(1, 6).mapToObj(index -> prefix + index).toList();
+        try {
+            try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+                var starts = names.stream().map(name -> executor.submit(() -> adapter.runContainer(new ContainerInstanceSpec(
+                        name, TEST_IMAGE, List.of("sh", "-c", "sleep 30"), Map.of(), null, null)))).toList();
+                for (var start : starts) start.get();
+            }
+            var hostPorts = new java.util.HashSet<String>();
+            for (String name : names) {
+                var inspected = client.inspectContainerCmd(name).exec();
+                assertThat(inspected.getState().getRunning()).isTrue();
+                for (var bindings : inspected.getNetworkSettings().getPorts().getBindings().values()) {
+                    // Docker may bind the same port on both IPv4 and IPv6: count ports, not bindings.
+                    for (var binding : bindings) hostPorts.add(binding.getHostPortSpec());
+                }
+            }
+            assertThat(hostPorts).hasSize(names.size());
+        } finally {
+            names.forEach(adapter::removeContainer);
+            adapter.close();
+        }
+    }
+
     private static void pullTestImage(DockerClient client) throws InterruptedException {
         client.pullImageCmd(TEST_IMAGE)
                 .exec(new PullImageResultCallback())
