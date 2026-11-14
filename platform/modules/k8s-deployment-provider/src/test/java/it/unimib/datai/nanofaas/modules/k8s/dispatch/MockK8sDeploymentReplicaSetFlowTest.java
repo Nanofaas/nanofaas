@@ -129,12 +129,11 @@ class MockK8sDeploymentReplicaSetFlowTest {
 
     @Test
     void deploymentReplicaSetPodFlow_updatesReadyReplicasAndScaling() {
-        String serviceUrl = resourceManager.provision(spec());
+        resourceManager.provision(spec());
 
         Deployment deployment = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
         assertNotNull(deployment);
         assertEquals(2, deployment.getSpec().getReplicas());
-        assertTrue(serviceUrl.contains("fn-echo.default.svc.cluster.local"));
 
         ReplicaSet replicaSet = buildReplicaSet();
         client.apps().replicaSets().inNamespace("default").resource(replicaSet).create();

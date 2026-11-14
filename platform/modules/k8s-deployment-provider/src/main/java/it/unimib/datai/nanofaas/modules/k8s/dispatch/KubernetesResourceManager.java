@@ -38,9 +38,8 @@ public class KubernetesResourceManager {
      * Creates Deployment + Service (+ HPA if strategy=HPA) for a function.
      * Reconciles resources without deleting stable objects first, preserving
      * service identity and deployment history across updates.
-     * Returns the service URL for invocations.
      */
-    public String provision(FunctionSpec spec) {
+    public void provision(FunctionSpec spec) {
         Deployment deployment = builder.buildDeployment(spec);
         Service service = builder.buildService(spec);
         KubernetesClient client = clientProvider.getObject();
@@ -74,9 +73,7 @@ public class KubernetesResourceManager {
             throw failure;
         }
 
-        String serviceUrl = serviceUrl(KubernetesDeploymentBuilder.serviceName(spec.name()), resolvedNamespace);
-        log.info("Function {} provisioned at {}", spec.name(), serviceUrl);
-        return serviceUrl;
+        log.info("Function {} provisioned in namespace {}", spec.name(), resolvedNamespace);
     }
 
     /**
@@ -172,12 +169,9 @@ public class KubernetesResourceManager {
         return KubernetesDeploymentBuilder.hpaOwnsScaling(spec.scalingConfig());
     }
 
-    private static String serviceUrl(String serviceName, String namespace) {
-        return String.format("http://%s.%s.svc.cluster.local:8080/invoke", serviceName, namespace);
-    }
-
     private ProvisionResult provisionResult(ResourceNames names) {
-        return new ProvisionResult(serviceUrl(names.service(), names.namespace()),
+        // No endpoint URL: the control plane picks the pod of every invocation itself.
+        return new ProvisionResult(null,
                 KubernetesManagedDeploymentProvider.BACKEND_ID, Map.of(
                 ProvisionResult.DEPLOYMENT, names.deployment(),
                 ProvisionResult.SERVICE, names.service(),
