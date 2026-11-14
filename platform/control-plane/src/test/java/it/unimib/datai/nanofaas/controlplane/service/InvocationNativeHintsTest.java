@@ -32,6 +32,24 @@ class InvocationNativeHintsTest {
         }
     }
 
+    /**
+     * The invocation body is read by hand (as bytes), so no @RequestBody signature tells AOT about
+     * these records any more. InvocationRequest is what the dispatcher serializes to every function
+     * runtime: without its accessors a native control plane cannot dispatch at all.
+     */
+    @Test
+    void invocationRequestRecordsRetainEveryAccessorForNativeJackson() throws Exception {
+        RuntimeHints hints = applicationHints();
+        // IngressInvocationRequest is registered by @RegisterReflectionForBinding on the controller,
+        // which only AOT processing reads; the registrar under test covers the common types.
+        for (Class<?> type : java.util.List.of(it.unimib.datai.nanofaas.common.model.InvocationRequest.class)) {
+            for (var component : type.getRecordComponents()) {
+                assertThat(RuntimeHintsPredicates.reflection().onMethodInvocation(component.getAccessor()).test(hints))
+                        .as("native Jackson record accessor %s.%s", type.getSimpleName(), component.getName()).isTrue();
+            }
+        }
+    }
+
     @Test
     void concreteWakeUpSchedulerDestroyMethodIsInvocableInNativeImage() throws Exception {
         ScheduledExecutorService scheduler = new ManagedDeploymentOrchestration().deploymentWakeUpTimeoutScheduler();
