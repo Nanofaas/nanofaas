@@ -116,6 +116,18 @@ should drain work before a planned upgrade when completion matters.
 fencing mechanism for node partitions, forced deletion or other Kubernetes
 replacement events.
 
+### After 0.23.0: function Services become headless
+
+The control plane now picks the pod of every invocation itself, from the ready
+endpoints of the function's Service, instead of sending it to the Service's
+virtual IP. Function Services are created with `clusterIP: None`. On the first
+start after the upgrade, each existing ClusterIP Service is deleted and created
+again as headless (`clusterIP` cannot be changed in place); while that happens
+the function briefly has no pod to dispatch to. The control plane needs
+`get`, `list` and `watch` on `discovery.k8s.io/endpointslices`, which the
+chart's Role grants; a Role managed outside the chart must add it. The
+registration API no longer reports an `endpointUrl` for Kubernetes functions.
+
 ### Removed after 0.23.0: the physical input-copy quota
 
 Invocation payloads are now retained as immutable JSON text and read in place, so

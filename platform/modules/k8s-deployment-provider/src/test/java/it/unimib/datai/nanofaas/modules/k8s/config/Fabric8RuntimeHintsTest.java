@@ -16,6 +16,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class Fabric8RuntimeHintsTest {
 
+    /** The provider's informer reads EndpointSlices reflectively in the native image. */
+    @Test
+    void registerHints_registersEndpointSliceTypes() {
+        RuntimeHints hints = new RuntimeHints();
+
+        new Fabric8RuntimeHints.Fabric8Hints().registerHints(hints, getClass().getClassLoader());
+
+        assertThat(RuntimeHintsPredicates.reflection()
+                .onType(io.fabric8.kubernetes.api.model.discovery.v1.EndpointSlice.class).test(hints)).isTrue();
+        assertThat(RuntimeHintsPredicates.reflection()
+                .onType(io.fabric8.kubernetes.api.model.discovery.v1.EndpointSliceList.class).test(hints)).isTrue();
+    }
+
     @Test
     void registerHints_registersCoreFabric8Types() {
         RuntimeHints hints = new RuntimeHints();

@@ -89,7 +89,7 @@ provisions one Deployment + Service per function in the configured namespace:
 +-- Namespace: nanofaas ----------------------------------------+
 |  Function "image-resize"                                      |
 |  +-----------------------+   +--------------------+           |
-|  |  Deployment           |   |  Service (ClusterIP)|          |
+|  |  Deployment           |   |  Service (headless) |          |
 |  |  fn-image-resize      |   |  fn-image-resize    |          |
 |  |  replicas: N          |   |  port: 8080         |          |
 |  |                       |   |  selector:           |          |
