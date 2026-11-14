@@ -32,6 +32,33 @@ class ContainerdPropertiesTest {
         assertThat(properties.cgroupsPath()).isEqualTo("user.slice");
     }
 
+    /**
+     * The native snapshotter copies the whole root filesystem for every container, and containerd
+     * prepares snapshots one at a time: five replicas started together took 10 s to create instead
+     * of 0.4 s on overlayfs. Root filesystems are overlayfs, and no setting brings native back.
+     * Linux only: building the client needs Netty's epoll transport.
+     */
+    @Test
+    @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
+    void clientPreparesRootFilesystemsOnOverlayfs(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        Path plugins = java.nio.file.Files.createDirectories(dir.resolve("bin"));
+        Path config = java.nio.file.Files.createDirectories(dir.resolve("net.d"));
+        new ApplicationContextRunner()
+                .withUserConfiguration(PropertiesConfiguration.class)
+                .withPropertyValues(
+                        "nanofaas.containerd.socket-path=" + dir.resolve("containerd.sock"),
+                        "nanofaas.containerd.cni-plugin-directory=" + plugins,
+                        "nanofaas.containerd.cni-config-directory=" + config,
+                        "nanofaas.containerd.cni-cache-directory=" + dir.resolve("cache"),
+                        "nanofaas.containerd.state-directory=" + dir.resolve("state"),
+                        "nanofaas.containerd.snapshotter=native")
+                .run(context -> {
+                    try (var client = context.getBean(ContainerdProperties.class).newClient()) {
+                        assertThat(client.snapshotter()).isEqualTo("overlayfs");
+                    }
+                });
+    }
+
     @Test
     void missingRuntimeDirectoryHasActionableDiagnostic() {
         var environment = Map.of("HOME", "/home/service");
@@ -48,7 +75,6 @@ class ContainerdPropertiesTest {
                                 Map.entry("NANOFAAS_CONTAINERD_SOCKETPATH", "/run/user/4242/containerd/containerd.sock"),
                                 Map.entry("NANOFAAS_CONTAINERD_NAMESPACE", "canonical-test"),
                                 Map.entry("NANOFAAS_CONTAINERD_RUNTIMEBINARY", "test-crun"),
-                                Map.entry("NANOFAAS_CONTAINERD_SNAPSHOTTER", "test-native"),
                                 Map.entry("NANOFAAS_CONTAINERD_NETWORKNAME", "canonical-net"),
                                 Map.entry("NANOFAAS_CONTAINERD_CNIPLUGINDIRECTORY", "/test/cni/bin"),
                                 Map.entry("NANOFAAS_CONTAINERD_CNICONFIGDIRECTORY", "/test/cni/conf"),
@@ -72,7 +98,6 @@ class ContainerdPropertiesTest {
                     assertThat(properties.namespace()).isEqualTo("canonical-test");
                     assertThat(properties.networkName()).isEqualTo("canonical-net");
                     assertThat(properties.runtimeBinary()).isEqualTo("test-crun");
-                    assertThat(properties.snapshotter()).isEqualTo("test-native");
                     assertThat(properties.cniPluginDirectory()).isEqualTo(Path.of("/test/cni/bin"));
                     assertThat(properties.cniConfigDirectory()).isEqualTo(Path.of("/test/cni/conf"));
                     assertThat(properties.cniCacheDirectory()).isEqualTo(Path.of("/test/cni/cache"));

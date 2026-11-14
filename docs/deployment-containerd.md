@@ -108,7 +108,13 @@ that launch path.
 Run containerd as the same unprivileged user as the control plane. Provide
 subordinate UID/GID mappings, RootlessKit, `crun`, CNI bridge/host-local/portmap
 plugins, a writable CNI cache and state directory, and delegated cgroup v2
-`cpu`, `cpuset`, `memory`, and `pids` controllers. The user systemd service must
+`cpu`, `cpuset`, `memory`, and `pids` controllers. Function root filesystems
+always use containerd's `overlayfs` snapshotter: the kernel must allow
+unprivileged overlay mounts (Linux 5.11 or newer), and the daemon must unpack
+images for `overlayfs`, which it does when the Transfer plugin sets no
+`unpack_config`. NanoFaaS does not run functions on `native`: it copies every
+root filesystem, and containerd prepares those copies one at a time, so
+replicas started together were created one after another. The user systemd service must
 see the containerd socket and the RootlessKit child PID at
 `$XDG_RUNTIME_DIR/containerd-rootless/child_pid`. NanoLab owns installation,
 per-run service and environment rendering, host port publication and cleanup.
@@ -148,7 +154,7 @@ names):
 | `SERVER_ADDRESS`, `SERVER_PORT`, `MANAGEMENT_SERVER_PORT` | `0.0.0.0`, `8080`, `8081` in the rootless service |
 | `NANOFAAS_CONTAINERD_SOCKETPATH` | Absolute UDS; default `$XDG_RUNTIME_DIR/containerd/containerd.sock` |
 | `NANOFAAS_CONTAINERD_NAMESPACE` | Containerd namespace; default `nanofaas` |
-| `NANOFAAS_CONTAINERD_RUNTIMEBINARY`, `NANOFAAS_CONTAINERD_SNAPSHOTTER` | `crun`, `native` |
+| `NANOFAAS_CONTAINERD_RUNTIMEBINARY` | `crun` |
 | `NANOFAAS_CONTAINERD_NETWORKNAME` | CNI network name; default `nanofaas` |
 | `NANOFAAS_CONTAINERD_CNIPLUGINDIRECTORY` | Absolute plugin directory; default `/opt/cni/bin` |
 | `NANOFAAS_CONTAINERD_CNICONFIGDIRECTORY` | Absolute config directory; default `$HOME/.config/cni/net.d` |

@@ -15,7 +15,6 @@ public record ContainerdProperties(
         String socketPath,
         String namespace,
         String runtimeBinary,
-        String snapshotter,
         String networkName,
         Path cniPluginDirectory,
         Path cniConfigDirectory,
@@ -47,7 +46,6 @@ public record ContainerdProperties(
         if (cniPluginDirectory == null) cniPluginDirectory = Path.of("/opt/cni/bin");
         namespace = defaultString(namespace, "nanofaas");
         runtimeBinary = defaultString(runtimeBinary, "crun");
-        snapshotter = defaultString(snapshotter, "native");
         networkName = defaultString(networkName, "nanofaas");
         cgroupsPath = defaultString(cgroupsPath, "user.slice");
         bindHost = defaultString(bindHost, "127.0.0.1");
@@ -76,7 +74,7 @@ public record ContainerdProperties(
     public static ContainerdProperties defaults(Map<String, String> env) {
         String home = required(env, "HOME");
         String runtime = required(env, "XDG_RUNTIME_DIR");
-        return new ContainerdProperties(runtime + "/containerd/containerd.sock", null, null, null, null,
+        return new ContainerdProperties(runtime + "/containerd/containerd.sock", null, null, null,
                 null, Path.of(home, ".config/cni/net.d"), Path.of(home, ".local/share/nanofaas/cni"),
                 Path.of(home, ".local/share/nanofaas/containerd"), null, null, null, null, null,
                 null, null, null, null, null, null);
@@ -90,7 +88,10 @@ public record ContainerdProperties(
                 .socketPath(socketPath)
                 .namespace(namespace)
                 .runtimeBinaryName(runtimeBinary)
-                .snapshotter(snapshotter)
+                // Functions always run on overlayfs, whatever containerd-java defaults to. Native
+                // copies every root filesystem and containerd prepares snapshots one at a time,
+                // so replicas started together were created one after another.
+                .snapshotter("overlayfs")
                 .systemdCgroup(systemdCgroup)
                 .stopTimeout(stopTimeout)
                 .stateDirectory(stateDirectory)

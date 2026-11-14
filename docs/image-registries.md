@@ -252,7 +252,7 @@ CONTAINERD_SOCKET="$XDG_RUNTIME_DIR/containerd/containerd.sock"
 CONTAINERD_NAMESPACE=nanofaas
 : "${FUNCTION_IMAGE:?Set FUNCTION_IMAGE to the anonymously pullable HTTPS image}"
 ctr --address "$CONTAINERD_SOCKET" --namespace "$CONTAINERD_NAMESPACE" \
-  images pull --snapshotter native "$FUNCTION_IMAGE"
+  images pull "$FUNCTION_IMAGE"
 ```
 
 Then [register and invoke](#register-and-invoke), or follow the custom-endpoint
@@ -335,7 +335,7 @@ REGISTRY_HOSTS_DIR="$HOME/.config/containerd/certs.d"
 REGISTRY=192.0.2.10:5000  # replace as above
 FUNCTION_IMAGE="$REGISTRY/greet:release-1"
 ctr --address "$CONTAINERD_SOCKET" --namespace "$CONTAINERD_NAMESPACE" \
-  images pull --hosts-dir "$REGISTRY_HOSTS_DIR" --snapshotter native "$FUNCTION_IMAGE"
+  images pull --hosts-dir "$REGISTRY_HOSTS_DIR" "$FUNCTION_IMAGE"
 ```
 
 This CLI check diagnoses registry reachability and `hosts.toml`. NanoFaaS uses
