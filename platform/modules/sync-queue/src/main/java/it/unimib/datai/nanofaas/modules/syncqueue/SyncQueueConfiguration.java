@@ -38,8 +38,8 @@ import java.util.function.LongSupplier;
 @EnableConfigurationProperties(SyncQueueProperties.class)
 public class SyncQueueConfiguration {
 
-    /** How often the wait estimator prunes expired samples in the absence of new dispatches,
-     * matching the cadence the former {@code SyncScheduler} loop gave it. */
+    /** How often the wait estimator drops the state of functions left idle, matching the cadence
+     * the former {@code SyncScheduler} loop gave its maintenance. */
     private static final long ESTIMATOR_MAINTENANCE_PERIOD_MS = 500L;
 
     @Bean
@@ -76,8 +76,9 @@ public class SyncQueueConfiguration {
     }
 
     /** ponytail: a single daemon timer, not a general-purpose scheduling facility — its only job
-     * is keeping {@link WaitEstimator#maintain} running while the queue is idle, since nothing
-     * else calls it since the per-module tick loop was deleted. */
+     * is calling {@link WaitEstimator#maintain}, which drops idle functions' states. Counting
+     * needs no periodic work and memory is capped without it; this only keeps an idle function's
+     * fixed-size state from being retained until the state table fills. */
     @Bean(destroyMethod = "shutdown")
     @SuppressWarnings("FutureReturnValueIgnored") // Periodic maintenance; nothing awaits this handle.
     ScheduledExecutorService syncQueueEstimatorMaintenance(WaitEstimator estimator) {
