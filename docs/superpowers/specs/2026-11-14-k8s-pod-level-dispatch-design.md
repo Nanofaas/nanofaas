@@ -138,8 +138,11 @@ pod pronto, tutti i pod al limite). L'URL di destinazione è
 - `setReplicas`: invariato (scala il Deployment). Il pool segue comunque gli
   EndpointSlice, chiunque scali.
 - `getReplicaStatus`: `desiredReplicas` resta quello del Deployment, ma
-  `readyReplicas` diventa il numero di backend nel pool, cioè di endpoint pronti
-  visti negli EndpointSlice. È lo stesso principio del provider locale, che
+  `readyReplicas` diventa il minimo tra i pronti del Deployment e i backend nel
+  pool, cioè gli endpoint pronti visti negli EndpointSlice (aggiornato dopo la
+  revisione: il pool può ancora contenere un pod in terminazione che il
+  Deployment non conta più, per esempio dopo uno scale a zero seguito da un
+  risveglio immediato). È lo stesso principio del provider locale, che
   riporta solo le repliche che il dispatch può usare. Serve perché
   `DeploymentWakeUpGate` trattiene il primo dispatch di una funzione nuova o
   risvegliata da zero finché `readyReplicas > 0`: se leggesse il Deployment, che

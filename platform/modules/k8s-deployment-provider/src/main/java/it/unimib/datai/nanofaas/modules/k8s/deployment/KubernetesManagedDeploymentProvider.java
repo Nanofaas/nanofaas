@@ -137,15 +137,19 @@ public class KubernetesManagedDeploymentProvider implements ManagedDeploymentPro
     }
 
     /**
-     * Desired is the Deployment's; ready is the pods the dispatch can reach. The Deployment can report
-     * a pod ready before its endpoint reaches the pool, and the wake-up gate releases the first
-     * dispatch on ready: counting the Deployment's would send it into an empty pool.
+     * Desired is the Deployment's; ready is what both the Deployment and the pool agree on. The
+     * wake-up gate releases the first dispatch on ready, and each source lags the other at one end:
+     * the Deployment can count a new pod before its endpoint reaches the pool (dispatch would meet
+     * an empty pool), and the pool can still hold a terminating pod the Deployment already stopped
+     * counting (dispatch would meet a dying pod).
      */
     @Override
     public ReplicaStatus getReplicaStatus(String functionName) {
-        int desired = resourceManager.getReplicaStatus(functionName).desiredReplicas();
+        ReplicaStatus deployment = resourceManager.getReplicaStatus(functionName);
         var pods = functions.get(KubernetesDeploymentBuilder.serviceName(functionName));
-        return new ReplicaStatus(desired, pods == null ? 0 : Math.min(desired, pods.backends));
+        int reachable = pods == null ? 0 : pods.backends;
+        return new ReplicaStatus(deployment.desiredReplicas(),
+                Math.min(deployment.desiredReplicas(), Math.min(deployment.readyReplicas(), reachable)));
     }
 
     @Override

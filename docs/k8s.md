@@ -30,7 +30,9 @@ For each DEPLOYMENT function the provider provisions:
   path, so pods added by a scale-up receive traffic as soon as they are ready,
   instead of waiting for connections to the old ones to close. A Service that is
   not headless (created by an earlier version) is deleted and recreated, since
-  `clusterIP` cannot be changed.
+  `clusterIP` cannot be changed. Because invocations go to pod addresses, the
+  HTTP client's `nanofaas.http-client.max-connections` applies to each pod, not
+  to the function as a whole.
 
 Deployments and Services are **reconciled in place** during provisioning
 updates instead of being deleted and recreated. HPA objects are reconciled

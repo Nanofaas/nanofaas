@@ -35,9 +35,10 @@ public class KubernetesResourceManager {
     }
 
     /**
-     * Creates Deployment + Service (+ HPA if strategy=HPA) for a function.
-     * Reconciles resources without deleting stable objects first, preserving
-     * service identity and deployment history across updates.
+     * Creates Deployment + headless Service (+ HPA if strategy=HPA) for a function.
+     * Existing objects are patched in place, preserving deployment history across
+     * updates; the one exception is a Service that is not headless, which is
+     * deleted and created again because its clusterIP cannot be changed.
      */
     public void provision(FunctionSpec spec) {
         Deployment deployment = builder.buildDeployment(spec);
@@ -78,10 +79,11 @@ public class KubernetesResourceManager {
 
     /**
      * Restores a function's resources at their persisted names without destroying
-     * anything healthy: existing Deployment and Service are left alone, only the
-     * missing pieces are created, and a non-HPA Deployment is scaled to the
-     * coordinator-driven replica target. HPA config is restored but its replica
-     * count is left to Kubernetes.
+     * anything healthy: the existing Deployment and a headless Service are left alone,
+     * only the missing pieces are created, and a non-HPA Deployment is scaled to the
+     * coordinator-driven replica target. A Service that is not headless (created by an
+     * earlier version) is recreated, since its clusterIP cannot be changed in place.
+     * HPA config is restored but its replica count is left to Kubernetes.
      */
     public ProvisionResult reconcile(FunctionSpec spec,
                                      int desiredReplicas,
@@ -300,13 +302,6 @@ public class KubernetesResourceManager {
                 .withName(name)
                 .scale(replicas);
         log.debug("Scaled function {} to {} replicas", functionName, replicas);
-    }
-
-    /**
-     * Returns the number of ready replicas for a function's Deployment.
-     */
-    public int getReadyReplicas(String functionName) {
-        return getReplicaStatus(functionName).readyReplicas();
     }
 
     public ReplicaStatus getReplicaStatus(String functionName) {

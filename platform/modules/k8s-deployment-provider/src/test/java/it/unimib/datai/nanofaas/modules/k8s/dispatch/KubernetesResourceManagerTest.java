@@ -202,8 +202,8 @@ class KubernetesResourceManagerTest {
     }
 
     @Test
-    void getReadyReplicas_returnsZeroWhenDeploymentNotFound() {
-        assertEquals(0, resourceManager.getReadyReplicas("nonexistent"));
+    void replicaStatus_isZeroWhenDeploymentNotFound() {
+        assertEquals(0, resourceManager.getReplicaStatus("nonexistent").readyReplicas());
     }
 
     @Test

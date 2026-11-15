@@ -148,7 +148,7 @@ class MockK8sDeploymentReplicaSetFlowTest {
                 .endStatus()
                 .build();
         client.apps().deployments().inNamespace("default").resource(readyTwo).updateStatus();
-        assertEquals(2, resourceManager.getReadyReplicas("echo"));
+        assertEquals(2, resourceManager.getReplicaStatus("echo").readyReplicas());
 
         resourceManager.setReplicas("echo", 1);
         Deployment scaled = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
@@ -164,7 +164,7 @@ class MockK8sDeploymentReplicaSetFlowTest {
                 .build();
         client.apps().deployments().inNamespace("default").resource(readyOne).updateStatus();
 
-        assertEquals(1, resourceManager.getReadyReplicas("echo"));
+        assertEquals(1, resourceManager.getReplicaStatus("echo").readyReplicas());
         assertEquals(
                 1,
                 client.pods().inNamespace("default").withLabel("function", "echo").list().getItems().size()

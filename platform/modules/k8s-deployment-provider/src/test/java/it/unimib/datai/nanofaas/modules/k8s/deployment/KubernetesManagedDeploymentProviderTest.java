@@ -114,6 +114,34 @@ class KubernetesManagedDeploymentProviderTest {
     }
 
     @Test
+    void updateSpecReappliesThePerPodLimit() {
+        var result = provider.provision(spec("echo", 1));
+        pods("fn-echo", ready("10.0.0.1"));
+        awaitBackends("echo", 1);
+        var held = acquire("echo", result, "e1");
+        assertThat(acquire("echo", result, "e2")).isEqualTo(ManagedTargetResolution.UNAVAILABLE);
+
+        provider.updateSpec(spec("echo", 2));
+
+        var second = acquire("echo", result, "e3");
+        assertThat(second.target()).isNotNull();
+        held.target().close();
+        second.target().close();
+    }
+
+    @Test
+    void deletingTheLastSliceMakesDispatchUnavailable() {
+        var result = provider.provision(spec("echo", 4));
+        pods("fn-echo", ready("10.0.0.1"));
+        awaitBackends("echo", 1);
+
+        client.discovery().v1().endpointSlices().inNamespace("default").withName("fn-echo-slice").delete();
+
+        awaitEquals(() -> acquire("echo", result, "e1"), ManagedTargetResolution.UNAVAILABLE);
+        assertThat(provider.getReplicaStatus("echo").readyReplicas()).isZero();
+    }
+
+    @Test
     void readyReplicasCountPodsTheDispatchCanReach() {
         provider.provision(spec("echo", 4, 2));
         markDeploymentReady("fn-echo", 2);
@@ -131,6 +159,23 @@ class KubernetesManagedDeploymentProviderTest {
         assertThat(provider.getReadyReplicas("echo")).isEqualTo(2);
     }
 
+    /**
+     * Scaled to zero and straight back to one: the old pod is terminating and the Deployment no
+     * longer counts it, but its endpoint is not marked yet. Counting it would let the wake-up gate
+     * release the first dispatch into a dying pod.
+     */
+    @Test
+    void aPodTheDeploymentNoLongerCountsIsNotReadyWhileItsSliceLags() {
+        provider.provision(spec("echo", 4, 1));
+        pods("fn-echo", ready("10.0.0.1"));
+        markDeploymentReady("fn-echo", 1);
+        awaitEquals(() -> provider.getReplicaStatus("echo"), new ReplicaStatus(1, 1));
+
+        markDeploymentReady("fn-echo", 0);
+
+        assertThat(provider.getReplicaStatus("echo")).isEqualTo(new ReplicaStatus(1, 0));
+    }
+
     @Test
     void reconcileAdoptsBackendsAlreadyInTheStore() {
         pods("fn-echo", ready("10.0.0.1"));
@@ -143,14 +188,17 @@ class KubernetesManagedDeploymentProviderTest {
         assertThat(target.endpointUrl()).isEqualTo("http://10.0.0.1:8080/invoke");
     }
 
+    /**
+     * Two changes of the same slice in quick succession end with the pool on the second: refreshes
+     * read the store when they apply, never an event's payload. Informer events are handled one at
+     * a time, so this does not exercise refreshes applied out of order.
+     */
     @Test
-    void aStaleRefreshCannotOverwriteANewerOne() {
+    void theLastOfTwoQuickSliceChangesWins() {
         var result = provider.provision(spec("echo", 4));
         pods("fn-echo", ready("10.0.0.1"));
         pods("fn-echo", ready("10.0.0.2"));
 
-        // Every refresh reads the store when it applies, so the last change wins whatever the order
-        // in which the events are handled.
         awaitDispatchTo("echo", "http://10.0.0.2:8080/invoke");
         for (int i = 0; i < 4; i++) {
             var target = acquire("echo", result, "e" + i).target();
@@ -185,6 +233,7 @@ class KubernetesManagedDeploymentProviderTest {
         var failing = new KubernetesManagedDeploymentProvider(resourceManager, clients);
         var result = failing.provision(spec("echo", 4));
         pods("fn-echo", ready("10.0.0.1"));
+        markDeploymentReady("fn-echo", 3);
         awaitEquals(() -> failing.getReplicaStatus("echo").readyReplicas(), 1);
 
         assertThatThrownBy(() -> failing.deprovision("echo")).isInstanceOf(KubernetesClientException.class);
@@ -265,8 +314,12 @@ class KubernetesManagedDeploymentProviderTest {
         return provider.acquireInvocationTarget(function, result.deploymentObjects(), executionId, "1");
     }
 
-    /** Desired is 3 in these specs, so the ready count shows up to three pods the pool can reach. */
+    /**
+     * Desired is 3 in these specs and the Deployment is marked fully ready, so the ready count shows
+     * the pods the pool can reach, up to three.
+     */
     private void awaitBackends(String function, int ready) {
+        markDeploymentReady("fn-" + function, 3);
         awaitEquals(() -> provider.getReplicaStatus(function).readyReplicas(), ready);
     }
 
