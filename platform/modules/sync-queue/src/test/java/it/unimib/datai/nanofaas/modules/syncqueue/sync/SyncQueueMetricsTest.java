@@ -6,7 +6,7 @@ import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
-import java.util.Collection;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -36,9 +36,9 @@ class SyncQueueMetricsTest {
             metrics.removeFunctionState(function);
         }
 
-        Field field = SyncQueueMetrics.class.getDeclaredField("registeredFunctions");
+        Field field = SyncQueueMetrics.class.getDeclaredField("functions");
         field.setAccessible(true);
-        assertThat((Collection<?>) field.get(metrics)).isEmpty();
+        assertThat((Map<?, ?>) field.get(metrics)).isEmpty();
     }
 
     @Test
@@ -90,6 +90,52 @@ class SyncQueueMetricsTest {
 
         assertThat(registry.find("sync_queue_admitted_total").tag("function", "echo").counter()).isNotNull();
         assertThat(registry.find("sync_queue_depth").tag("function", "echo").gauge()).isNotNull();
+    }
+
+    /** FunctionService replays onRegister on a queueSize update: the gauge must follow it. */
+    @Test
+    void reRegistrationUpdatesTheCapacityGauge() {
+        var registry = new SimpleMeterRegistry();
+        var metrics = new SyncQueueMetrics(registry, () -> 0, name -> 0);
+        metrics.registerFunction("echo", 2);
+        metrics.admitted("echo");
+        metrics.registerFunction("echo", 5);
+        assertThat(registry.get("sync_queue_capacity").tag("function", "echo").gauge().value()).isEqualTo(5);
+        assertThat(registry.get("sync_queue_admitted_total").tag("function", "echo").counter().count()).isEqualTo(1);
+    }
+
+    /** The admission hot path must not wait on another function's (re)registration. */
+    @Test
+    void admittedAndRejectedDoNotWaitForARegistrationInProgress() throws Exception {
+        var registry = new SimpleMeterRegistry();
+        var metrics = new SyncQueueMetrics(registry, () -> 0, name -> 0);
+        metrics.registerFunction("a", 2);
+        var insideRegistration = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        registry.config().onMeterAdded(meter -> {
+            if ("b".equals(meter.getId().getTag("function")) && insideRegistration.getCount() > 0) {
+                insideRegistration.countDown();
+                try {
+                    release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+        Thread registering = new Thread(() -> metrics.registerFunction("b", 3));
+        registering.start();
+        try {
+            assertThat(insideRegistration.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                metrics.admitted("a");
+                metrics.rejected("a", it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason.DEPTH);
+            }).get(1, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            registering.join(5_000);
+        }
+        assertThat(registry.get("sync_queue_admitted_total").tag("function", "a").counter().count()).isEqualTo(1);
+        assertThat(registry.get("sync_queue_rejected_total").tag("function", "a").counter().count()).isEqualTo(1);
     }
 
     @Test

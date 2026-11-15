@@ -71,6 +71,29 @@ class WaitEstimatorTest {
         assertTrue(functionEvents.pollFirstCount <= 1);
     }
 
+    /** recordDispatch runs on the engine's single worker and estimateWaitSeconds on every
+     * admission: neither does housekeeping on another function's history; maintain() does. */
+    @Test
+    void dispatchAndAdmissionLeaveOtherFunctionsHistoryToMaintenance() {
+        TrackingDeque idleEvents = new TrackingDeque();
+        Instant now = Instant.parse("2026-02-01T00:00:10Z");
+        idleEvents.addLast(now.minusSeconds(60));
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1,
+                new java.util.concurrent.ConcurrentLinkedDeque<>(), Map.of("idle", idleEvents));
+
+        estimator.recordDispatch("active", now);
+        estimator.estimateWaitSeconds("active", 0, now);
+        estimator.estimateWaitSeconds("active", 3, now);
+        estimator.estimateWaitSeconds("unknown", 3, now);
+
+        assertEquals(0, idleEvents.peekFirstCount);
+        assertEquals(2, estimator.retentionSnapshot().functionStates());
+
+        estimator.maintain(now);
+
+        assertEquals(1, estimator.retentionSnapshot().functionStates());
+    }
+
     @Test
     void removeFunctionState_clearsPerFunctionEvents() {
         WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 3);

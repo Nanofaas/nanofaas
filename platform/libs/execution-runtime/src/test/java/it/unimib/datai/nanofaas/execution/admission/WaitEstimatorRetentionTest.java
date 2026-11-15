@@ -20,18 +20,23 @@ class WaitEstimatorRetentionTest {
 
         Instant afterIdle = start.plusSeconds(11);
         estimator.recordDispatch("active", afterIdle);
+        // Dispatch leaves other functions' history alone; each bounded maintenance pass drains
+        // at most cleanupBudget (2) idle states.
+        estimator.maintain(afterIdle);
         assertTrue(estimator.retentionSnapshot().functionStates() >= 1);
         assertTrue(estimator.retentionSnapshot().functionStates() <= 4);
 
         estimator.recordDispatch("active", afterIdle.plusNanos(1));
         estimator.recordDispatch("active", afterIdle.plusNanos(2));
+        estimator.maintain(afterIdle.plusNanos(2));
+        estimator.maintain(afterIdle.plusNanos(2));
 
         assertEquals(1, estimator.retentionSnapshot().functionStates());
         assertEquals(3, estimator.retentionSnapshot().perFunctionSamples());
     }
 
     @Test
-    void admissionChecksAlsoDrainInactiveHistoryAfterIdle() {
+    void maintenanceDrainsInactiveHistoryThatAdmissionChecksLeaveAlone() {
         WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 3, 100, 10, 2);
         Instant start = Instant.parse("2026-09-10T10:00:00Z");
         for (int i = 0; i < 5; i++) {
@@ -42,6 +47,28 @@ class WaitEstimatorRetentionTest {
         for (int i = 0; i < 3; i++) {
             estimator.estimateWaitSeconds("unknown", 1, afterIdle);
         }
+        assertEquals(5, estimator.retentionSnapshot().functionStates());
+
+        for (int i = 0; i < 3; i++) {
+            estimator.maintain(afterIdle);
+        }
+
+        assertEquals(0, estimator.retentionSnapshot().functionStates());
+        assertEquals(0, estimator.retentionSnapshot().perFunctionSamples());
+    }
+
+    /** A full table reclaims a bounded batch of expired states, as every call used to, instead
+     * of making each new function pay its own eviction scan. */
+    @Test
+    void aFullTableReclaimsExpiredStatesInABatchBeforeEvictingOneByOne() {
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1, 100, 10, 3, 100, 3);
+        Instant start = Instant.parse("2026-09-10T10:00:00Z");
+        for (int i = 0; i < 3; i++) {
+            estimator.recordDispatch("old-" + i, start);
+        }
+        assertEquals(3, estimator.retentionSnapshot().functionStates());
+
+        estimator.estimateWaitSeconds("new", 1, start.plusSeconds(11));
 
         assertEquals(0, estimator.retentionSnapshot().functionStates());
         assertEquals(0, estimator.retentionSnapshot().perFunctionSamples());

@@ -138,9 +138,10 @@ public class WaitEstimator {
         });
     }
 
+    /** Runs on the engine's single worker thread: it prunes only the two histories it appends
+     * to (amortized O(1)); other functions' expired history is {@link #maintain}'s job. */
     public void recordDispatch(String functionName, Instant now) {
         Instant effectiveNow = advanceTime(now);
-        runBoundedCleanup(effectiveNow, null);
         synchronized (globalEvents) {
             globalEvents.addLast(effectiveNow);
             retainedGlobalSamples.incrementAndGet();
@@ -191,32 +192,25 @@ public class WaitEstimator {
         }
     }
 
+    /** Runs on every admission: it prunes only the history it reads; other functions' expired
+     * history, and the global one when it is not read, are {@link #maintain}'s job. */
     public double estimateWaitSeconds(String functionName, int queueDepth, Instant now) {
         Instant effectiveNow = advanceTime(now);
         if (queueDepth <= 0) {
-            cleanupGlobal(effectiveNow);
-            runBoundedCleanup(effectiveNow, null);
             return 0.0;
         }
         FunctionEvents functionEvents = perFunctionEvents.get(functionName);
         if (functionEvents == null && !makeRoomForFunction(effectiveNow)) {
-            cleanupGlobal(effectiveNow);
-            runBoundedCleanup(effectiveNow, null);
             return Double.POSITIVE_INFINITY;
         }
         ThroughputSnapshot perFunction = snapshot(functionEvents, effectiveNow);
-        double estimate;
         if (perFunction.samples() >= perFunctionMinSamples && perFunction.throughput() > 0) {
-            estimate = queueDepth / perFunction.throughput();
-            cleanupGlobal(effectiveNow);
-        } else {
-            ThroughputSnapshot global = snapshot(globalEvents, effectiveNow);
-            estimate = global.throughput() <= 0
-                    ? Double.POSITIVE_INFINITY
-                    : queueDepth / global.throughput();
+            return queueDepth / perFunction.throughput();
         }
-        runBoundedCleanup(effectiveNow, functionName);
-        return estimate;
+        ThroughputSnapshot global = snapshot(globalEvents, effectiveNow);
+        return global.throughput() <= 0
+                ? Double.POSITIVE_INFINITY
+                : queueDepth / global.throughput();
     }
 
     /** Public for the same cross-module test reason as the sizing constructor above. */
@@ -228,7 +222,7 @@ public class WaitEstimator {
     public void maintain(Instant now) {
         Instant effectiveNow = advanceTime(now);
         cleanupGlobal(effectiveNow, maintenanceSampleBudget);
-        runBoundedCleanup(effectiveNow, null, maintenanceSampleBudget);
+        runBoundedCleanup(effectiveNow, maintenanceSampleBudget);
     }
 
     private ThroughputSnapshot snapshot(FunctionEvents state, Instant now) {
@@ -261,25 +255,13 @@ public class WaitEstimator {
         return new ThroughputSnapshot(samples, samples / seconds);
     }
 
-    private void cleanupGlobal(Instant now) {
-        synchronized (globalEvents) {
-            retainedGlobalSamples.addAndGet(-prune(globalEvents, now));
-        }
-    }
-
     private void cleanupGlobal(Instant now, int maximumRemovals) {
         synchronized (globalEvents) {
             retainedGlobalSamples.addAndGet(-prune(globalEvents, now, maximumRemovals));
         }
     }
 
-    private void runBoundedCleanup(Instant now, String excludedFunction) {
-        runBoundedCleanup(now, excludedFunction, Integer.MAX_VALUE);
-    }
-
-    private void runBoundedCleanup(Instant now,
-                                   String excludedFunction,
-                                   int sampleBudget) {
+    private void runBoundedCleanup(Instant now, int sampleBudget) {
         FunctionEvents first = null;
         int perStateSampleBudget = Math.max(1, sampleBudget / cleanupBudget);
         for (int checked = 0; checked < cleanupBudget; checked++) {
@@ -295,15 +277,11 @@ public class WaitEstimator {
             if (first == null) {
                 first = state;
             }
-            cleanOne(state, now, excludedFunction, perStateSampleBudget);
+            cleanOne(state, now, perStateSampleBudget);
         }
     }
 
-    private void cleanOne(FunctionEvents state, Instant now, String excludedFunction, int perStateSampleBudget) {
-        if (state.functionName.equals(excludedFunction)) {
-            queueForCleanup(state);
-            return;
-        }
+    private void cleanOne(FunctionEvents state, Instant now, int perStateSampleBudget) {
         boolean empty;
         synchronized (state.events) {
             int removed = prune(state.events, now, perStateSampleBudget);
@@ -332,6 +310,12 @@ public class WaitEstimator {
     }
 
     private boolean makeRoomForFunction(Instant now) {
+        if (functionStates.get() < maxFunctionStates) {
+            return true;
+        }
+        // Full table, the only path that still drains other functions' history inline: the
+        // bounded batch every call used to run, before paying a full eviction scan.
+        runBoundedCleanup(now, Integer.MAX_VALUE);
         if (functionStates.get() < maxFunctionStates) {
             return true;
         }

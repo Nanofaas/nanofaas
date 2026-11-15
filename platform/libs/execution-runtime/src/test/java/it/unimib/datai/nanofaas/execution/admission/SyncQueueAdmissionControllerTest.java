@@ -71,4 +71,27 @@ class SyncQueueAdmissionControllerTest {
 
         assertTrue(result.accepted());
     }
+
+    /** The limit is compared at sub-second precision: PT0.9S must not truncate to the
+     * reject-everything zero, and PT1.9S must not be treated as 1 s. */
+    @Test
+    void subSecondMaxEstimatedWaitIsNotTruncated() {
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1);
+        Instant now = Instant.parse("2026-02-01T00:00:10Z");
+        for (int i = 0; i < 10; i++) {
+            estimator.recordDispatch("fn", now.minusSeconds(9));
+        }
+        // 10 dispatches in a 10 s window: 1 per second, so depth n estimates n seconds.
+        assertTrue(controllerWithMaxWait(Duration.ofMillis(900), estimator).evaluate("fn", 0, now).accepted());
+        assertTrue(controllerWithMaxWait(Duration.ofMillis(1900), estimator).evaluate("fn", 1, now).accepted());
+        assertFalse(controllerWithMaxWait(Duration.ofMillis(1900), estimator).evaluate("fn", 2, now).accepted());
+        SyncQueueAdmissionResult zero = controllerWithMaxWait(Duration.ZERO, estimator).evaluate("fn", 0, now);
+        assertFalse(zero.accepted());
+        assertEquals(SyncQueueRejectReason.EST_WAIT, zero.reason());
+    }
+
+    private static SyncQueueAdmissionController controllerWithMaxWait(Duration maxWait, WaitEstimator estimator) {
+        return new SyncQueueAdmissionController(SyncQueueConfigSource.fixed(new SyncQueueRuntimeDefaults(
+                true, true, maxWait, Duration.ofSeconds(30), 2)), 10, estimator);
+    }
 }

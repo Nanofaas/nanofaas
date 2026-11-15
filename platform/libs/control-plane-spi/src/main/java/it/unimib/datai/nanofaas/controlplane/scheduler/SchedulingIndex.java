@@ -20,8 +20,9 @@ import java.util.function.Predicate;
  *
  * <p>The engine calls {@link #advanceScanWindow} after a scan finds no candidate, and
  * {@link #defer} when a selected
- * ticket could not be dispatched (no capacity, lease unavailable, ...) so the policy gets a
- * chance to make progress on the next scan without re-selecting the same blocked ticket.
+ * ticket could not be dispatched (no capacity, lease unavailable, ...). The engine itself skips
+ * that ticket's generation until its next wake, so an index needs no reordering to make
+ * progress; the built-in indexes keep {@code defer} order-preserving.
  *
  * <p>The {@code runnable} predicate reads only already-prepared in-memory observations
  * (e.g. current replica/capacity state for a generation); it must never call a provider, a
@@ -49,8 +50,9 @@ public interface SchedulingIndex {
     SchedulingTicket select(Instant now, Predicate<FunctionGeneration> runnable);
 
     /**
-     * Applies the policy's rotation for the given ticket, e.g. because it was selected but
-     * could not be dispatched.
+     * Notifies the policy that the given ticket was selected but could not be dispatched. The
+     * engine already excludes its generation until the next wake; reordering here is optional
+     * and must not be needed for progress.
      */
     void defer(TicketId id);
 

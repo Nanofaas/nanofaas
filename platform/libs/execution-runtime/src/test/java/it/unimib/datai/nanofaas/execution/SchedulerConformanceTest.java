@@ -235,6 +235,76 @@ class SchedulerConformanceTest {
 
     @ParameterizedTest
     @MethodSource("strategies")
+    void aDeniedLeaseDoesNotReorderTheQueue(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        // Deeper than the shared queue's old 64-ticket rotation, which is a no-op on a shorter queue.
+        List<String> admitted = new ArrayList<>();
+        for (int i = 0; i < 70; i++) {
+            f.admit("e" + i, InvocationKind.ASYNC, f.echo, i);
+            admitted.add("e" + i);
+        }
+        AtomicInteger acquireCalls = new AtomicInteger();
+        when(f.dispatch.tryAcquire(any())).thenAnswer(invocation ->
+                acquireCalls.getAndIncrement() == 0 ? null : f.lease);
+
+        f.engine.tick(); // denied: the generation is blocked, the order must stay as admitted
+        f.engine.signal();
+        for (int i = 0; i < 70; i++) {
+            f.engine.tick();
+        }
+
+        assertThat(f.submitted).containsExactlyElementsOf(admitted);
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void aThrowingLeaseAcquisitionDoesNotStarveAnotherFunction(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        FunctionGeneration failing = new FunctionGeneration("failing", 1);
+        f.admitFor(failing, "failing-1", InvocationKind.ASYNC, 0);
+        f.admit("ok-1", InvocationKind.ASYNC, f.echo, 1);
+        when(f.dispatch.tryAcquire(any())).thenAnswer(invocation ->
+                ((SchedulingTicket) invocation.getArgument(0)).generation().equals(failing)
+                        ? throwing() : f.lease);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(f.engine::tick)
+                .isInstanceOf(IllegalStateException.class);
+        f.engine.tick(); // the failing generation yields one selection to runnable work
+
+        assertThat(f.submitted).containsExactly("ok-1");
+        assertThat(f.engine.reservedCount("failing")).isEqualTo(1);
+        // ...and is retried on the very next pass, with no signal: a throw is not a capacity
+        // block that only a wake would end.
+        org.assertj.core.api.Assertions.assertThatThrownBy(f.engine::tick)
+                .isInstanceOf(IllegalStateException.class);
+        org.mockito.Mockito.verify(f.dispatch, org.mockito.Mockito.times(2)).tryAcquire(
+                org.mockito.ArgumentMatchers.argThat(ticket -> ticket.generation().equals(failing)));
+    }
+
+    /** A throwing generation with nothing else runnable is re-selected in the same pass, exactly
+     * as before: the yield never costs it a pass. */
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void aThrowingGenerationAloneIsRetriedOnTheNextPass(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        f.admit("only", InvocationKind.ASYNC, f.echo, 0);
+        AtomicInteger acquireCalls = new AtomicInteger();
+        when(f.dispatch.tryAcquire(any())).thenAnswer(invocation ->
+                acquireCalls.getAndIncrement() == 0 ? throwing() : f.lease);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(f.engine::tick)
+                .isInstanceOf(IllegalStateException.class);
+        f.engine.tick();
+
+        assertThat(f.submitted).containsExactly("only");
+    }
+
+    private static DispatchOwnership throwing() {
+        throw new IllegalStateException("lifecycle is unhappy");
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
     void aTicketPastItsQueueDeadlineExpiresExactlyOnceAndIsNeverDispatched(SchedulingStrategy strategy) {
         Fixture f = new Fixture(strategy);
         f.admit("expired", InvocationKind.ASYNC, f.echo, 0, NOW, NOW.minusSeconds(1));

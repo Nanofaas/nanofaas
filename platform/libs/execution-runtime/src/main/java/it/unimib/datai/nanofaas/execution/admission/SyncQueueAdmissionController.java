@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.execution.admission;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 
+import java.time.Duration;
 import java.time.Instant;
 
 public class SyncQueueAdmissionController {
@@ -26,8 +27,10 @@ public class SyncQueueAdmissionController {
         // partial combination (new admissionEnabled with a stale maxEstimatedWait, or
         // vice versa).
         var runtime = configSource.syncQueueRuntimeDefaults();
-        long maxWaitSeconds = runtime.maxEstimatedWait().toSeconds();
-        if (runtime.admissionEnabled() && (maxWaitSeconds == 0 || estWaitSeconds > maxWaitSeconds)) {
+        // Sub-second precision: toSeconds() would truncate PT0.9S to the reject-everything zero.
+        Duration maxWait = runtime.maxEstimatedWait();
+        double maxWaitSeconds = maxWait.getSeconds() + maxWait.getNano() / 1_000_000_000.0;
+        if (runtime.admissionEnabled() && (maxWait.isZero() || estWaitSeconds > maxWaitSeconds)) {
             return SyncQueueAdmissionResult.rejected(SyncQueueRejectReason.EST_WAIT, estWaitSeconds);
         }
         return SyncQueueAdmissionResult.accepted(estWaitSeconds);

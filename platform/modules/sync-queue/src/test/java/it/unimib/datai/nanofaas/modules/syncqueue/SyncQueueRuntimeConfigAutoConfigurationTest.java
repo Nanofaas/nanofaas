@@ -46,6 +46,24 @@ class SyncQueueRuntimeConfigAutoConfigurationTest {
     }
 
     @Test
+    void durationsMustParseBePositiveAndKeepTheEstimatedWaitWithinTheQueueWait() {
+        RuntimeConfigExtension extension = new SyncQueueRuntimeConfigAutoConfiguration()
+                .syncQueueRuntimeConfigExtension(source(false, Duration.ofMillis(1500)));
+        String est = MutableSyncQueueConfigSource.KEY_MAX_ESTIMATED_WAIT;
+        String queue = MutableSyncQueueConfigSource.KEY_MAX_QUEUE_WAIT;
+
+        assertSoftly(softly -> {
+            softly.assertThat(extension.validate(Map.of(est, "PT0.9S", queue, "PT0.9S"))).isEmpty();
+            softly.assertThat(extension.validate(Map.of(est, "PT1S", queue, "PT2S"))).isEmpty();
+            softly.assertThat(extension.validate(Map.of(est, "PT3S", queue, "PT2S"))).isNotEmpty();
+            softly.assertThat(extension.validate(Map.of(est, "PT0S"))).isNotEmpty();
+            softly.assertThat(extension.validate(Map.of(queue, "-PT1S"))).isNotEmpty();
+            softly.assertThat(extension.validate(Map.of(est, "soon"))).isNotEmpty();
+            softly.assertThat(extension.validate(Map.of(queue, 5))).isNotEmpty();
+        });
+    }
+
+    @Test
     void validPatchUpdatesSourceAsOneSnapshotAndAdvancesRevision() {
         MutableSyncQueueConfigSource source = source(false, Duration.ofMillis(1500));
         RuntimeConfigService service = service(source);
