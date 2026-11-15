@@ -13,7 +13,8 @@ control plane with only this provider on the classpath).
 
 - Deployment: 1 replica, ports 8080 (HTTP) and 8081 (actuator/metrics).
 - Service: ClusterIP for internal access.
-- ServiceAccount + RBAC: create/list/watch Deployments, Services, HPAs, Pods.
+- ServiceAccount + RBAC: create/list/watch Deployments, Services, HPAs, Pods;
+  get/list/watch EndpointSlices.
 
 ## Function execution (DEPLOYMENT)
 
@@ -21,8 +22,17 @@ For each DEPLOYMENT function the provider provisions:
 
 - **Deployment** with the function image, command and env from the
   `FunctionSpec`, `restartPolicy: Always`, and a Service pointing at it.
-- **Service** (ClusterIP) on port 8080, selected by the `function=<name>`
-  label.
+- **Service** (headless, `clusterIP: None`) on port 8080, selected by the
+  `function=<name>` label. The control plane picks the pod of every invocation
+  itself: it follows the Service's EndpointSlices, keeps the ready pods that are
+  not terminating, and sends each invocation to the next pod in turn through the
+  same replica pool the local container providers use. kube-proxy is not in the
+  path, so pods added by a scale-up receive traffic as soon as they are ready,
+  instead of waiting for connections to the old ones to close. A Service that is
+  not headless (created by an earlier version) is deleted and recreated, since
+  `clusterIP` cannot be changed. Because invocations go to pod addresses, the
+  HTTP client's `nanofaas.http-client.max-connections` applies to each pod, not
+  to the function as a whole.
 
 Deployments and Services are **reconciled in place** during provisioning
 updates instead of being deleted and recreated. HPA objects are reconciled

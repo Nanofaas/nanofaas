@@ -14,6 +14,8 @@ dependencies {
     // available to tests, where module integration tests legitimately run against the consumer.
     implementation project(':common')
     implementation project(':control-plane-spi')
+    // The replica pool the local container providers use: the control plane picks the pod itself.
+    implementation project(':container-deployment-runtime')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     // The JDK HTTP client, not the Vert.x default: Vert.x is a second Netty stack beside

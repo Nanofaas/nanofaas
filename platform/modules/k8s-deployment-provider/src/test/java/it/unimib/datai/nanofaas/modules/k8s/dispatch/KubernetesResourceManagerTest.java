@@ -71,11 +71,7 @@ class KubernetesResourceManagerTest {
         ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
                 List.of(new ScalingMetric("queue_depth", "5", null)));
 
-        String url = resourceManager.provision(spec(scaling));
-
-        assertNotNull(url);
-        assertTrue(url.contains("fn-echo"));
-        assertTrue(url.endsWith("/invoke"));
+        resourceManager.provision(spec(scaling));
 
         // Verify Deployment created
         Deployment dep = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
@@ -206,8 +202,8 @@ class KubernetesResourceManagerTest {
     }
 
     @Test
-    void getReadyReplicas_returnsZeroWhenDeploymentNotFound() {
-        assertEquals(0, resourceManager.getReadyReplicas("nonexistent"));
+    void replicaStatus_isZeroWhenDeploymentNotFound() {
+        assertEquals(0, resourceManager.getReplicaStatus("nonexistent").readyReplicas());
     }
 
     @Test
@@ -251,10 +247,8 @@ class KubernetesResourceManagerTest {
         ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
                 List.of(new ScalingMetric("queue_depth", "5", null)));
 
-        String url1 = resourceManager.provision(spec(scaling));
-        String url2 = resourceManager.provision(spec(scaling));
-
-        assertEquals(url1, url2);
+        resourceManager.provision(spec(scaling));
+        resourceManager.provision(spec(scaling));
 
         // Should still have exactly one Deployment
         var deps = client.apps().deployments().inNamespace("default").list().getItems();

@@ -24,7 +24,10 @@ public interface ManagedDeploymentProvider {
      * Restores persisted functions without destroying healthy resources: the
      * backend must reconcile its resources toward the persisted names and
      * replica target, creating only what is missing and leaving existing
-     * objects untouched. It must never delegate to {@link #provision(FunctionSpec)}.
+     * objects untouched. The one allowed exception is an object whose immutable
+     * shape no longer matches what the backend creates (the Kubernetes backend
+     * recreates a function Service that is not headless). It must never delegate
+     * to {@link #provision(FunctionSpec)}.
      */
     ProvisionResult reconcile(FunctionSpec spec,
                               int desiredReplicas,

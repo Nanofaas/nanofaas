@@ -35,12 +35,12 @@ public class KubernetesResourceManager {
     }
 
     /**
-     * Creates Deployment + Service (+ HPA if strategy=HPA) for a function.
-     * Reconciles resources without deleting stable objects first, preserving
-     * service identity and deployment history across updates.
-     * Returns the service URL for invocations.
+     * Creates Deployment + headless Service (+ HPA if strategy=HPA) for a function.
+     * Existing objects are patched in place, preserving deployment history across
+     * updates; the one exception is a Service that is not headless, which is
+     * deleted and created again because its clusterIP cannot be changed.
      */
-    public String provision(FunctionSpec spec) {
+    public void provision(FunctionSpec spec) {
         Deployment deployment = builder.buildDeployment(spec);
         Service service = builder.buildService(spec);
         KubernetesClient client = clientProvider.getObject();
@@ -74,17 +74,16 @@ public class KubernetesResourceManager {
             throw failure;
         }
 
-        String serviceUrl = serviceUrl(KubernetesDeploymentBuilder.serviceName(spec.name()), resolvedNamespace);
-        log.info("Function {} provisioned at {}", spec.name(), serviceUrl);
-        return serviceUrl;
+        log.info("Function {} provisioned in namespace {}", spec.name(), resolvedNamespace);
     }
 
     /**
      * Restores a function's resources at their persisted names without destroying
-     * anything healthy: existing Deployment and Service are left alone, only the
-     * missing pieces are created, and a non-HPA Deployment is scaled to the
-     * coordinator-driven replica target. HPA config is restored but its replica
-     * count is left to Kubernetes.
+     * anything healthy: the existing Deployment and a headless Service are left alone,
+     * only the missing pieces are created, and a non-HPA Deployment is scaled to the
+     * coordinator-driven replica target. A Service that is not headless (created by an
+     * earlier version) is recreated, since its clusterIP cannot be changed in place.
+     * HPA config is restored but its replica count is left to Kubernetes.
      */
     public ProvisionResult reconcile(FunctionSpec spec,
                                      int desiredReplicas,
@@ -105,6 +104,9 @@ public class KubernetesResourceManager {
                     .withName(names.deployment()).scale(desiredReplicas);
         }
         if (existingService == null) {
+            createService(client, spec, names);
+        } else if (!KubernetesDeploymentBuilder.isHeadless(existingService)) {
+            deleteService(client, names.namespace(), names.service());
             createService(client, spec, names);
         }
         if (isHpaManaged(spec)) {
@@ -169,12 +171,9 @@ public class KubernetesResourceManager {
         return KubernetesDeploymentBuilder.hpaOwnsScaling(spec.scalingConfig());
     }
 
-    private static String serviceUrl(String serviceName, String namespace) {
-        return String.format("http://%s.%s.svc.cluster.local:8080/invoke", serviceName, namespace);
-    }
-
     private ProvisionResult provisionResult(ResourceNames names) {
-        return new ProvisionResult(serviceUrl(names.service(), names.namespace()),
+        // No endpoint URL: the control plane picks the pod of every invocation itself.
+        return new ProvisionResult(null,
                 KubernetesManagedDeploymentProvider.BACKEND_ID, Map.of(
                 ProvisionResult.DEPLOYMENT, names.deployment(),
                 ProvisionResult.SERVICE, names.service(),
@@ -202,7 +201,13 @@ public class KubernetesResourceManager {
         var serviceResource = client.services()
                 .inNamespace(resolvedNamespace)
                 .withName(service.getMetadata().getName());
-        if (serviceResource.get() == null) {
+        Service existing = serviceResource.get();
+        if (existing != null && !KubernetesDeploymentBuilder.isHeadless(existing)) {
+            // clusterIP is immutable: a ClusterIP Service only becomes headless by being recreated.
+            deleteService(client, resolvedNamespace, service.getMetadata().getName());
+            existing = null;
+        }
+        if (existing == null) {
             client.services()
                     .inNamespace(resolvedNamespace)
                     .resource(service)
@@ -211,6 +216,13 @@ public class KubernetesResourceManager {
         }
         serviceResource.patch(PatchContext.of(PatchType.JSON_MERGE), Serialization.asJson(service));
         return false;
+    }
+
+    private static void deleteService(KubernetesClient client, String namespace, String name) {
+        var resource = client.services().inNamespace(namespace).withName(name);
+        resource.delete();
+        // Creating the same name while the old object is still being removed is a conflict.
+        resource.waitUntilCondition(java.util.Objects::isNull, 30, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     private boolean createOrPatchHpa(KubernetesClient client, HorizontalPodAutoscaler hpa) {
@@ -290,13 +302,6 @@ public class KubernetesResourceManager {
                 .withName(name)
                 .scale(replicas);
         log.debug("Scaled function {} to {} replicas", functionName, replicas);
-    }
-
-    /**
-     * Returns the number of ready replicas for a function's Deployment.
-     */
-    public int getReadyReplicas(String functionName) {
-        return getReplicaStatus(functionName).readyReplicas();
     }
 
     public ReplicaStatus getReplicaStatus(String functionName) {

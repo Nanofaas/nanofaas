@@ -169,3 +169,24 @@ def test_cadvisor_scrape_keeps_resident_memory_in_both_modes():
                       if rule.get('action') == 'keep' and rule.get('source_labels') == ['__name__']]
         assert keep_rules
         assert all(re.fullmatch(rule['regex'], 'container_memory_rss') for rule in keep_rules), mode
+
+
+def test_control_plane_may_watch_endpointslices():
+    """The control plane picks the pod of every invocation from the function Service's EndpointSlices."""
+    import yaml
+
+    def rules(text):
+        for document in yaml.safe_load_all(text):
+            if document and document.get("kind") == "Role":
+                yield from document.get("rules", [])
+
+    def grants_endpointslice_watch(text):
+        return any(
+            "discovery.k8s.io" in rule.get("apiGroups", [])
+            and "endpointslices" in rule.get("resources", [])
+            and {"get", "list", "watch"} <= set(rule.get("verbs", []))
+            for rule in rules(text)
+        )
+
+    assert grants_endpointslice_watch(render("templates/rbac.yaml"))
+    assert grants_endpointslice_watch((REPO_ROOT / "deploy" / "k8s" / "rbac.yaml").read_text())

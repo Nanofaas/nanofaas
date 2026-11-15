@@ -79,6 +79,19 @@ class KubernetesDeploymentBuilderTest {
         assertEquals(0, deployment.getSpec().getReplicas());
     }
 
+    /** The control plane picks the pod itself: no virtual IP may sit between it and the pods. */
+    @Test
+    void serviceIsHeadless() {
+        var service = builder.buildService(spec(null));
+
+        assertEquals("None", service.getSpec().getClusterIP());
+        assertEquals(Map.of("function", "echo"), service.getSpec().getSelector());
+        assertEquals(8080, service.getSpec().getPorts().get(0).getPort());
+        assertEquals(8080, service.getSpec().getPorts().get(0).getTargetPort().getIntVal());
+        assertEquals("true", service.getMetadata().getAnnotations().get("prometheus.io/scrape"));
+        assertTrue(KubernetesDeploymentBuilder.isHeadless(service));
+    }
+
     @Test
     void buildDeployment_defaultsTo1ReplicaWhenNoScalingConfig() {
         Deployment deployment = builder.buildDeployment(spec(null));

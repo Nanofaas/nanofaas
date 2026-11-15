@@ -39,6 +39,11 @@ public class KubernetesDeploymentBuilder {
         return NanofaasDeploymentConstants.SERVICE_NAME_PREFIX + functionName;
     }
 
+    /** A headless Service has no virtual IP; the control plane picks the pod itself. */
+    public static boolean isHeadless(io.fabric8.kubernetes.api.model.Service service) {
+        return service.getSpec() != null && "None".equals(service.getSpec().getClusterIP());
+    }
+
     public Deployment buildDeployment(FunctionSpec spec) {
         List<EnvVar> envVars = buildEnvVars(spec);
         ResourceRequirementsBuilder resources = buildResources(spec);
@@ -119,6 +124,9 @@ public class KubernetesDeploymentBuilder {
                 .endMetadata()
                 .withNewSpec()
                     .withType("ClusterIP")
+                    // Headless: no virtual IP, kube-proxy out of the path. The control plane reads
+                    // the ready pods from this Service's EndpointSlices and picks one per request.
+                    .withClusterIP("None")
                     .addToSelector(FUNCTION_LABEL, spec.name())
                     .addNewPort()
                         .withPort(8080)
