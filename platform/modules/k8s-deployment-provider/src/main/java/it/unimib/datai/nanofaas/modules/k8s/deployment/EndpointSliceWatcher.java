@@ -18,7 +18,8 @@ import java.util.function.Consumer;
  */
 final class EndpointSliceWatcher implements AutoCloseable {
     static final String SERVICE_NAME_LABEL = "kubernetes.io/service-name";
-    // Periodic resync re-reports every slice, so a change missed while the watch reconnected heals.
+    // Periodic resync re-reports every slice from the local store (it does not relist); a watch that
+    // closes or fails is reopened, after a relist, by the informer itself.
     private static final long RESYNC_MILLIS = 30_000;
     private static final int FUNCTION_PORT = 8080;
 

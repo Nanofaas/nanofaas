@@ -86,6 +86,9 @@ public class KubernetesManagedDeploymentProvider implements ManagedDeploymentPro
 
     @Override
     public ProvisionResult provision(FunctionSpec spec) {
+        // Watcher first: one that cannot start (no endpointslices permission) must fail the
+        // registration before anything is created, not leave its Deployment and Service behind.
+        startWatching();
         resourceManager.provision(spec);
         follow(spec);
         return new ProvisionResult(null, backendId(), Map.of(
@@ -98,6 +101,7 @@ public class KubernetesManagedDeploymentProvider implements ManagedDeploymentPro
     public ProvisionResult reconcile(FunctionSpec spec,
                                      int desiredReplicas,
                                      Map<String, String> deploymentObjects) {
+        startWatching();
         ProvisionResult result = resourceManager.reconcile(spec, desiredReplicas, deploymentObjects);
         follow(spec);
         return result;
@@ -114,9 +118,12 @@ public class KubernetesManagedDeploymentProvider implements ManagedDeploymentPro
 
     @Override
     public void deprovision(String functionName) {
+        // Resources first: when a delete fails the function is restored without a reconcile, and its
+        // pods are still serving, so its pool must still be there. The generation fence already
+        // stops new dispatch while the removal runs.
+        resourceManager.deprovision(functionName);
         var pods = functions.remove(KubernetesDeploymentBuilder.serviceName(functionName));
         if (pods != null) pods.pool.close();
-        resourceManager.deprovision(functionName);
     }
 
     @Override
@@ -151,7 +158,6 @@ public class KubernetesManagedDeploymentProvider implements ManagedDeploymentPro
     }
 
     private void follow(FunctionSpec spec) {
-        startWatching();
         String service = KubernetesDeploymentBuilder.serviceName(spec.name());
         functions.compute(service, (name, existing) -> {
             if (existing == null) return new FunctionPods(pools.create(spec.name()), spec);

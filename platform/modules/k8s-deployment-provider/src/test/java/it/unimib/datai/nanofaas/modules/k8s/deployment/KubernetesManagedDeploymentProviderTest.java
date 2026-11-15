@@ -6,6 +6,7 @@ import io.fabric8.kubernetes.api.model.discovery.v1.Endpoint;
 import io.fabric8.kubernetes.api.model.discovery.v1.EndpointBuilder;
 import io.fabric8.kubernetes.api.model.discovery.v1.EndpointSliceBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -29,8 +30,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 /**
@@ -165,6 +169,67 @@ class KubernetesManagedDeploymentProviderTest {
 
         assertThat(acquire("echo", result, "e1")).isEqualTo(ManagedTargetResolution.UNAVAILABLE);
         assertThat(client.apps().deployments().inNamespace("default").withName("fn-echo").get()).isNull();
+    }
+
+    /**
+     * FunctionService restores a function whose removal failed without reconciling it: the pods are
+     * still there, so dispatch to them must still work.
+     */
+    @Test
+    void aFailedDeprovisionKeepsTheFunctionDispatchable() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<KubernetesClient> clients = mock(ObjectProvider.class);
+        when(clients.getObject()).thenReturn(client);
+        var resourceManager = spy(new KubernetesResourceManager(clients, new KubernetesProperties("default", null)));
+        doThrow(new KubernetesClientException("delete refused")).when(resourceManager).deprovision("echo");
+        var failing = new KubernetesManagedDeploymentProvider(resourceManager, clients);
+        var result = failing.provision(spec("echo", 4));
+        pods("fn-echo", ready("10.0.0.1"));
+        awaitEquals(() -> failing.getReplicaStatus("echo").readyReplicas(), 1);
+
+        assertThatThrownBy(() -> failing.deprovision("echo")).isInstanceOf(KubernetesClientException.class);
+
+        var target = failing.acquireInvocationTarget("echo", result.deploymentObjects(), "e1", "1").target();
+        assertThat(target).isNotNull();
+        assertThat(target.endpointUrl()).isEqualTo("http://10.0.0.1:8080/invoke");
+        assertThat(failing.getReplicaStatus("echo").readyReplicas()).isEqualTo(1);
+    }
+
+    /** The watcher is started before anything is created, so a watcher that cannot start leaves nothing behind. */
+    @Test
+    void aWatcherThatCannotStartLeavesNoResources() {
+        var unstartable = providerWhoseWatcherCannotStart();
+
+        assertThatThrownBy(() -> unstartable.provision(spec("echo", 4))).isInstanceOf(KubernetesClientException.class);
+
+        assertThat(client.apps().deployments().inNamespace("default").withName("fn-echo").get()).isNull();
+        assertThat(client.services().inNamespace("default").withName("fn-echo").get()).isNull();
+    }
+
+    @Test
+    void aWatcherThatCannotStartLeavesReconcileUntouched() {
+        client.services().inNamespace("default").resource(new io.fabric8.kubernetes.api.model.ServiceBuilder()
+                .withNewMetadata().withName("fn-echo").endMetadata()
+                .withNewSpec().withClusterIP("10.43.0.9").addToSelector("function", "echo").endSpec().build()).create();
+        var unstartable = providerWhoseWatcherCannotStart();
+
+        assertThatThrownBy(() -> unstartable.reconcile(spec("echo", 4), 1, objects("default")))
+                .isInstanceOf(KubernetesClientException.class);
+
+        assertThat(client.services().inNamespace("default").withName("fn-echo").get().getSpec().getClusterIP())
+                .isEqualTo("10.43.0.9");
+        assertThat(client.apps().deployments().inNamespace("default").withName("fn-echo").get()).isNull();
+    }
+
+    private KubernetesManagedDeploymentProvider providerWhoseWatcherCannotStart() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<KubernetesClient> clients = mock(ObjectProvider.class);
+        when(clients.getObject()).thenReturn(client);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<KubernetesClient> forbidden = mock(ObjectProvider.class);
+        when(forbidden.getObject()).thenThrow(new KubernetesClientException("endpointslices is forbidden"));
+        return new KubernetesManagedDeploymentProvider(
+                new KubernetesResourceManager(clients, new KubernetesProperties("default", null)), forbidden);
     }
 
     @Test
