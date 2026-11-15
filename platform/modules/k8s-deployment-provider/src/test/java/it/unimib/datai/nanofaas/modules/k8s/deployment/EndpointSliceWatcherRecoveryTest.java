@@ -63,6 +63,8 @@ class EndpointSliceWatcherRecoveryTest {
                         public void onOpen(WebSocket webSocket, Response response) {
                             webSocket.send("{\"type\":\"ERROR\",\"object\":{\"kind\":\"Status\",\"apiVersion\":\"v1\","
                                     + "\"status\":\"Failure\",\"reason\":\"Forbidden\",\"code\":403}}");
+                            // The API server ends a watch after reporting an error on it.
+                            webSocket.close(1000, "error reported");
                         }
                     });
                 }
@@ -75,7 +77,11 @@ class EndpointSliceWatcherRecoveryTest {
         try {
             var watcher = new EndpointSliceWatcher(client, "default", ignored -> { });
             watcher.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+            while (!refused.get() && System.nanoTime() < deadline) Thread.onSpinWait();
+            assertThat(refused).as("an ERROR event reached the watch").isTrue();
 
+            // Created only after the error: it reaches the store only if the informer kept going.
             client.discovery().v1().endpointSlices().inNamespace("default").resource(new EndpointSliceBuilder()
                     .withNewMetadata().withName("fn-echo-a").addToLabels("kubernetes.io/service-name", "fn-echo").endMetadata()
                     .withAddressType("IPv4")
@@ -83,9 +89,7 @@ class EndpointSliceWatcherRecoveryTest {
                             .withNewConditions().withReady(true).endConditions().build())
                     .build()).create();
 
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
             while (watcher.readyBackends("fn-echo").isEmpty() && System.nanoTime() < deadline) Thread.onSpinWait();
-            assertThat(refused).as("an ERROR event reached the watch").isTrue();
             assertThat(watcher.readyBackends("fn-echo")).isEqualTo(List.of("http://10.0.0.1:8080"));
         } finally {
             // Server first: closing the watch from the client side races the mock server (see EndpointSliceWatcherTest).
