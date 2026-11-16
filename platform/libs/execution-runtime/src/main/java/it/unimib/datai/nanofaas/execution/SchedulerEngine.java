@@ -104,6 +104,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     .thenComparingInt(t -> t.id().attempt()));
     /** Generations whose lease could not be acquired since the last wake. Guarded by {@link #gate}. */
     private final Set<FunctionGeneration> blocked = new HashSet<>();
+    /** The generation whose lease acquisition last threw: it yields the next selection to other
+     * runnable work (see {@link #selectAndClaim}), then is eligible again. Guarded by {@link #gate}. */
+    private FunctionGeneration yieldingAfterThrow;
     /** Tickets retained by each execution, including overlapping retry publication during submit.
      * Terminal notifications use this lookup instead of scanning unrelated backlog. Guarded by gate. */
     private final Map<String, Set<TicketId>> executionTickets = new HashMap<>();
@@ -807,7 +810,16 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         Predicate<FunctionGeneration> runnable =
                 generation -> !blocked.contains(generation) && readiness.runnable(generation);
         ActiveScheduler scheduler = active;
-        SchedulingTicket ticket = scheduler.index().select(now, runnable);
+        // After a throw its generation yields this one selection, and is re-selected in this same
+        // pass when nothing else is runnable: never retried later than the plain re-selection
+        // would have been, except behind at most one other dispatch.
+        FunctionGeneration yielding = yieldingAfterThrow;
+        yieldingAfterThrow = null;
+        SchedulingTicket ticket = yielding == null ? null : scheduler.index().select(now,
+                generation -> !generation.equals(yielding) && runnable.test(generation));
+        if (ticket == null) {
+            ticket = scheduler.index().select(now, runnable);
+        }
         if (ticket == null) {
             scheduler.index().advanceScanWindow();
             return null;
@@ -876,6 +888,10 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             if (!claimSettled) {
                 synchronized (gate) {
                     abortClaim(claim);
+                    // Not blocked (a throw is no capacity event any wake would end): it only
+                    // yields the next selection, so a callout that keeps throwing cannot pin the
+                    // head of an order-preserving index.
+                    yieldingAfterThrow = ticket.generation();
                 }
             }
         }

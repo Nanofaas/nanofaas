@@ -172,6 +172,75 @@ class FunctionCapacityRegistryTest {
         assertThat(notifications).hasValue(1);
     }
 
+    /** A re-registration (every FunctionService.update replays it) that raises a full
+     * generation's concurrency opens a slot: listeners hear it once, after the entry lock. */
+    @Test
+    void reRegisteringWithAHigherConcurrencyNotifiesOnlyWhenItOpensASlot() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("echo", 1);
+        assertThat(registry.tryAcquireLease(registry.activeGeneration("echo"), ignored -> { })).isNotNull();
+        List<String> notifications = new ArrayList<>();
+        registry.addCapacityListener(name -> notifications.add(lockFreeRead(registry, name)));
+
+        registry.register("echo", 1); // no-op update
+        assertThat(notifications).isEmpty();
+        registry.register("echo", 2); // full -> dispatchable
+        assertThat(notifications).containsExactly("echo");
+        registry.register("echo", 3); // already dispatchable: not an opening
+        registry.register("echo", 1); // lowering never opens anything
+        assertThat(notifications).containsExactly("echo");
+    }
+
+    /** The direct-dispatch lease (name-based acquisition) reports the release that reopens a
+     * full generation, after the entry lock; any other release stays silent. */
+    @Test
+    void releasingANameBasedLeaseNotifiesOnlyWhenItReopensAFullGeneration() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("echo", 2);
+        DispatchLease first = registry.tryAcquireLease("echo", 2);
+        DispatchLease second = registry.tryAcquireLease("echo", 2);
+        assertThat(registry.tryAcquireLease("echo", 2)).isNull();
+        List<String> notifications = new ArrayList<>();
+        registry.addCapacityListener(name -> notifications.add(lockFreeRead(registry, name)));
+
+        first.release(); // full -> dispatchable
+        assertThat(notifications).containsExactly("echo");
+        first.release(); // idempotent
+        second.release(); // was already dispatchable
+        assertThat(notifications).containsExactly("echo");
+        assertThat(registry.inFlight("echo")).isZero();
+    }
+
+    /** An old generation's late release frees nothing the active generation can use. */
+    @Test
+    void aRetiredGenerationsNameBasedReleaseDoesNotNotify() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("echo", 1);
+        DispatchLease old = registry.tryAcquireLease("echo", 1);
+        registry.remove("echo");
+        registry.register("echo", 1);
+        DispatchLease current = registry.tryAcquireLease("echo", 1);
+        List<String> notifications = new ArrayList<>();
+        registry.addCapacityListener(notifications::add);
+
+        old.release();
+
+        assertThat(notifications).isEmpty();
+        assertThat(registry.inFlight("echo")).isEqualTo(1);
+        current.release();
+        assertThat(notifications).containsExactly("echo");
+    }
+
+    /** A listener runs after the entry lock: another thread can read the entry meanwhile. */
+    private static String lockFreeRead(FunctionCapacityRegistry registry, String name) {
+        try {
+            CompletableFuture.supplyAsync(() -> registry.state(name)).get(1, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new AssertionError("listener ran while the entry lock was held", e);
+        }
+        return name;
+    }
+
     @Test
     void configuredConcurrencyAndRemovalAreSafe() {
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();

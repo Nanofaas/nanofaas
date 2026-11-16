@@ -18,15 +18,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * the retired {@code SyncScheduler} only to make it run the estimator's timed maintenance from
  * its own tick loop; the loop is deleted and {@link SyncQueueConfiguration
  * #syncQueueEstimatorMaintenance} owns that job now, so this drives the real production bean
- * instead. Same property, same assertions: while the bean is alive an idle estimator prunes its
- * expired per-function samples within the configured window, and once the bean is shut down
- * nothing prunes them any more.
+ * instead. Same property, same assertions: while the bean is alive an idle function's state is
+ * dropped once it has no dispatch left in the configured window, and once the bean is shut down
+ * nothing drops it any more.
  */
 class SyncQueueEstimatorMaintenanceTest {
 
     @Test
     void theMaintenanceBeanPrunesAnIdleEstimatorAndStopsPruningOnceShutDown() {
-        WaitEstimator estimator = new WaitEstimator(Duration.ofMillis(100), 1, 10, 10, 1);
+        WaitEstimator estimator = new WaitEstimator(Duration.ofMillis(100), 1, 10);
         estimator.recordDispatch("idle", Instant.now());
         assertEquals(1, estimator.retentionSnapshot().functionStates());
 

@@ -7,25 +7,30 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingTicket;
 import it.unimib.datai.nanofaas.controlplane.scheduler.TicketId;
 import java.time.Instant;
 import java.util.ArrayDeque;
+import java.util.Comparator;
 import java.util.Deque;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Set;
+import java.util.Map;
+import java.util.TreeSet;
 import java.util.function.Predicate;
 
 /**
- * The shared-queue policy on the {@link SchedulingIndex} contract: a single FIFO of tickets shared by every function,
- * scanned up to {@value #SCAN_LIMIT} entries per selection so a blocked head does not hide
- * ready work further back, with a bounded rotation of the same window applied in
- * {@code defer} or {@code advanceScanWindow} rather than during the scan itself.
+ * The shared-queue policy on the {@link SchedulingIndex} contract: one global FIFO shared by
+ * every function, kept as one FIFO per generation plus the generations' head tickets in
+ * {@code sequence} order. A selection walks the heads oldest first and returns the first one
+ * that is due and runnable, so a blocked function never hides ready work however deep the queue
+ * is, and the runnable predicate is evaluated at most once per generation per scan.
  *
- * <p>Selection never mutates the queue; the rotation applies only on the engine's failure
- * paths. Neither the scan limit nor the rotation width is tunable here.
+ * <p>This replaced a single deque scanned 64 entries at a time with a rotating window: under
+ * saturation the rotation pushed the oldest tickets behind newer ones, and a runnable function
+ * waited one capacity-blocked park per 64 blocked tickets ahead of it. A scan that finds a
+ * ticket examines only the heads older than it, never more than the old window did; a scan that
+ * finds nothing examines every pending generation's head, as {@code PerFunctionIndex.select}
+ * already does. Selection never mutates the index, and neither {@code defer} nor
+ * {@code advanceScanWindow} reorders anything.
  */
 public class SharedQueueSchedulingStrategy implements SchedulingStrategy {
-
-    /** The measured shared-queue scan window; do not retune. */
-    static final int SCAN_LIMIT = 64;
 
     @Override
     public String id() {
@@ -38,26 +43,53 @@ public class SharedQueueSchedulingStrategy implements SchedulingStrategy {
     }
 
     private static final class SharedQueueIndex implements SchedulingIndex {
-        private final Deque<SchedulingTicket> queue = new ArrayDeque<>();
-        private final Set<TicketId> present = new HashSet<>();
+        /** Oldest sequence first; the unique id makes the order total. */
+        private static final Comparator<SchedulingTicket> HEAD_ORDER =
+                Comparator.comparingLong(SchedulingTicket::sequence)
+                        .thenComparing(ticket -> ticket.id().executionId())
+                        .thenComparingInt(ticket -> ticket.id().attempt());
+
+        private final Map<FunctionGeneration, Deque<SchedulingTicket>> byGeneration = new HashMap<>();
+        private final Map<TicketId, FunctionGeneration> ownerByTicket = new HashMap<>();
+        /** Each pending generation's head ticket, in {@link #HEAD_ORDER}. */
+        private final TreeSet<SchedulingTicket> heads = new TreeSet<>(HEAD_ORDER);
 
         @Override
         public void add(SchedulingTicket ticket) {
-            if (present.contains(ticket.id())) {
+            if (ownerByTicket.containsKey(ticket.id())) {
                 throw new IllegalArgumentException("duplicate ticket id: " + ticket.id());
             }
-            queue.addLast(ticket);
-            present.add(ticket.id());
+            Deque<SchedulingTicket> fifo =
+                    byGeneration.computeIfAbsent(ticket.generation(), generation -> new ArrayDeque<>());
+            if (fifo.isEmpty()) {
+                heads.add(ticket);
+            }
+            fifo.addLast(ticket);
+            ownerByTicket.put(ticket.id(), ticket.generation());
         }
 
         @Override
         public void remove(TicketId id) {
-            if (!present.remove(id)) {
+            FunctionGeneration generation = ownerByTicket.remove(id);
+            if (generation == null) {
                 return;
             }
-            // Ids are unique (see add), so stop at the match instead of removeIf's full walk:
-            // this runs under the engine's gate on every dispatch, expiry and removal.
-            for (Iterator<SchedulingTicket> it = queue.iterator(); it.hasNext(); ) {
+            Deque<SchedulingTicket> fifo = byGeneration.get(generation);
+            SchedulingTicket head = fifo.peekFirst();
+            // A dispatch or an expiry takes the generation's head. Only an out-of-band removal
+            // from the middle walks that one generation's FIFO, and leaves its head in place.
+            if (head.id().equals(id)) {
+                heads.remove(head);
+                fifo.pollFirst();
+                SchedulingTicket next = fifo.peekFirst();
+                if (next == null) {
+                    byGeneration.remove(generation);
+                } else {
+                    heads.add(next);
+                }
+                return;
+            }
+            for (Iterator<SchedulingTicket> it = fifo.iterator(); it.hasNext(); ) {
                 if (it.next().id().equals(id)) {
                     it.remove();
                     return;
@@ -67,45 +99,30 @@ public class SharedQueueSchedulingStrategy implements SchedulingStrategy {
 
         @Override
         public SchedulingTicket select(Instant now, Predicate<FunctionGeneration> runnable) {
-            int visited = 0;
-            for (SchedulingTicket ticket : queue) {
-                if (++visited > SCAN_LIMIT) {
-                    break;
-                }
-                if (!ticket.notBefore().isAfter(now) && runnable.test(ticket.generation())) {
-                    return ticket;
+            for (SchedulingTicket head : heads) {
+                if (!head.notBefore().isAfter(now) && runnable.test(head.generation())) {
+                    return head;
                 }
             }
             return null;
         }
 
+        /** Order-preserving no-op: the engine already skips the blocked generation until its next
+         * wake. */
         @Override
         public void defer(TicketId id) {
-            advanceScanWindow();
-        }
-
-        @Override
-        public void advanceScanWindow() {
-            // Bounded scan-window rotation: move at most SCAN_LIMIT nodes from the front to
-            // the back, one at a time.
-            // This is a policy-level rotation, not a lookup for `id`: the failed selection that
-            // triggers it (the retired loop's nothing-in-window-can-dispatch path) rotates the
-            // whole window rather than repositioning one ticket.
-            int rotations = Math.min(SCAN_LIMIT, queue.size());
-            for (int i = 0; i < rotations; i++) {
-                queue.addLast(queue.removeFirst());
-            }
         }
 
         @Override
         public int size() {
-            return present.size();
+            return ownerByTicket.size();
         }
 
         @Override
         public void clear() {
-            queue.clear();
-            present.clear();
+            byGeneration.clear();
+            ownerByTicket.clear();
+            heads.clear();
         }
     }
 }

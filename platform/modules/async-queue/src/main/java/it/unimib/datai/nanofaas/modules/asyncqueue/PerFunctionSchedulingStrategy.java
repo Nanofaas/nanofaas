@@ -133,20 +133,10 @@ public class PerFunctionSchedulingStrategy implements SchedulingStrategy {
             return null;
         }
 
+        /** Order-preserving no-op: the engine already skips the blocked generation until its next
+         * wake, and moving the head to the back would make the oldest invocation the newest. */
         @Override
         public void defer(TicketId id) {
-            String functionName = ownerByTicket.get(id);
-            if (functionName == null) {
-                return;
-            }
-            Deque<SchedulingTicket> fifo = byFunction.get(functionName);
-            if (fifo == null) {
-                return;
-            }
-            SchedulingTicket found = removeAndReturnFromFifo(fifo, id);
-            if (found != null) {
-                fifo.addLast(found);
-            }
         }
 
         @Override
@@ -164,19 +154,14 @@ public class PerFunctionSchedulingStrategy implements SchedulingStrategy {
         }
 
         private static boolean removeFromFifo(Deque<SchedulingTicket> fifo, TicketId id) {
-            return removeAndReturnFromFifo(fifo, id) != null;
-        }
-
-        private static SchedulingTicket removeAndReturnFromFifo(Deque<SchedulingTicket> fifo, TicketId id) {
             Iterator<SchedulingTicket> iterator = fifo.iterator();
             while (iterator.hasNext()) {
-                SchedulingTicket candidate = iterator.next();
-                if (candidate.id().equals(id)) {
+                if (iterator.next().id().equals(id)) {
                     iterator.remove();
-                    return candidate;
+                    return true;
                 }
             }
-            return null;
+            return false;
         }
     }
 }

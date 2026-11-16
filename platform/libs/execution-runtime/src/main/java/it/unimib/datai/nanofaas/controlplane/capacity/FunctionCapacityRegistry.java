@@ -48,8 +48,11 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
 
     /**
      * Registers a listener invoked (after the registry lock is released) when a function
-     * transitions to having at least one free dispatch slot. Optional: a registry with no
-     * listeners behaves exactly as before.
+     * transitions to having at least one free dispatch slot: a raised effective or configured
+     * concurrency (re-registration included), a lifted pause, or the release of a name-based
+     * (direct-dispatch) lease. Releases of generation leases report through their own
+     * {@code onReleased} callback instead. Optional: a registry with no listeners behaves
+     * exactly as before.
      */
     public void addCapacityListener(Consumer<String> listener) {
         capacityListeners.add(listener);
@@ -66,31 +69,43 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
 
     private FunctionCapacityState register(String functionName, int configuredConcurrency, boolean lifecycleOwned) {
         Entry entry = entries.computeIfAbsent(functionName, ignored -> new Entry());
+        FunctionCapacityState registered;
+        boolean opened = false;
         entry.lock.lock();
         try {
             if (entries.get(functionName) != entry) {
-                return register(functionName, configuredConcurrency, lifecycleOwned);
-            }
-            entry.lifecycleOwned |= lifecycleOwned;
-            FunctionCapacityState current = entry.state;
-            if (current == null || !current.isActive()) {
-                if (current != null && current.inFlight() > 0) {
-                    // Retire the old generation: it keeps its slots and drains on release.
-                    entry.draining.put(entry.generation, current);
+                registered = null; // Replaced meanwhile: retried below, outside this entry's lock.
+            } else {
+                entry.lifecycleOwned |= lifecycleOwned;
+                FunctionCapacityState current = entry.state;
+                if (current == null || !current.isActive()) {
+                    if (current != null && current.inFlight() > 0) {
+                        // Retire the old generation: it keeps its slots and drains on release.
+                        entry.draining.put(entry.generation, current);
+                    }
+                    FunctionGeneration newGeneration =
+                            new FunctionGeneration(functionName, nextGeneration.getAndIncrement());
+                    registered = new FunctionCapacityState(newGeneration, configuredConcurrency, nanoTime,
+                            () -> onStateDrained(functionName, entry, newGeneration));
+                    entry.state = registered;
+                    entry.generation = newGeneration;
+                } else {
+                    // An update (FunctionService replays registration) may raise a full generation.
+                    boolean wasDispatchable = current.canDispatch();
+                    current.concurrency(configuredConcurrency);
+                    opened = !wasDispatchable && current.canDispatch();
+                    registered = current;
                 }
-                FunctionGeneration newGeneration =
-                        new FunctionGeneration(functionName, nextGeneration.getAndIncrement());
-                FunctionCapacityState fresh = new FunctionCapacityState(newGeneration, configuredConcurrency, nanoTime,
-                        () -> onStateDrained(functionName, entry, newGeneration));
-                entry.state = fresh;
-                entry.generation = newGeneration;
-                return fresh;
             }
-            current.concurrency(configuredConcurrency);
-            return current;
         } finally {
             entry.lock.unlock();
         }
+        if (registered == null) {
+            return register(functionName, configuredConcurrency, lifecycleOwned);
+        }
+        // Fire outside the entry lock: listeners may take other locks.
+        if (opened) notifyCapacityAvailable(functionName);
+        return registered;
     }
 
     /**
@@ -243,7 +258,7 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
             if (!entry.lifecycleOwned) state.concurrency(configuredConcurrency);
             if (!state.tryAcquireSlot()) return null;
             FunctionGeneration generation = entry.generation;
-            return new DispatchLease(generation, () -> releaseSlot(generation));
+            return new DispatchLease(generation, () -> releaseDirectSlot(generation));
         } finally {
             entry.lock.unlock();
         }
@@ -358,6 +373,35 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
         } finally {
             entry.lock.unlock();
         }
+    }
+
+    /**
+     * Release for the name-based (direct-dispatch) lease, which has no release callback of its
+     * own: when the release reopens the full active generation, listeners hear it after the entry
+     * lock, as for any other opening. With no listener registered (no engine) it is exactly
+     * {@link #releaseSlot}.
+     */
+    private void releaseDirectSlot(FunctionGeneration generation) {
+        if (capacityListeners.isEmpty()) {
+            releaseSlot(generation);
+            return;
+        }
+        Entry entry = entries.get(generation.functionName());
+        if (entry == null) return;
+        boolean opened;
+        entry.lock.lock();
+        try {
+            FunctionCapacityState acquired = generation.equals(entry.generation)
+                    ? entry.state : entry.draining.get(generation);
+            if (acquired == null) return;
+            boolean wasDispatchable = acquired.canDispatch();
+            acquired.releaseSlotAndGetHoldNanos();
+            // A retired generation's slot is no capacity the active one can use.
+            opened = acquired == entry.state && !wasDispatchable && acquired.canDispatch();
+        } finally {
+            entry.lock.unlock();
+        }
+        if (opened) notifyCapacityAvailable(generation.functionName());
     }
 
     /**

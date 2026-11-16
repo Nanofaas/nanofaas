@@ -31,13 +31,14 @@ public class SyncQueueRuntimeConfigAutoConfiguration {
                     candidate.putAll(patch);
                     if (!(candidate.get(MutableSyncQueueConfigSource.KEY_ENABLED) instanceof Boolean)
                             || !(candidate.get(MutableSyncQueueConfigSource.KEY_ADMISSION_ENABLED) instanceof Boolean)
-                            || !(candidate.get(MutableSyncQueueConfigSource.KEY_MAX_ESTIMATED_WAIT) instanceof String)
-                            || !(candidate.get(MutableSyncQueueConfigSource.KEY_MAX_QUEUE_WAIT) instanceof String)
-                            || !isPositiveInt(candidate.get(MutableSyncQueueConfigSource.KEY_RETRY_AFTER_SECONDS))
-                            || !java.time.Duration.parse((String) candidate.get(MutableSyncQueueConfigSource.KEY_MAX_ESTIMATED_WAIT)).isPositive()
-                            || !java.time.Duration.parse((String) candidate.get(MutableSyncQueueConfigSource.KEY_MAX_QUEUE_WAIT)).isPositive()
-                            || java.time.Duration.parse((String) candidate.get(MutableSyncQueueConfigSource.KEY_MAX_ESTIMATED_WAIT))
-                            .compareTo(java.time.Duration.parse((String) candidate.get(MutableSyncQueueConfigSource.KEY_MAX_QUEUE_WAIT))) > 0) {
+                            || !(candidate.get(MutableSyncQueueConfigSource.KEY_MAX_ESTIMATED_WAIT) instanceof String maxEstimatedWait)
+                            || !(candidate.get(MutableSyncQueueConfigSource.KEY_MAX_QUEUE_WAIT) instanceof String maxQueueWait)
+                            || !isPositiveInt(candidate.get(MutableSyncQueueConfigSource.KEY_RETRY_AFTER_SECONDS))) {
+                        throw new IllegalArgumentException("invalid type or non-positive value");
+                    }
+                    java.time.Duration estimated = java.time.Duration.parse(maxEstimatedWait);
+                    java.time.Duration queued = java.time.Duration.parse(maxQueueWait);
+                    if (!estimated.isPositive() || !queued.isPositive() || estimated.compareTo(queued) > 0) {
                         throw new IllegalArgumentException("invalid type or non-positive value");
                     }
                 } catch (RuntimeException e) {
