@@ -257,7 +257,13 @@ class ContainerLocalDeploymentProviderTest {
         probe.markReady("http://127.0.0.1:19003");
 
         assertThat(provider.getReadyReplicas("echo")).isEqualTo(3);
-        assertThat(proxy.backends()).containsExactly(
+        // Replicas 2 and 3 start concurrently, so which of them drew which port varies (production
+        // ports are ephemeral anyway). What the provider promises is the backends in replica order.
+        assertThat(proxy.backends()).containsExactlyElementsOf(adapter.listManagedContainers("echo").stream()
+                .sorted(java.util.Comparator.comparingInt(ManagedContainer::replicaIndex))
+                .map(ManagedContainer::baseUrl)
+                .toList());
+        assertThat(proxy.backends()).containsExactlyInAnyOrder(
                 "http://127.0.0.1:19001",
                 "http://127.0.0.1:19002",
                 "http://127.0.0.1:19003"
