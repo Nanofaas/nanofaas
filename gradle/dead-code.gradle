@@ -19,9 +19,18 @@ pmd {
             .map { it.toBoolean() }.getOrElse(false)
 }
 
+// Use PMD's toolchain explicitly for JDK type resolution. Added per source set, after PMD's own
+// action for it has set the classpath convention: a container-wide configureEach registered here
+// runs before that action for a source set added later (Spring Boot's aot and aotTest), finds no
+// classpath yet and fails the task's creation in any build that realises every task, such as an
+// IDE's Gradle import ("Could not create task ':control-plane:pmdAot'").
+sourceSets.configureEach { sourceSet ->
+    tasks.named(sourceSet.getTaskName('pmd', null), Pmd).configure {
+        classpath += files(javaLauncher.map { it.metadata.installationPath.file('lib/jrt-fs.jar') })
+    }
+}
+
 tasks.withType(Pmd).configureEach {
-    // Use PMD's toolchain explicitly for JDK type resolution.
-    classpath += files(javaLauncher.map { it.metadata.installationPath.file('lib/jrt-fs.jar') })
     reports {
         html.required = true
         xml.required = true
