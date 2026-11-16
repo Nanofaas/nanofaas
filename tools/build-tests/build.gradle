@@ -41,6 +41,8 @@ tasks.withType(Test).configureEach {
     inputs.file(warmEchoScript)
     inputs.file(file('../../gradle/jvm-jar-without-aot.gradle'))
     inputs.file(file('../../gradle/spring-aot-native-only.gradle'))
+    inputs.file(file('../../gradle/dead-code.gradle'))
+    inputs.file(file('../../config/pmd/dead-code.xml'))
     inputs.files(fileTree('../../platform/modules') {
         include '*/module.properties', '*/build.gradle', '*/build.gradle.kts'
     })
