@@ -36,7 +36,8 @@ import java.util.concurrent.atomic.AtomicLongArray;
  * protocol: a dispatch landing on a state being retired either cancels the retirement or records
  * itself again into a fresh state, so none is lost or counted twice.
  */
-public class WaitEstimator {
+// Final: the constructor validates its arguments, and a subclass could finalize a half-built instance.
+public final class WaitEstimator {
     static final int BUCKETS = 30;
     private static final int SLOTS = BUCKETS + 1;
     private static final int DEFAULT_MAX_FUNCTION_STATES = 8_192;

@@ -3350,26 +3350,6 @@
       <Message>At SyncQueueAdmissionController.java:[line 16]</Message>
     </SourceLine>
   </BugInstance>
-  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="757454dfb71f51b727e2d17d0eef7c2" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
-    <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
-    <LongMessage>Exception thrown in class it.unimib.datai.nanofaas.execution.admission.WaitEstimator at new it.unimib.datai.nanofaas.execution.admission.WaitEstimator(Duration, int) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
-    <Class classname="it.unimib.datai.nanofaas.execution.admission.WaitEstimator" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.execution.admission.WaitEstimator" start="33" end="496" sourcefile="WaitEstimator.java" sourcepath="it/unimib/datai/nanofaas/execution/admission/WaitEstimator.java" relSourcepath="java/it/unimib/datai/nanofaas/execution/admission/WaitEstimator.java">
-        <Message>At WaitEstimator.java:[lines 33-496]</Message>
-      </SourceLine>
-      <Message>In class it.unimib.datai.nanofaas.execution.admission.WaitEstimator</Message>
-    </Class>
-    <Method classname="it.unimib.datai.nanofaas.execution.admission.WaitEstimator" name="&lt;init&gt;" signature="(Ljava/time/Duration;I)V" isStatic="false" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.execution.admission.WaitEstimator" start="42" end="46" startBytecode="0" endBytecode="96" sourcefile="WaitEstimator.java" sourcepath="it/unimib/datai/nanofaas/execution/admission/WaitEstimator.java" relSourcepath="java/it/unimib/datai/nanofaas/execution/admission/WaitEstimator.java" />
-      <Message>In method new it.unimib.datai.nanofaas.execution.admission.WaitEstimator(Duration, int)</Message>
-    </Method>
-    <SourceLine classname="it.unimib.datai.nanofaas.execution.admission.WaitEstimator" primary="true" start="42" end="42" startBytecode="27" endBytecode="27" sourcefile="WaitEstimator.java" sourcepath="it/unimib/datai/nanofaas/execution/admission/WaitEstimator.java" relSourcepath="java/it/unimib/datai/nanofaas/execution/admission/WaitEstimator.java">
-      <Message>At WaitEstimator.java:[line 42]</Message>
-    </SourceLine>
-    <SourceLine classname="it.unimib.datai.nanofaas.execution.admission.WaitEstimator" start="42" end="42" startBytecode="27" endBytecode="27" sourcefile="WaitEstimator.java" sourcepath="it/unimib/datai/nanofaas/execution/admission/WaitEstimator.java" relSourcepath="java/it/unimib/datai/nanofaas/execution/admission/WaitEstimator.java">
-      <Message>At WaitEstimator.java:[line 42]</Message>
-    </SourceLine>
-  </BugInstance>
   <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="92a8970e3860e06dce59a437984bb6b2" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
     <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
     <LongMessage>Exception thrown in class it.unimib.datai.nanofaas.execution.admission.WaitEstimator at new it.unimib.datai.nanofaas.execution.admission.WaitEstimator(Duration, int, int, int, int) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
