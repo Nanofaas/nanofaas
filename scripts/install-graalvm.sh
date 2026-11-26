@@ -18,6 +18,8 @@ release="${2:-}"
 java_version="${3:-}"
 distribution="${4:-community}"
 
+# GraalVM 25.2.4 and 25.0.4 both use JDK 25.0.4, but only the innovation
+# distribution matches Truffle 25.2.4. Pin the Graal release as well as the JDK.
 case "$distribution:$release:$java_version:$architecture" in
     community:25.2.4:25.0.4:amd64)
         archive="graalvm-community-jdk-25i2-25.0.4_linux-x64_bin.tar.gz"
@@ -29,15 +31,15 @@ case "$distribution:$release:$java_version:$architecture" in
         checksum="22286f7ecd21b9aedb3226b9bf797469e1bd3eefc491e12ef3dd49b452d230b7"
         url="https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-$release/$archive"
         ;;
-    oracle:*:25.0.4:amd64)
-        archive="graalvm-jdk-25.0.4_linux-x64_bin.tar.gz"
-        checksum="76007c309f821aaf435bce63162ea0395587fc77350801c81643fe7feea37276"
-        url="https://download.oracle.com/graalvm/25/archive/$archive"
+    oracle:25.2.4:25.0.4:amd64)
+        archive="graalvm-jdk-25i2-25.0.4_linux-x64_bin.tar.gz"
+        checksum="7100d99cbfec68b03b669cc60c7e8592bbcda1732e8eaebc460fe0b75849a894"
+        url="https://gds.oracle.com/download/graal/25i2/archive/$archive"
         ;;
-    oracle:*:25.0.4:arm64)
-        archive="graalvm-jdk-25.0.4_linux-aarch64_bin.tar.gz"
-        checksum="7031aead8da4c6a7816c4e2be4eabfddaf7f4abcfe8e5f16134c4da69a5e70de"
-        url="https://download.oracle.com/graalvm/25/archive/$archive"
+    oracle:25.2.4:25.0.4:arm64)
+        archive="graalvm-jdk-25i2-25.0.4_linux-aarch64_bin.tar.gz"
+        checksum="0bc65f9c36ae77bd83aad46a2b4de4b0ec97da1b4ac83fedb59e19f868873dee"
+        url="https://gds.oracle.com/download/graal/25i2/archive/$archive"
         ;;
     *)
         echo "Unsupported GraalVM: ${distribution:-unset}/${release:-unset}/${java_version:-unset}/${architecture:-unset}" >&2
