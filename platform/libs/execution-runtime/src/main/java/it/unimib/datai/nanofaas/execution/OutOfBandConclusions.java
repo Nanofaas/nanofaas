@@ -110,9 +110,7 @@ final class OutOfBandConclusions {
         }
         InvocationTask task = executionRecord.task();
         FunctionGeneration generation = executionRecord.currentGeneration();
-        // Compatibility records can own a bookkeeping slot; active transports release
-        // their own capacity on completion, including a cancellation acknowledgement.
-        executionRecord.releaseUntransferredLease();
+        // The transport releases its own capacity once it drains, including after this cancellation.
         if (handle != null) {
             handle.cancel(true);
         }

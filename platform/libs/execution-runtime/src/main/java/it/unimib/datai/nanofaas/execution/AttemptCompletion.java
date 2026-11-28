@@ -86,11 +86,9 @@ final class AttemptCompletion {
         }
 
         String functionName = currentTask.functionName();
-        // Captured before releaseUntransferredLease, which detaches the lease on the
-        // direct-admission path: this is the generation the attempt was admitted under,
-        // not whatever the registry considers active by the time metrics are recorded.
+        // The generation the attempt was admitted under, not whatever the registry considers
+        // active by the time metrics are recorded.
         FunctionGeneration generation = executionRecord.currentGeneration();
-        executionRecord.releaseUntransferredLease();
         if (executionRecord.isTerminal()) {
             return Conclusion.NONE;
         }

@@ -211,7 +211,6 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
         verify(enqueuer, times(1)).enqueue(any(), any(), any());
-        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -225,27 +224,23 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Attempt 2
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 2 failed"));
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(executionRecord.task().attempt()).isEqualTo(3);
 
         // Attempt 3
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 3 failed"));
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(executionRecord.task().attempt()).isEqualTo(4);
 
         // Attempt 4 (initial attempt + maxRetries=3)
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 4 failed"));
 
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        assertThat(ownership.releases("testFunc")).isEqualTo(4);
     }
 
     @Test
@@ -257,7 +252,6 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(executionRecord.snapshot().output()).isEqualTo("result");
-        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -275,7 +269,6 @@ class ExecutionCompletionHandlerTest {
     @Test
     void completeExecution_afterTimeout_doesNotOverwriteTimeoutOrEmitSuccessMetrics() {
         ExecutionRecord executionRecord = recordInStore("exec-timeout", testSpec, null);
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
         ExecutionFixtures.timeOut(executionRecord);
 
@@ -332,7 +325,6 @@ class ExecutionCompletionHandlerTest {
         InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("ERROR");
-        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -348,13 +340,11 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Second failure → retry attempt but queue full
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
         completionHandler.completeExecution("exec-mixed", InvocationResult.error("ERROR", "Attempt 2"));
 
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        assertThat(ownership.releases("testFunc")).isEqualTo(2);
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────────
@@ -369,9 +359,8 @@ class ExecutionCompletionHandlerTest {
     );
         ExecutionRecord executionRecord = ExecutionFixtures.record(executionId, task);
         executionStore.put(executionRecord);
-        // A dispatch marks the attempt RUNNING and is what acquires its slot; the completion
-        // path releases only what an attempt actually acquired (invariant I4).
-        ownership.attach(executionRecord);
+        // RUNNING, as a dispatch leaves it. Its slot would belong to the transport, which releases
+        // it once it drains (invariant I4): these tests drive completion without one.
         executionRecord.markRunning();
         return executionRecord;
     }

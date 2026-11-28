@@ -85,9 +85,7 @@ public final class ReactiveInvocationCoordinator {
                 case InvocationExecutionFactory.ExecutionLookup.Live _,
                      InvocationExecutionFactory.ExecutionLookup.Fresh _ -> {
                     ExecutionRecord executionRecord = lookup.executionRecord();
-                    yield executionRecord.currentGeneration() != null
-                            ? waiterCapacity.reserve(executionRecord.currentGeneration(), executionRecord.executionId())
-                            : waiterCapacity.reserve(spec.name(), executionRecord.executionId());
+                    yield waiterCapacity.reserve(executionRecord.currentGeneration(), executionRecord.executionId());
                 }
             };
         } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too

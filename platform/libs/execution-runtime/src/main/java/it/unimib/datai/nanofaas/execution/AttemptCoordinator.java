@@ -74,8 +74,13 @@ public final class AttemptCoordinator {
         this.executionStore.onTerminal(conclusions::recordTerminalConclusionOnce);
     }
 
+    /** Queue and retry dispatch: the scheduler acquired the attempt's capacity lease and it travels with the task. */
     public void dispatch(InvocationTask task) {
-        dispatchInternal(task, task.dispatchLease());
+        DispatchOwnership lease = task.dispatchLease();
+        if (lease == null) {
+            throw new IllegalArgumentException("a dispatched task must carry the capacity lease its scheduler acquired");
+        }
+        dispatchInternal(task, lease);
     }
 
     /**
@@ -95,8 +100,7 @@ public final class AttemptCoordinator {
     }
 
     /**
-     * Shared body for direct, retry and queue dispatch. All production schedulers pass
-     * their acquired lease with the task. A null lease supports legacy in-process callers.
+     * Shared body for direct, retry and queue dispatch, with the capacity lease the attempt owns.
      */
     private void dispatchInternal(InvocationTask task, DispatchOwnership directLease) {
         ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
@@ -120,9 +124,6 @@ public final class AttemptCoordinator {
                     // closes it on a failed submit or once the transport drains.
                     physicalInput = executionRecord.openPhysicalInput(task); // NOSONAR
                     task.releaseQueuedInput();
-                    if (directLease != null) {
-                        executionRecord.attachDispatchLease(directLease);
-                    }
                     executionRecord.transportOwnsCapacity();
                     executionRecord.markRunning();
                     executionRecord.markDispatchedAt();
@@ -153,15 +154,13 @@ public final class AttemptCoordinator {
     /** Returns the queued input and any direct lease of a dispatch that never started. */
     private static void releaseUndispatched(InvocationTask task, DispatchOwnership directLease) {
         task.releaseQueuedInput();
-        if (directLease != null) {
-            directLease.release();
-        }
+        directLease.release();
     }
 
     private void failInputPreparation(InvocationTask task, DispatchOwnership directLease,
                                       PhysicalInput physicalInput, Throwable inputFailure) {
         if (physicalInput != null) physicalInput.close();
-        if (directLease != null) directLease.release();
+        directLease.release();
         task.releaseQueuedInput();
         if (inputFailure instanceof Error error) {
             completeOffloadedExecution(task.executionId(), InvocationResult.error(
@@ -180,7 +179,7 @@ public final class AttemptCoordinator {
             return transport.submit(physicalTask);
         } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             attemptInput.close();
-            if (ownership.lease() != null) ownership.lease().release();
+            ownership.lease().release();
             // No transport was created: return the already-acquired capacity here.
             InvocationResult failure = InvocationResult.error(mode.name() + "_ERROR", ex.getMessage());
             if (ex instanceof Error error) {
@@ -211,7 +210,7 @@ public final class AttemptCoordinator {
         CompletableFuture<DispatchResult> attempt = new CompletableFuture<>();
         CompletableFuture<Void> resourcesDrained = handle.drained().handle((ignored, drainError) -> {
             try {
-                if (ownership.lease() != null) ownership.lease().release();
+                ownership.lease().release();
             } finally {
                 attemptInput.close();
             }

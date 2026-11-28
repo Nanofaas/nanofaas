@@ -58,29 +58,10 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
     private final Clock clock;
     private final ExecutionStore executions;
 
-    public EngineInvocationEnqueuer(ObjectProvider<SchedulerEngine> engine,
-                                    DispatchCapacity capacityRegistry,
-                                    LongSupplier sequence,
-                                    AdmissionProfile profile,
-                                    boolean asyncEnabled,
-                                    ObjectProvider<EngineSyncQueueGateway> syncGateway) {
-        this(engine, capacityRegistry, sequence, profile, asyncEnabled, syncGateway, Clock.systemUTC());
-    }
-
-    EngineInvocationEnqueuer(ObjectProvider<SchedulerEngine> engine,
-                             DispatchCapacity capacityRegistry,
-                             LongSupplier sequence,
-                             AdmissionProfile profile,
-                             boolean asyncEnabled,
-                             ObjectProvider<EngineSyncQueueGateway> syncGateway,
-                             Clock clock) {
-        this(engine, capacityRegistry, sequence, profile, asyncEnabled, syncGateway, clock, null);
-    }
-
     public EngineInvocationEnqueuer(ObjectProvider<SchedulerEngine> engine, DispatchCapacity capacityRegistry,
             LongSupplier sequence, AdmissionProfile profile, boolean asyncEnabled,
             ObjectProvider<EngineSyncQueueGateway> syncGateway, Clock clock, ExecutionStore executions) {
-        this.executions = executions;
+        this.executions = Objects.requireNonNull(executions, "executions must not be null");
         this.engine = Objects.requireNonNull(engine, "engine must not be null");
         this.capacityRegistry = Objects.requireNonNull(capacityRegistry, "capacityRegistry must not be null");
         this.sequence = Objects.requireNonNull(sequence, "sequence must not be null");
@@ -114,7 +95,7 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
 
     @Override
     public boolean enqueue(InvocationTask task, Instant notBefore, Runnable onRejected) {
-        ExecutionRecord record = executions == null ? null : executions.getOrNull(task.executionId());
+        ExecutionRecord record = executions.getOrNull(task.executionId());
         FunctionGeneration generation = capacityRegistry.activeGeneration(task.functionName());
         if (!retryIsLive(record, task, generation)) return false;
         boolean accepted;
@@ -134,12 +115,10 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
     @SuppressWarnings("ReferenceEquality") // The record identity must survive publication.
     private boolean retryIsLive(ExecutionRecord record, InvocationTask task, FunctionGeneration generation) {
         if (generation == null || !generation.equals(capacityRegistry.activeGeneration(task.functionName()))) return false;
-        // The null store exists only for legacy direct-construction tests.
-        if (executions == null) return true;
         if (record == null || executions.getOrNull(task.executionId()) != record) return false;
         synchronized (record) {
             return !record.isTerminal() && record.task().attempt() == task.attempt()
-                    && (record.currentGeneration() == null || generation.equals(record.currentGeneration()));
+                    && generation.equals(record.currentGeneration());
         }
     }
 

@@ -31,7 +31,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class InvocationServiceRetryQueueFullTest {
-    private final TestDispatchOwnership ownership = new TestDispatchOwnership();
 
     @Mock private FunctionService functionService;
     @Mock private InvocationEnqueuer enqueuer;
@@ -94,7 +93,6 @@ class InvocationServiceRetryQueueFullTest {
         when(enqueuer.enqueue(any())).thenReturn(false);
 
         // Complete with error - should attempt retry but queue is full
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
         InvocationResult errorResult = InvocationResult.error("ERROR", "First attempt failed");
         invocationService.completeExecution(response.executionId(), errorResult);
@@ -106,7 +104,6 @@ class InvocationServiceRetryQueueFullTest {
         InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("ERROR");
-        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -124,7 +121,6 @@ class InvocationServiceRetryQueueFullTest {
         ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(response.executionId())).orElseThrow();
 
         // First failure -> retry (attempt 2)
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(), InvocationResult.error("ERROR", "Attempt 1")
@@ -133,7 +129,6 @@ class InvocationServiceRetryQueueFullTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Second failure -> retry attempt but queue full
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(), InvocationResult.error("ERROR", "Attempt 2")
@@ -142,6 +137,5 @@ class InvocationServiceRetryQueueFullTest {
         // Future should be completed because retry queue was full
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        assertThat(ownership.releases("testFunc")).isEqualTo(2);
     }
 }

@@ -4,6 +4,8 @@ import com.github.benmanes.caffeine.cache.Scheduler;
 import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore.AcquireResult;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
@@ -209,13 +211,42 @@ public final class ExecutionFixtures {
 
     // ---- Records
 
-    /** A record without input resources, which only tests build: production admits through capacity. */
+    /**
+     * An execution admitted on a capacity of its own, for a test where the record meets no other
+     * capacity: one that dispatches or fences on generations passes the coordinator's registry.
+     */
     public static ExecutionRecord record(String executionId, InvocationTask task) {
         return record(executionId, task, TimeSource.system());
     }
 
     public static ExecutionRecord record(String executionId, InvocationTask task, TimeSource timeSource) {
-        return new ExecutionRecord(executionId, task, timeSource, null);
+        return record(executionId, task, timeSource, new FunctionCapacityRegistry());
+    }
+
+    public static ExecutionRecord record(String executionId, InvocationTask task, FunctionCapacityRegistry generations) {
+        return record(executionId, task, TimeSource.system(), generations);
+    }
+
+    public static ExecutionRecord record(String executionId, InvocationTask task, TimeSource timeSource,
+                                         FunctionCapacityRegistry generations) {
+        return new ExecutionRecord(executionId, task, timeSource, admit(executionId, task, generations));
+    }
+
+    /**
+     * Admits the execution as the factory does, under the function's active generation in
+     * {@code generations} (registered there first if it has none), and publishes the admission.
+     * The quotas are unbounded: a test about a limit goes through the factory.
+     */
+    static ExecutionInputResources admit(String executionId, InvocationTask task, FunctionCapacityRegistry generations) {
+        if (generations.activeGeneration(task.functionName()) == null) {
+            Integer concurrency = task.functionSpec() == null ? null : task.functionSpec().concurrency();
+            generations.register(task.functionName(), concurrency == null ? 1 : concurrency);
+        }
+        InvocationCapacity.Admission admission = new InvocationCapacity(generations,
+                Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Integer.MAX_VALUE)
+                .reserve(task.functionName(), executionId, 1);
+        admission.publish();
+        return new ExecutionInputResources(admission);
     }
 
     /** Times the record out, as a queue-wait deadline does, without settling it. */

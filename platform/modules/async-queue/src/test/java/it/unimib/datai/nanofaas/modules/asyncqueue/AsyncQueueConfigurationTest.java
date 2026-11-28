@@ -188,7 +188,8 @@ class AsyncQueueConfigurationTest {
         };
         AtomicLong sequence = new AtomicLong();
         EngineInvocationEnqueuer enqueuer = new EngineInvocationEnqueuer(engineProvider, capacityRegistry,
-                sequence::incrementAndGet, AdmissionProfile.FUNCTION_QUEUE, true, noSyncGateway());
+                sequence::incrementAndGet, AdmissionProfile.FUNCTION_QUEUE, true, noSyncGateway(),
+                Clock.systemUTC(), executionStore);
 
         FunctionRegistrationListener listener = new SchedulerConfiguration()
                 .schedulerCapacityGenerationListener(capacityRegistry, engine,

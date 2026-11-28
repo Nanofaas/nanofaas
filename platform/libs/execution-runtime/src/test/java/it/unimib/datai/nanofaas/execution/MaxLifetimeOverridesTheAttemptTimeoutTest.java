@@ -50,16 +50,17 @@ class MaxLifetimeOverridesTheAttemptTimeoutTest {
         var answer = new CompletableFuture<DispatchResult>();
         AttemptTransport transport = task -> new AttemptHandle(
                 answer, answer.thenApply(ignored -> null), new CompletableFuture<Void>());
-        var coordinator = AttemptFixtures.coordinator(store, new FunctionCapacityRegistry(),
+        var capacity = new FunctionCapacityRegistry();
+        var coordinator = AttemptFixtures.coordinator(store, capacity,
                 RetryScheduler.unavailable(), transport, mock(AttemptObserver.class));
 
         var spec = new FunctionSpec("fn", "image", null, null, null,
                 TIMEOUT_MS, 1, 10, 0, "http://function", ExecutionMode.EXTERNAL, null, null, null);
         var task = new InvocationTask("long-run", "fn", spec, new InvocationRequest("input", Map.of()),
                 null, null, Instant.now(), 1, InvocationKind.SYNC);
-        var executionRecord = ExecutionFixtures.record("long-run", task);
+        var executionRecord = ExecutionFixtures.record("long-run", task, capacity);
         store.put(executionRecord);
-        coordinator.dispatch(task);
+        coordinator.dispatchDirect(task);
 
         // Minute 31 of a run allowed 40: the store evicts the record and concludes it.
         clock.addAndGet(MAX_LIFETIME.plusMinutes(1).toNanos());

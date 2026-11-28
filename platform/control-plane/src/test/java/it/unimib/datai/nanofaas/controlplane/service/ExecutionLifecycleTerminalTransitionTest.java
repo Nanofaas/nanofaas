@@ -98,7 +98,7 @@ class ExecutionLifecycleTerminalTransitionTest {
         InvocationExecutionFactory.ExecutionLookup lookup =
                 factory.createOrReuseExecution("fn", spec(), request(), key, "trace", InvocationKind.SYNC);
         InvocationEnqueueSupport.admitIfNew(lookup,
-                () -> completionHandler.dispatch(lookup.executionRecord().task()));
+                () -> completionHandler.dispatchDirect(lookup.executionRecord().task()));
         return lookup;
     }
 

@@ -10,8 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityProperti
 import it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacity;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.LocalDispatcher;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
@@ -70,8 +68,6 @@ class P07ConfiguredHttpCalibrationTest {
     @Autowired private InvocationCapacity invocations;
     @Autowired private InvocationCapacityProperties properties;
     @Autowired private WaiterCapacity waiters;
-    @Autowired private ExecutionStore executions;
-    @Autowired private IdempotencyStore keys;
     @Autowired private io.micrometer.core.instrument.MeterRegistry meters;
     @MockitoBean private LocalDispatcher dispatcher;
 

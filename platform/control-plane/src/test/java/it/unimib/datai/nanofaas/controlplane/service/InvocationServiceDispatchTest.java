@@ -83,6 +83,10 @@ class InvocationServiceDispatchTest {
     private ExecutionCompletionHandler completionHandler;
     private InvocationService invocationService;
 
+    /** The service's capacity, on which seeded records are admitted as the factory would. */
+    private final it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry generations =
+            new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry();
+
     @BeforeEach
     void setUp() {
         idempotencyStore = ExecutionFixtures.keys();
@@ -98,6 +102,7 @@ class InvocationServiceDispatchTest {
                 metrics,
                 syncQueueGateway,
                 completionHandler,
+                generations,
                 "replay-success-fn", "replay-reactive-success-fn", "replay-sync-timeout-fn",
                 "replay-timeout-fn", "fn", "inline-fn", "queued-sync-fn", "sync-queued-fn",
                 "sync-queued-sync-fn", "idem-admission-race-fn", "sync-reject-fn",
@@ -125,7 +130,7 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-success-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-replay-success", "replay-success-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task, generations);
         executionRecord.markSuccess("replayed-ok");
         executionStore.put(executionRecord);
         ExecutionFixtures.bind(idempotencyStore, "replay-success-fn", "idem-1", executionRecord.executionId());
@@ -152,7 +157,7 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-reactive-success-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-reactive-replay-success", "replay-reactive-success-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task, generations);
         executionRecord.markSuccess("reactive-replayed-ok");
         executionStore.put(executionRecord);
         ExecutionFixtures.bind(idempotencyStore, "replay-reactive-success-fn", "idem-reactive-success", executionRecord.executionId());
@@ -180,7 +185,7 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-sync-timeout-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-sync-replay-timeout", "replay-sync-timeout-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task, generations);
         ExecutionFixtures.timeOut(executionRecord);
         executionStore.put(executionRecord);
         ExecutionFixtures.bind(idempotencyStore, "replay-sync-timeout-fn", "idem-sync-timeout", executionRecord.executionId());
@@ -206,7 +211,7 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-timeout-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-replay-timeout", "replay-timeout-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task, generations);
         ExecutionFixtures.timeOut(executionRecord);
         executionStore.put(executionRecord);
         ExecutionFixtures.bind(idempotencyStore, "replay-timeout-fn", "idem-timeout", executionRecord.executionId());
@@ -251,7 +256,7 @@ class InvocationServiceDispatchTest {
     @Test
     void dispatch_whenRouterThrowsSynchronously_completesExecutionWithError() throws Exception {
         InvocationTask task = task("exec-1", "local-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task, generations);
         executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchLocal(any())).thenThrow(new RuntimeException("router down"));
@@ -269,7 +274,7 @@ class InvocationServiceDispatchTest {
     @Test
     void dispatch_poolMode_routesToPoolDispatcherAndCompletesSuccess() throws Exception {
         InvocationTask task = task("exec-2", "pool-fn", ExecutionMode.EXTERNAL);
-        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task, generations);
         executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchExternal(any())).thenReturn(
@@ -355,7 +360,6 @@ class InvocationServiceDispatchTest {
             InvocationTask task = invocation.getArgument(0);
             ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
             if (executionRecord != null) {
-                ownership.attach(executionRecord);
         executionRecord.markRunning();
             }
             completionHandler.completeExecution(
@@ -378,7 +382,6 @@ class InvocationServiceDispatchTest {
         verify(enqueuer).enqueue(any());
         verify(syncQueueGateway, never()).enqueueOrThrow(any());
         verify(dispatcherRouter, never()).dispatchLocal(any());
-        assertThat(ownership.releases("queued-sync-fn")).isEqualTo(1);
     }
 
     @Test
@@ -411,7 +414,6 @@ class InvocationServiceDispatchTest {
             InvocationTask task = invocation.getArgument(0);
             ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
             if (executionRecord != null) {
-                ownership.attach(executionRecord);
         executionRecord.markRunning();
             }
             completionHandler.completeExecution(
@@ -433,7 +435,6 @@ class InvocationServiceDispatchTest {
         assertThat(response.output()).isEqualTo("ok");
         verify(syncQueueGateway).enqueueOrThrow(any());
         verify(enqueuer, never()).enqueue(any());
-        assertThat(ownership.releases("sync-queued-sync-fn")).isEqualTo(1);
         verifyNoInteractions(dispatcherRouter);
     }
 

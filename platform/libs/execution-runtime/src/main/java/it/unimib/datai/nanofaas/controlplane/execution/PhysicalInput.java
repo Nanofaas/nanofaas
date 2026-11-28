@@ -30,7 +30,6 @@ public final class PhysicalInput implements AutoCloseable {
     }
 
     private static void closeUnchecked(AutoCloseable closeable) {
-        if (closeable == null) return;
         try {
             closeable.close();
         } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too

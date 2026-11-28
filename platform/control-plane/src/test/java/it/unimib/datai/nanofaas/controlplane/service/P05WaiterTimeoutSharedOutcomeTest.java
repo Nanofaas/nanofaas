@@ -274,7 +274,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
         CompletableFuture<SyncInvocation> longWaiter = coordinator.invoke(first, spec, 10_000).toFuture();
 
         // The enqueuer accepted the task; drive the first dispatch.
-        handler.dispatch(first.executionRecord().task());
+        handler.dispatchDirect(first.executionRecord().task());
 
         // A short waiter times out while the first attempt is in flight.
         SyncInvocation shortWaiter = coordinator.invoke(lookup(factory, "key", spec), spec, 1)
@@ -283,7 +283,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
 
         // Attempt 1 fails and is retried (attempt 2), which this test dispatches by hand.
         attempt1.complete(DispatchResult.warm(InvocationResult.error("TRANSIENT", "first try")));
-        handler.dispatch(first.executionRecord().task());
+        handler.dispatchDirect(first.executionRecord().task());
 
         attempt2.complete(DispatchResult.warm(InvocationResult.success("real answer")));
 

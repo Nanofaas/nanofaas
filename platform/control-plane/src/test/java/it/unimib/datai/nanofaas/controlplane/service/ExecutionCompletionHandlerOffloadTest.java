@@ -33,7 +33,6 @@ class ExecutionCompletionHandlerOffloadTest {
     private final ExecutionStore executionStore = ExecutionFixtures.store();
     private final RetryScheduler enqueuer = mock(RetryScheduler.class);
     private final DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
-    private final TestDispatchOwnership ownership = new TestDispatchOwnership();
     private final ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
             executionStore, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
 
@@ -50,17 +49,13 @@ class ExecutionCompletionHandlerOffloadTest {
     }
 
     @Test
-    void offloadedSuccessCompletesWithoutReleasingDispatchSlot() {
+    void offloadedSuccessCompletesWithoutRetry() {
+        // Offload never acquires local capacity, and a record holds none: there is no slot to release.
         ExecutionRecord executionRecord = executionRecord("exec-ok", "fn");
-        // A real owned lease is attached so "released nothing" is falsifiable: the
-        // offload path must not touch capacity it never acquired. Offload has no
-        // lease in production, so this is the strongest available probe.
-        ownership.attach(executionRecord);
 
         InvocationResult result = InvocationResult.success("remote-out");
         handler.completeOffloadedExecution("exec-ok", result);
 
-        assertThat(ownership.releases()).isZero();
         verify(enqueuer, never()).enqueue(any(), any(), any());
         assertThat(executionRecord.completion()).isCompletedWithValue(result);
     }
@@ -78,15 +73,13 @@ class ExecutionCompletionHandlerOffloadTest {
     }
 
     @Test
-    void offloadInfraFailureCompletesExceptionallyWithoutRetryOrSlotRelease() {
+    void offloadInfraFailureCompletesExceptionallyWithoutRetry() {
         ExecutionRecord executionRecord = executionRecord("exec-fail", "fn");
-        ownership.attach(executionRecord);
 
         OffloadFailedException failure = new OffloadFailedException("http://cloud:8080", false, "unreachable");
         handler.failOffloadedExecution("exec-fail", failure);
 
         verify(enqueuer, never()).enqueue(any(), any(), any());
-        assertThat(ownership.releases()).isZero();
         verify(dispatcherRouter, never()).dispatchLocal(any());
         assertThat(executionRecord.completion().isCompletedExceptionally()).isTrue();
         assertThat(executionRecord.snapshot().lastError().code()).isEqualTo(OffloadGateway.OFFLOAD_FAILED_CODE);

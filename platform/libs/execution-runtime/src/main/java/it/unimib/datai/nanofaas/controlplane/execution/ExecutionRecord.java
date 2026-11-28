@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 
 import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute;
@@ -20,7 +19,7 @@ import java.util.concurrent.Future;
  * Mutable execution record with thread-safe state transitions.
  *
  * <p>The record is its own monitor: every mutable field, and the {@link AttemptOwnership} it
- * delegates the current attempt's lease and transport to, is read and written under it. Use
+ * delegates the current attempt's transport to, is read and written under it. Use
  * {@link #snapshot()} to get a consistent view of all fields.
  */
 public class ExecutionRecord {
@@ -100,14 +99,13 @@ public class ExecutionRecord {
                 new ExecutionInputResources(admission));
     }
 
-    /** Records built without input resources exist only in tests (the fixtures in this package). */
     ExecutionRecord(String executionId, InvocationTask task, TimeSource timeSource,
                     ExecutionInputResources inputResources) {
         this.executionId = executionId;
         this.task = task;
         this.timeSource = timeSource;
         this.inputResources = inputResources;
-        this.ownership = new AttemptOwnership(inputResources == null ? null : inputResources.generation());
+        this.ownership = new AttemptOwnership(inputResources.generation());
         boolean keyed = task.idempotencyKey() != null && !task.idempotencyKey().isBlank();
         this.readableAfterFinishing = task.kind() == InvocationKind.ASYNC || keyed;
         this.idempotencyKey = keyed ? task.idempotencyKey() : null;
@@ -323,33 +321,10 @@ public class ExecutionRecord {
         ownership.resetForRetry();
     }
 
-    // ---- The current attempt's lease and transport (see AttemptOwnership)
-
-    /** Records the lease the current attempt acquired at dispatch, before its dispatch starts. */
-    public synchronized void attachDispatchLease(DispatchOwnership lease) {
-        ownership.attachLease(lease);
-    }
+    // ---- The current attempt's transport (see AttemptOwnership)
 
     /**
-     * Releases the current attempt's lease, unless its transport took ownership of the capacity:
-     * a dispatched attempt releases it itself, when its transport has really drained.
-     */
-    public void releaseUntransferredLease() {
-        DispatchOwnership lease;
-        synchronized (this) {
-            if (ownership.capacityOwnedByTransport()) {
-                return;
-            }
-            lease = ownership.takeLease();
-        }
-        if (lease != null) {
-            lease.release();
-        }
-    }
-
-    /**
-     * The generation this logical execution was admitted under, or {@code null} only for
-     * compatibility records built without input resources. Stable across retries and across the
+     * The generation this logical execution was admitted under. Stable across retries and across the
      * lease's release: it fences a late completion's metrics against a function that has since been
      * removed and re-registered under a new identity (I7).
      */
@@ -393,29 +368,27 @@ public class ExecutionRecord {
             if (!isTerminal() || settlementStarted) return false;
             settlementStarted = true;
         }
-        if (inputResources != null) inputResources.settleLogicalExecution();
+        inputResources.settleLogicalExecution();
         return true;
     }
 
     /** Acquires one more same-generation reader of the retained input, for an attempt's transport. */
     public PhysicalInput openPhysicalInput(InvocationTask source) {
-        if (inputResources == null) return new PhysicalInput(source, null);
         return inputResources.open(source);
     }
 
     /** Adds a queue-entry input owner before the task is published to any queue. */
     public synchronized InvocationTask prepareForQueue() {
-        if (inputResources == null) return task;
         task = task.withQueuedInputLease(inputResources.retainForQueue(task));
         return task;
     }
 
     public void publishAdmissionResources() {
-        if (inputResources != null) inputResources.publish();
+        inputResources.publish();
     }
 
     public void rollbackAdmissionResources() {
-        if (inputResources != null) inputResources.rollback();
+        inputResources.rollback();
     }
 
     /** Publish only the selected terminal answer; callbacks run outside the monitor. */

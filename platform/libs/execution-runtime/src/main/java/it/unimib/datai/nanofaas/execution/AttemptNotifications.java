@@ -26,15 +26,12 @@ final class AttemptNotifications {
     }
 
     /**
-     * True when a completion may still attribute to {@code functionName}'s meters: either no
-     * generation was captured at admission (nothing to compare against), or the captured
-     * generation is still the one the capacity registry considers active. False only when the
-     * function was removed and re-registered under a new generation since admission (I7).
+     * True when a completion may still attribute to {@code functionName}'s meters: the generation
+     * captured at admission is still the one the capacity registry considers active, or the
+     * function has no active generation at all. False only when the function was removed and
+     * re-registered under a new generation since admission (I7).
      */
     boolean isCurrentGeneration(String functionName, FunctionGeneration admittedGeneration) {
-        if (admittedGeneration == null) {
-            return true;
-        }
         FunctionGeneration active = capacity.activeGeneration(functionName);
         return active == null || active.equals(admittedGeneration);
     }

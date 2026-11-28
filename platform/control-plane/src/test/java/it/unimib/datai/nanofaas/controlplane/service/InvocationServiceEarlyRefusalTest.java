@@ -57,6 +57,10 @@ class InvocationServiceEarlyRefusalTest {
     private IdempotencyStore idempotencyStore;
     private InvocationService invocationService;
 
+    /** The service's capacity, on which seeded records are admitted as the factory would. */
+    private final it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry generations =
+            new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry();
+
     @BeforeEach
     void setUp() {
         idempotencyStore = ExecutionFixtures.keys();
@@ -68,7 +72,7 @@ class InvocationServiceEarlyRefusalTest {
                 functionService, enqueuer, executionStore, idempotencyStore,
                 metrics, syncQueueGateway,
                 ServiceFixtures.completionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
-                "full-fn", "hot-fn", "replay-fn", "sync-fn");
+                generations, "full-fn", "hot-fn", "replay-fn", "sync-fn");
     }
 
     @Test
@@ -117,7 +121,7 @@ class InvocationServiceEarlyRefusalTest {
                 null, null, Instant.now(), 1,
                 InvocationKind.SYNC
             );
-        ExecutionRecord execution = ExecutionFixtures.record("exec-1", task);
+        ExecutionRecord execution = ExecutionFixtures.record("exec-1", task, generations);
         execution.markSuccess("stored-ok");
         executionStore.put(execution);
         ExecutionFixtures.bind(idempotencyStore, "replay-fn", "idem-1", "exec-1");
@@ -182,7 +186,7 @@ class InvocationServiceEarlyRefusalTest {
                 null, null, Instant.now(), 1,
                 InvocationKind.SYNC
             );
-        ExecutionRecord execution = ExecutionFixtures.record("exec-1", task);
+        ExecutionRecord execution = ExecutionFixtures.record("exec-1", task, generations);
         execution.markSuccess("stored-ok");
         executionStore.put(execution);
         ExecutionFixtures.bind(idempotencyStore, "replay-fn", "idem-1", "exec-1");
