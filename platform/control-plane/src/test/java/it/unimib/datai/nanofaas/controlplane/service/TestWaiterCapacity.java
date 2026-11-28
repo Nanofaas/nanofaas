@@ -22,7 +22,7 @@ final class TestWaiterCapacity {
         WaiterCapacity waiters = new WaiterCapacity(generations, 10_000, 1_000);
         InvocationCapacity capacity = new InvocationCapacity(
                 generations, 10_000, 1_000, 64L << 20, 16L << 20, 64);
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(
+        InvocationExecutionFactory factory = ServiceFixtures.factory(
                 store, keys, metrics, capacity,
                 new RetainedInputEstimator.Limits(32, 16_384, 65_536, 64L << 20));
         return new Runtime(factory, waiters);

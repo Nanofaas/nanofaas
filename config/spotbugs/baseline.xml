@@ -1802,32 +1802,6 @@
       <Message>At FunctionRegistry.java:[line 28]</Message>
     </SourceLine>
   </BugInstance>
-  <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="36e92d7853e856fa3bba6e05d241181a" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
-    <ShortMessage>May expose internal representation by incorporating reference to mutable object</ShortMessage>
-    <LongMessage>new it.unimib.datai.nanofaas.controlplane.registry.FunctionService(FunctionRegistry, FunctionDefaults, ImageValidator, List, DeploymentProviderResolver, FunctionOperationLocks, ManagedDeploymentCoordinator, FunctionRestoreGate) may expose internal representation by storing an externally mutable object into FunctionService.registry</LongMessage>
-    <Class classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionService" primary="true" classAnnotationNames="org.springframework.stereotype.Service">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionService" start="26" end="449" sourcefile="FunctionService.java" sourcepath="it/unimib/datai/nanofaas/controlplane/registry/FunctionService.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/registry/FunctionService.java">
-        <Message>At FunctionService.java:[lines 26-449]</Message>
-      </SourceLine>
-      <Message>In class it.unimib.datai.nanofaas.controlplane.registry.FunctionService</Message>
-    </Class>
-    <Method classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionService" name="&lt;init&gt;" signature="(Lit/unimib/datai/nanofaas/controlplane/registry/FunctionRegistry;Lit/unimib/datai/nanofaas/controlplane/registry/FunctionDefaults;Lit/unimib/datai/nanofaas/controlplane/registry/ImageValidator;Ljava/util/List;Lit/unimib/datai/nanofaas/controlplane/deployment/DeploymentProviderResolver;Lit/unimib/datai/nanofaas/controlplane/registry/FunctionOperationLocks;Lit/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator;Lit/unimib/datai/nanofaas/controlplane/registry/FunctionRestoreGate;)V" isStatic="false" primary="true" classAnnotationNames="org.springframework.beans.factory.annotation.Autowired">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionService" start="66" end="83" startBytecode="0" endBytecode="477" sourcefile="FunctionService.java" sourcepath="it/unimib/datai/nanofaas/controlplane/registry/FunctionService.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/registry/FunctionService.java" />
-      <Message>In method new it.unimib.datai.nanofaas.controlplane.registry.FunctionService(FunctionRegistry, FunctionDefaults, ImageValidator, List, DeploymentProviderResolver, FunctionOperationLocks, ManagedDeploymentCoordinator, FunctionRestoreGate)</Message>
-    </Method>
-    <Field classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionService" name="registry" signature="Lit/unimib/datai/nanofaas/controlplane/registry/FunctionRegistry;" isStatic="false" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionService" sourcefile="FunctionService.java" sourcepath="it/unimib/datai/nanofaas/controlplane/registry/FunctionService.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/registry/FunctionService.java">
-        <Message>In FunctionService.java</Message>
-      </SourceLine>
-      <Message>Field it.unimib.datai.nanofaas.controlplane.registry.FunctionService.registry</Message>
-    </Field>
-    <LocalVariable name="registry" register="1" pc="6" role="LOCAL_VARIABLE_NAMED">
-      <Message>Local variable named registry</Message>
-    </LocalVariable>
-    <SourceLine classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionService" primary="true" start="67" end="67" startBytecode="6" endBytecode="6" sourcefile="FunctionService.java" sourcepath="it/unimib/datai/nanofaas/controlplane/registry/FunctionService.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/registry/FunctionService.java">
-      <Message>At FunctionService.java:[line 67]</Message>
-    </SourceLine>
-  </BugInstance>
   <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="52ef29511d17f56335a11b27b360b1a0" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
     <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
     <LongMessage>Exception thrown in class it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGate at new it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGate(FunctionRegistry, ManagedDeploymentCoordinator, FunctionCapacityRegistry, DeploymentWakeUpProperties, Executor, ScheduledExecutorService, DeploymentWakeUpCoordinator) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
@@ -1939,32 +1913,6 @@
     </LocalVariable>
     <SourceLine classname="it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler" primary="true" start="63" end="63" startBytecode="7" endBytecode="7" sourcefile="ExecutionCompletionHandler.java" sourcepath="it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java">
       <Message>At ExecutionCompletionHandler.java:[line 63]</Message>
-    </SourceLine>
-  </BugInstance>
-  <BugInstance type="USO_UNSAFE_ACCESSIBLE_OBJECT_SYNCHRONIZATION" priority="2" rank="7" abbrev="USO" category="SECURITY" instanceHash="dc1e8ae84bbcdf7325d232744a2d5f79" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="412">
-    <ShortMessage>Use private final lock objects in synchronization blocks when the lock is accessible</ShortMessage>
-    <LongMessage>The lock object it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup.executionRecord used in method it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup.publishAdmission() is exposed to untrusted code outside of class it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup, through updating or returning its value from it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup.executionRecord()Lit/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord;.</LongMessage>
-    <Class classname="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup" start="282" end="403" sourcefile="InvocationExecutionFactory.java" sourcepath="it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java">
-        <Message>At InvocationExecutionFactory.java:[lines 282-403]</Message>
-      </SourceLine>
-      <Message>In class it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup</Message>
-    </Class>
-    <Method classname="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup" name="publishAdmission" signature="()V" isStatic="false" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup" start="364" end="385" startBytecode="0" endBytecode="227" sourcefile="InvocationExecutionFactory.java" sourcepath="it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java" synthetic="true" />
-      <Message>In method it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup.publishAdmission()</Message>
-    </Method>
-    <Field classname="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup" name="executionRecord" signature="Lit/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord;" isStatic="false" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup" sourcefile="InvocationExecutionFactory.java" sourcepath="it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java">
-        <Message>In InvocationExecutionFactory.java</Message>
-      </SourceLine>
-      <Message>Field it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup.executionRecord</Message>
-    </Field>
-    <String value="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup.executionRecord()Lit/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord;">
-      <Message>Value it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup.executionRecord()Lit/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord;</Message>
-    </String>
-    <SourceLine classname="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup" start="364" end="385" startBytecode="0" endBytecode="227" sourcefile="InvocationExecutionFactory.java" sourcepath="it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java" synthetic="true">
-      <Message>At InvocationExecutionFactory.java:[lines 364-385]</Message>
     </SourceLine>
   </BugInstance>
   <BugInstance type="EI_EXPOSE_REP2" priority="2" rank="18" abbrev="EI2" category="MALICIOUS_CODE" instanceHash="c2dc0934acdf8c6214a7960acc49f3fd" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">
@@ -2963,49 +2911,6 @@
     </LocalVariable>
     <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord$Snapshot" primary="true" start="614" end="614" startBytecode="76" endBytecode="76" sourcefile="ExecutionRecord.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java">
       <Message>At ExecutionRecord.java:[line 614]</Message>
-    </SourceLine>
-  </BugInstance>
-  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="fc26b8f06046ce24d3485c392b1e5471" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
-    <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
-    <LongMessage>Exception thrown in class it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore at new it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore(ExecutionStoreProperties, MeterRegistry) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
-    <Class classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" start="47" end="363" sourcefile="ExecutionStore.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java">
-        <Message>At ExecutionStore.java:[lines 47-363]</Message>
-      </SourceLine>
-      <Message>In class it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore</Message>
-    </Class>
-    <Method classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" name="&lt;init&gt;" signature="(Lit/unimib/datai/nanofaas/controlplane/config/ExecutionStoreProperties;Lio/micrometer/core/instrument/MeterRegistry;)V" isStatic="false" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" start="119" end="120" startBytecode="0" endBytecode="75" sourcefile="ExecutionStore.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" />
-      <Message>In method new it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore(ExecutionStoreProperties, MeterRegistry)</Message>
-    </Method>
-    <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" primary="true" start="119" end="119" startBytecode="6" endBytecode="6" sourcefile="ExecutionStore.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java">
-      <Message>At ExecutionStore.java:[line 119]</Message>
-    </SourceLine>
-    <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" start="119" end="119" startBytecode="6" endBytecode="6" sourcefile="ExecutionStore.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java">
-      <Message>At ExecutionStore.java:[line 119]</Message>
-    </SourceLine>
-  </BugInstance>
-  <BugInstance type="CT_CONSTRUCTOR_THROW" priority="2" rank="16" abbrev="CT" category="BAD_PRACTICE" instanceHash="2eaaa3e344a7748d79310dfca623128a" instanceOccurrenceNum="0" instanceOccurrenceMax="0">
-    <ShortMessage>Be wary of letting constructors throw exceptions.</ShortMessage>
-    <LongMessage>Exception thrown in class it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore at new it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore(ExecutionStoreProperties, MeterRegistry, Scheduler) will leave the constructor. The object under construction remains partially initialized and may be vulnerable to Finalizer attacks.</LongMessage>
-    <Class classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" start="47" end="363" sourcefile="ExecutionStore.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java">
-        <Message>At ExecutionStore.java:[lines 47-363]</Message>
-      </SourceLine>
-      <Message>In class it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore</Message>
-    </Class>
-    <Method classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" name="&lt;init&gt;" signature="(Lit/unimib/datai/nanofaas/controlplane/config/ExecutionStoreProperties;Lio/micrometer/core/instrument/MeterRegistry;Lcom/github/benmanes/caffeine/cache/Scheduler;)V" isStatic="false" primary="true">
-      <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" start="109" end="115" startBytecode="0" endBytecode="141" sourcefile="ExecutionStore.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" />
-      <Message>In method new it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore(ExecutionStoreProperties, MeterRegistry, Scheduler)</Message>
-    </Method>
-    <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" primary="true" start="113" end="113" startBytecode="16" endBytecode="16" sourcefile="ExecutionStore.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java">
-      <Message>At ExecutionStore.java:[line 113]</Message>
-    </SourceLine>
-    <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" start="113" end="113" startBytecode="16" endBytecode="16" sourcefile="ExecutionStore.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java">
-      <Message>At ExecutionStore.java:[line 113]</Message>
-    </SourceLine>
-    <SourceLine classname="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore" start="114" end="114" startBytecode="40" endBytecode="40" sourcefile="ExecutionStore.java" sourcepath="it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" relSourcepath="java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java" role="SOURCE_LINE_ANOTHER_INSTANCE">
-      <Message>Another occurrence at ExecutionStore.java:[line 114]</Message>
     </SourceLine>
   </BugInstance>
   <BugInstance type="EI_EXPOSE_REP" priority="2" rank="18" abbrev="EI" category="MALICIOUS_CODE" instanceHash="c38b73f54ad5787122d651df082e1694" instanceOccurrenceNum="0" instanceOccurrenceMax="0" cweid="374">

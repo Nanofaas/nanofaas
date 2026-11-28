@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.capacity.*;
@@ -99,7 +100,7 @@ class RetryBackoffIntegrationTest {
             f.start();
             assertThat(f.publications.poll(5, TimeUnit.SECONDS)).isNotNull();
             f.ticker.set(Duration.ofMinutes(2).toNanos());
-            f.store.inFlightCount();
+            ExecutionFixtures.inFlight(f.store);
             assertThat(f.record.completion().get(5, TimeUnit.SECONDS).error().code()).isEqualTo("EXECUTION_EXPIRED");
             f.advance(NOW.plusSeconds(1));
             assertThat(f.server.getRequestCount()).isEqualTo(1);
@@ -117,7 +118,7 @@ class RetryBackoffIntegrationTest {
             f.server.enqueue(busy());
             f.server.enqueue(ok());
             var metrics = new Metrics(f.meters);
-            var keys = new IdempotencyStore();
+            var keys = ExecutionFixtures.keysOf(f.store);
             var runtime = TestWaiterCapacity.runtime(f.store, keys, metrics, "fn");
             var coordinator = new ReactiveInvocationCoordinator(InvocationEnqueuer.noOp(), metrics,
                     null, null, f.handler, new InvocationResponseMapper(), runtime.waiters());
@@ -157,7 +158,8 @@ class RetryBackoffIntegrationTest {
             var replayLookup = runtime.factory().createOrReuseExecution("fn", spec, request,
                     "retry-key", null, InvocationKind.SYNC);
             assertThat(replayLookup.isNew()).isFalse();
-            assertThat(replayLookup.settledExecutionId()).isEqualTo(executionId);
+            assertThat(replayLookup).isInstanceOfSatisfying(InvocationExecutionFactory.ExecutionLookup.Settled.class,
+                    settled -> assertThat(settled.executionId()).isEqualTo(executionId));
             var replay = coordinator.invoke(replayLookup, spec, 1).block(Duration.ofSeconds(5));
             assertThat(replay.response().executionId()).isEqualTo(executionId);
             assertThat(replay.response().status()).isEqualTo("success");
@@ -217,7 +219,7 @@ class RetryBackoffIntegrationTest {
         final AtomicLong ticker = new AtomicLong();
         final Clock clock = mock(Clock.class);
         final FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
-        final ExecutionStore store = new ExecutionStore(ExecutionStoreProperties.of(Duration.ofMinutes(5),
+        final ExecutionStore store = ExecutionFixtures.store(ExecutionFixtures.properties(Duration.ofMinutes(5),
                 Duration.ofMinutes(1), Duration.ofSeconds(30), 100), ticker::get);
         final SimpleMeterRegistry meters = new SimpleMeterRegistry();
         final BlockingQueue<Instant> publications = new LinkedBlockingQueue<>();
@@ -285,7 +287,7 @@ class RetryBackoffIntegrationTest {
             var external = constructor.newInstance(WebClient.create(), clock);
             var metrics = new Metrics(meters);
             metrics.registerFunction("fn");
-            handler = new ExecutionCompletionHandler(store, (next, due, rejected) -> {
+            handler = ServiceFixtures.completionHandler(store, (next, due, rejected) -> {
                 boolean accepted = retry.enqueue(next, due, rejected);
                 publications.add(due); // Barrier: adapter insertion has completed.
                 return accepted;
@@ -296,7 +298,7 @@ class RetryBackoffIntegrationTest {
                     server.url("/invoke").toString(), ExecutionMode.EXTERNAL, null, null, null);
             task = new InvocationTask("e1", "fn", spec, new InvocationRequest("in", null),
                     null, null, NOW, 1, InvocationKind.SYNC);
-            record = new ExecutionRecord("e1", task, new TimeSource(now::get, ticker::get));
+            record = ExecutionFixtures.record("e1", task, new TimeSource(now::get, ticker::get));
             store.put(record);
         }
 
@@ -315,7 +317,7 @@ class RetryBackoffIntegrationTest {
 
         private static void recordTimeout(ExecutionStore store, InvocationTask task) {
             var record = store.getOrNull(task.executionId());
-            if (record != null) { record.markTimeout(); store.settle(record); }
+            if (record != null) { ExecutionFixtures.timeOut(record); store.settle(record); }
         }
 
         @Override public void close() throws Exception {

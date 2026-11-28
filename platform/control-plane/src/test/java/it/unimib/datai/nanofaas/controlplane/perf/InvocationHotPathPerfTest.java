@@ -1,5 +1,8 @@
 package it.unimib.datai.nanofaas.controlplane.perf;
 
+import it.unimib.datai.nanofaas.controlplane.execution.OverridableExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.service.ServiceFixtures;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
@@ -15,15 +18,15 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class InvocationHotPathPerfTest {
 
-    private final CountingExecutionStore executionStore = new CountingExecutionStore();
-    private final IdempotencyStore idempotencyStore = new IdempotencyStore(Duration.ofMinutes(15));
-    private final InvocationExecutionFactory factory = new InvocationExecutionFactory(executionStore, idempotencyStore, new Metrics(new SimpleMeterRegistry()));
+    private final IdempotencyStore idempotencyStore = ExecutionFixtures.keys(Duration.ofMinutes(15));
+    private final CountingExecutionStore executionStore = new CountingExecutionStore(idempotencyStore);
+    private final InvocationExecutionFactory factory = ServiceFixtures.factory(executionStore, idempotencyStore,
+            new Metrics(new SimpleMeterRegistry()), "perf-idempotent-fn");
 
 
     @Test
@@ -77,9 +80,13 @@ class InvocationHotPathPerfTest {
         );
     }
 
-    private static final class CountingExecutionStore extends ExecutionStore {
+    private static final class CountingExecutionStore extends OverridableExecutionStore {
         private int putCount;
         private int removeCount;
+
+        CountingExecutionStore(IdempotencyStore keys) {
+            super(keys);
+        }
 
         @Override
         public void put(ExecutionRecord executionRecord) {
@@ -91,11 +98,6 @@ class InvocationHotPathPerfTest {
         public void remove(String executionId) {
             removeCount++;
             super.remove(executionId);
-        }
-
-        @Override
-        public Optional<ExecutionRecord> get(String executionId) {
-            return super.get(executionId);
         }
 
         int putCount() {

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -56,10 +57,10 @@ class InvocationServiceRetryTest {
 
     @BeforeEach
     void setUp() {
-        executionStore = new ExecutionStore();
-        idempotencyStore = new IdempotencyStore();
+        idempotencyStore = ExecutionFixtures.keys();
+        executionStore = ExecutionFixtures.store(idempotencyStore);
 
-        ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler completionHandler = ServiceFixtures.completionHandler(
                 executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
@@ -118,7 +119,7 @@ class InvocationServiceRetryTest {
                 null
         );
 
-        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(response.executionId())).orElseThrow();
         assertThat(executionRecord.completion().isDone()).isFalse();
         ownership.attach(executionRecord);
         executionRecord.markRunning();
@@ -153,7 +154,7 @@ class InvocationServiceRetryTest {
                 null
         );
 
-        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(response.executionId())).orElseThrow();
 
         // Simulate the initial attempt plus 3 retries (maxRetries=3)
         // Attempt 1
@@ -210,7 +211,7 @@ class InvocationServiceRetryTest {
                 null
         );
 
-        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(response.executionId())).orElseThrow();
         ownership.attach(executionRecord);
         executionRecord.markRunning();
 
@@ -223,7 +224,7 @@ class InvocationServiceRetryTest {
         // Future should be completed immediately
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(executionRecord.output()).isEqualTo("result");
+        assertThat(executionRecord.snapshot().output()).isEqualTo("result");
         assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
@@ -238,7 +239,7 @@ class InvocationServiceRetryTest {
         );
 
         String originalExecutionId = response.executionId();
-        ExecutionRecord executionRecord = executionStore.get(originalExecutionId).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(originalExecutionId)).orElseThrow();
 
         // Trigger a retry
         invocationService.completeExecution(
@@ -261,7 +262,7 @@ class InvocationServiceRetryTest {
                 null
         );
 
-        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(response.executionId())).orElseThrow();
 
         // Original task has idempotency key
         assertThat(executionRecord.task().idempotencyKey()).isEqualTo("my-idempotency-key");

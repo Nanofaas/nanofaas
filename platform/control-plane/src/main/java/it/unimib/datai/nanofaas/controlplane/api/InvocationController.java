@@ -18,6 +18,7 @@ import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableException;
 import it.unimib.datai.nanofaas.controlplane.service.IdempotencyBudgetExhaustedException;
+import it.unimib.datai.nanofaas.controlplane.service.IdempotencyKeyBusyException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.service.OutcomeGoneException;
 import it.unimib.datai.nanofaas.controlplane.service.SyncInvocation;
@@ -230,7 +231,9 @@ public class InvocationController {
                 .onErrorResume(OutcomeGoneException.class, ex ->
                         Mono.just(outcomeGone(ex)))
                 .onErrorResume(IdempotencyBudgetExhaustedException.class, ex ->
-                        Mono.just(tooManyRequests()));
+                        Mono.just(tooManyRequests()))
+                .onErrorResume(IdempotencyKeyBusyException.class, ex ->
+                        Mono.just(keyInUse(ex)));
     }
 
     private static ResponseEntity<Object> toResponse(SyncInvocation invocation) {
@@ -310,7 +313,9 @@ public class InvocationController {
                 .onErrorResume(OutcomeGoneException.class, ex ->
                         Mono.just(outcomeGone(ex)))
                 .onErrorResume(IdempotencyBudgetExhaustedException.class, ex ->
-                        Mono.just(tooManyRequests()));
+                        Mono.just(tooManyRequests()))
+                .onErrorResume(IdempotencyKeyBusyException.class, ex ->
+                        Mono.just(keyInUse(ex)));
     }
 
     @GetMapping("/executions/{executionId}")
@@ -370,6 +375,11 @@ public class InvocationController {
                 // dotless 'ı' under a Turkish/Azerbaijani default — this is a wire header value.
                 .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase(Locale.ROOT))
                 .build();
+    }
+
+    private static ResponseEntity<Object> keyInUse(IdempotencyKeyBusyException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponses.body("IDEMPOTENCY_KEY_IN_USE", ex.getMessage()));
     }
 
     private static ResponseEntity<Object> outcomeGone(OutcomeGoneException ex) {

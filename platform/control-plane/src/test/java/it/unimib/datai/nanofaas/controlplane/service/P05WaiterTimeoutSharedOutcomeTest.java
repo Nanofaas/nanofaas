@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -70,12 +71,12 @@ class P05WaiterTimeoutSharedOutcomeTest {
 
     private static CoordinatorHarness harnessWithBackend(CompletableFuture<DispatchResult> backend,
                                                          InvocationEnqueuer enqueuer) {
-        ExecutionStore store = new ExecutionStore();
-        IdempotencyStore keys = new IdempotencyStore();
+        IdempotencyStore keys = ExecutionFixtures.keys();
+        ExecutionStore store = ExecutionFixtures.store(keys);
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
         InvocationExecutionFactory factory = runtime.factory();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, (queued, due, rejected) -> enqueuer.enqueue(queued),
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, (queued, due, rejected) -> enqueuer.enqueue(queued),
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
                     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
@@ -173,8 +174,8 @@ class P05WaiterTimeoutSharedOutcomeTest {
 
     @Test
     void anOffloadedFailureAfterAShortWaiterTimeout_stillConcludesTheLocalAttempt() {
-        ExecutionStore store = new ExecutionStore();
-        IdempotencyStore keys = new IdempotencyStore();
+        IdempotencyStore keys = ExecutionFixtures.keys();
+        ExecutionStore store = ExecutionFixtures.store(keys);
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         Sinks.One<InvocationResult> remote = Sinks.one();
         OffloadGateway gateway = new OffloadGateway() {
@@ -204,7 +205,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
         };
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
         InvocationExecutionFactory factory = runtime.factory();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, null,
                 new DispatcherRouter(new LocalDispatcher(), null), metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(null, metrics, null, gateway, handler,
@@ -222,7 +223,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
             // The remote call now fails. The failure must still conclude the local attempt:
             // the shared future completes and the record is settled (archived).
             remote.tryEmitError(new OffloadFailedException("http://remote", false, "remote refused"));
-            assertThat(store.inFlightCount())
+            assertThat(ExecutionFixtures.inFlight(store))
                     .as("a failed offloaded execution must not remain in the live store")
                     .isZero();
             assertThat(first.executionRecord().completion())
@@ -238,8 +239,8 @@ class P05WaiterTimeoutSharedOutcomeTest {
 
     @Test
     void aShortWaiterTimeoutAcrossARetry_leavesTheRealSuccessForTheLongWaiterAndReplay() throws Exception {
-        ExecutionStore store = new ExecutionStore();
-        IdempotencyStore keys = new IdempotencyStore();
+        IdempotencyStore keys = ExecutionFixtures.keys();
+        ExecutionStore store = ExecutionFixtures.store(keys);
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         AtomicInteger attempts = new AtomicInteger();
         CompletableFuture<DispatchResult> attempt1 = new CompletableFuture<>();
@@ -262,7 +263,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
             @Override public QueueStrategy queueStrategy() { return QueueStrategy.FUNCTION_QUEUE; }
         };
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, (queued, due, rejected) -> enqueuer.enqueue(queued), router, metrics);
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, (queued, due, rejected) -> enqueuer.enqueue(queued), router, metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(enqueuer, metrics, null, null, handler,
                         new InvocationResponseMapper(), runtime.waiters());
@@ -306,7 +307,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
         try {
             // The execution-level deadline (the sync queue's wait expiry) concludes the whole
             // execution: TIMEOUT state, a QUEUE_TIMEOUT result on the shared future, settle.
-            executionRecord.markTimeout();
+            ExecutionFixtures.timeOut(executionRecord);
             executionRecord.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
             h.store().settle(executionRecord);
 

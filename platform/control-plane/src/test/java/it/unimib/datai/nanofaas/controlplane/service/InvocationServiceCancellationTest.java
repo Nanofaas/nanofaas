@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -34,11 +35,11 @@ class InvocationServiceCancellationTest {
         Metrics metrics = mock(Metrics.class);
         SyncQueueGateway syncQueueGateway = mock(SyncQueueGateway.class);
         when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
-        ExecutionStore executionStore = new ExecutionStore();
-        IdempotencyStore idempotencyStore = new IdempotencyStore();
+        IdempotencyStore idempotencyStore = ExecutionFixtures.keys();
+        ExecutionStore executionStore = ExecutionFixtures.store(idempotencyStore);
         InvocationService service = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, idempotencyStore, metrics, syncQueueGateway,
-                new ExecutionCompletionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued),
+                ServiceFixtures.completionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued),
                         mock(DispatcherRouter.class), metrics),
                 "fn");
         FunctionSpec spec = new FunctionSpec("fn", "img", null, Map.of(), null, 1_000, 1, 10, 0, null,
@@ -59,7 +60,7 @@ class InvocationServiceCancellationTest {
         proceed.set(true);
         Thread.sleep(300); // the preparation finishes microseconds after it is released
 
-        assertThat(executionStore.size()).as("no orphan execution record").isZero();
+        assertThat(ExecutionFixtures.outcomesHeld(executionStore)).as("no orphan execution record").isZero();
         assertThat(idempotencyStore.acquireOrGet("fn", "key-1").state())
                 .as("the key is free for the caller's retry, not held by an abandoned claim")
                 .isEqualTo(AcquireResult.State.CLAIMED);

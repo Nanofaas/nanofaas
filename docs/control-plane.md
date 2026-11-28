@@ -514,6 +514,11 @@ protection. At budget exhaustion a **new** keyed admission is refused with
 `429 Too Many Requests` before dispatch; replays of keys already held remain
 serviceable.
 
+A duplicate that finds its key still **pending** (another request is admitting
+it) waits for that claim to be published, for at most the function's
+`timeoutMs`. Past that it stops waiting and gets `409 Conflict` with error code
+`IDEMPOTENCY_KEY_IN_USE`; the client may retry the same key later.
+
 Outcome weights include keys, backing arrays and container overhead. Freezing and
 weighing share one bounded traversal, and the cache reuses that weight. Opaque or
 mutable numeric types, cycles and structures beyond the traversal budget are
@@ -528,7 +533,7 @@ Relevant settings under `nanofaas.execution-store`:
 |-----|---------|---------|
 | `ttl` | `5m` | Terminal key retention and readable-outcome retention, from completion |
 | `sync-ttl` | `30s` | Retention of an unkeyed sync outcome (answer already handed back) |
-| `max-lifetime` | `30m` | Live key/execution ceiling for a stuck dispatch |
+| `max-lifetime` | `30m` | Live key/execution ceiling for a stuck dispatch; registration and `PATCH` refuse (`400`) a function whose `timeoutMs x (maxRetries + 1)` does not fit inside it |
 | `max-outcomes` | `100000` | Derives the default byte budget (`x 116 B`); not enforced as a count cap |
 | `max-outcome-bytes` | `0` | Outcome byte budget (capacity eviction); `0` = derived from `max-outcomes` |
 | `max-keys` | `100000` | Key/tombstone budget (refuses new keyed admissions when exhausted) |

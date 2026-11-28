@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -37,13 +38,13 @@ import static org.mockito.Mockito.when;
  */
 class ExecutionCompletionHandlerRetryMetricsRegressionTest {
 
-    private final ExecutionStore executionStore = new ExecutionStore();
+    private final ExecutionStore executionStore = ExecutionFixtures.store();
     private final RetryScheduler enqueuer = mock(RetryScheduler.class);
     private final DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final Metrics metrics = new Metrics(meterRegistry);
     private final ExecutionCompletionHandler completionHandler =
-            new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
+            ServiceFixtures.completionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
 
     @Test
     void e2eLatencyAfterARetry_shouldReflectTheOriginalAdmissionTime_notJustTheLastAttempt() {
@@ -59,7 +60,7 @@ class ExecutionCompletionHandlerRetryMetricsRegressionTest {
                 "exec-retry-e2e", "testFunc", spec,
                 new InvocationRequest("payload", null),
                 null, null, clock.instant(), 1, InvocationKind.SYNC);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-retry-e2e", originalTask, clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-retry-e2e", originalTask, clock.source());
         executionStore.put(executionRecord);
 
         when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);

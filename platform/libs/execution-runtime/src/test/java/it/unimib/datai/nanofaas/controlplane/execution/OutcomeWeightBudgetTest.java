@@ -35,7 +35,7 @@ class OutcomeWeightBudgetTest {
             settle(store, "exec-" + i, "ok");
         }
 
-        assertThat(store.size()).isEqualTo(count);
+        assertThat(ExecutionFixtures.outcomesHeld(store)).isEqualTo(count);
     }
 
     @Test
@@ -50,10 +50,10 @@ class OutcomeWeightBudgetTest {
             settle(store, "exec-" + i, large);
         }
 
-        assertThat(store.size())
+        assertThat(ExecutionFixtures.outcomesHeld(store))
                 .as("the byte budget must bite well before the count cap")
                 .isLessThan(1000);
-        assertThat(store.size())
+        assertThat(ExecutionFixtures.outcomesHeld(store))
                 .as("but it must still retain the outcomes that do fit")
                 .isPositive();
     }
@@ -64,19 +64,19 @@ class OutcomeWeightBudgetTest {
         // estimated weight of the individual outcome, but that the retained count follows
         // the BYTES granted: doubling the budget doubles the retention, payload unchanged.
         long budget = 20 * ExecutionStoreProperties.COMPACT_OUTCOME_BYTES;
-        int small = fillAndCount(budget);
-        int doubled = fillAndCount(budget * 2);
+        long small = fillAndCount(budget);
+        long doubled = fillAndCount(budget * 2);
 
         assertThat(small).isPositive();
-        assertThat(doubled).isCloseTo(small * 2, org.assertj.core.data.Offset.offset(3));
+        assertThat(doubled).isCloseTo(small * 2, org.assertj.core.data.Offset.offset(3L));
     }
 
-    private static int fillAndCount(long budget) {
+    private static long fillAndCount(long budget) {
         ExecutionStore store = store(new ExecutionStoreProperties(TTL, TTL, TTL, 100_000, 100_000, budget));
         for (int i = 0; i < 500; i++) {
             settle(store, "exec-" + i, "ok");
         }
-        return store.size();
+        return ExecutionFixtures.outcomesHeld(store);
     }
 
     @Test
@@ -106,11 +106,12 @@ class OutcomeWeightBudgetTest {
         assertThat(store.outcomeOf("shallow")).isNotNull();
     }
 
+    /**
+     * On a stopped fake clock: nothing expires, and the store evicts for weight on the calling
+     * thread, so a count read after the writes sees every eviction they caused.
+     */
     private static ExecutionStore store(ExecutionStoreProperties props) {
-        ExecutionStore store = new ExecutionStore(props);
-        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
-        new ExecutionLifecycle(store, new IdempotencyStore());
-        return store;
+        return ExecutionFixtures.store(props, () -> 0L);
     }
 
     private static void settle(ExecutionStore store, String id, Object output) {
@@ -119,7 +120,7 @@ class OutcomeWeightBudgetTest {
         InvocationTask task = new InvocationTask(id, "fn", spec,
                 new InvocationRequest("p", Map.of()), null, null, Instant.now(), 1,
                 InvocationKind.ASYNC);
-        ExecutionRecord executionRecord = new ExecutionRecord(id, task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(id, task);
         store.put(executionRecord);
         executionRecord.markSuccess(output);
         store.settle(executionRecord);

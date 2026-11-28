@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
@@ -57,7 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * minimally wired) {@link SchedulerEngine}.
  */
 class AsyncQueueConfigurationTest {
-    private final ExecutionStore executionStore = new ExecutionStore();
+    private final ExecutionStore executionStore = ExecutionFixtures.store();
 
     @Test
     void schedulerCapacityGenerationListener_marksDrainedQueuedExecutionAsFunctionRemoved() {
@@ -105,7 +106,7 @@ class AsyncQueueConfigurationTest {
 
         FunctionSpec spec = spec("echo");
         InvocationTask task = task("exec-queued", spec);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
 
         listener.onRegister(spec);
         executionStore.put(executionRecord);
@@ -206,7 +207,7 @@ class AsyncQueueConfigurationTest {
             while (running.get()) {
                 InvocationTask task = task("exec-race-" + i++, spec);
                 try {
-                    executionStore.put(new ExecutionRecord(task.executionId(), task));
+                    executionStore.put(ExecutionFixtures.record(task.executionId(), task));
                     enqueuer.enqueue(task);
                 } catch (Throwable failure) {
                     admitterFailure.compareAndSet(null, failure);
@@ -479,7 +480,7 @@ class AsyncQueueConfigurationTest {
 
         FunctionSpec spec = spec("echo");
         InvocationTask task = task("exec-rejected", spec);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
 
         listener.onRegister(spec);
         executionStore.put(executionRecord);

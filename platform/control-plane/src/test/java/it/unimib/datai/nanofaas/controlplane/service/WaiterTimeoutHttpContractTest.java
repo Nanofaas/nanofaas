@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.api.InvocationController;
@@ -30,13 +31,13 @@ class WaiterTimeoutHttpContractTest {
     @ParameterizedTest
     @ValueSource(booleans={false,true})
     void waiterTimeoutReturns408WithoutFunctionStatusMarker(boolean offloaded) throws Exception {
-        var store=new ExecutionStore();var keys=new IdempotencyStore();
+        var keys=ExecutionFixtures.keys();var store=ExecutionFixtures.store(keys);
         var metrics=new Metrics(new SimpleMeterRegistry());
         var runtime=TestWaiterCapacity.runtime(store,keys,metrics,"fn");
         var started=new CountDownLatch(1);
         var backend=new CompletableFuture<DispatchResult>();
         var remote=Sinks.<InvocationResult>one();
-        var handler=new ExecutionCompletionHandler(store,null,new DispatcherRouter(new LocalDispatcher() {
+        var handler=ServiceFixtures.completionHandler(store,null,new DispatcherRouter(new LocalDispatcher() {
             @Override public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
                 started.countDown();return backend;
             }
@@ -88,8 +89,8 @@ class WaiterTimeoutHttpContractTest {
 
     @Test
     void timeoutExceptionFromSharedExecutionIsAnExecutionError() {
-        var store=new ExecutionStore();var metrics=new Metrics(new SimpleMeterRegistry());
-        var runtime=TestWaiterCapacity.runtime(store,new IdempotencyStore(),metrics,"fn");
+        var store=ExecutionFixtures.store();var metrics=new Metrics(new SimpleMeterRegistry());
+        var runtime=TestWaiterCapacity.runtime(store,ExecutionFixtures.keysOf(store),metrics,"fn");
         var lookup=runtime.factory().createOrReuseExecution("fn",spec(),new InvocationRequest("p",Map.of()),null,null,InvocationKind.SYNC);
         lookup.executionRecord().completion().completeExceptionally(new TimeoutException("backend timed out"));
         var coordinator=new ReactiveInvocationCoordinator(null,metrics,null,null,mock(ExecutionCompletionHandler.class),new InvocationResponseMapper(),runtime.waiters());

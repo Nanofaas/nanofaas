@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -44,7 +45,7 @@ class ExecutionCompletionRetryPublicationTest {
 
     @BeforeEach
     void setUp() {
-        store = new ExecutionStore();
+        store = ExecutionFixtures.store();
         metrics = mock(Metrics.class);
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         Timer timer = Timer.builder("test").register(registry);
@@ -55,13 +56,13 @@ class ExecutionCompletionRetryPublicationTest {
     private ExecutionRecord seed(String executionId) {
         InvocationTask task = new InvocationTask(executionId, SPEC.name(), SPEC,
                 new InvocationRequest("payload", null), null, null, Instant.now(), 1, InvocationKind.ASYNC);
-        ExecutionRecord executionRecord = new ExecutionRecord(executionId, task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(executionId, task);
         store.put(executionRecord);
         return executionRecord;
     }
 
     private ExecutionCompletionHandler handlerPublishingWith(RetryScheduler enqueuer) {
-        return new ExecutionCompletionHandler(store, enqueuer, mock(DispatcherRouter.class), metrics);
+        return ServiceFixtures.completionHandler(store, enqueuer, mock(DispatcherRouter.class), metrics);
     }
 
     @Test
@@ -172,7 +173,7 @@ class ExecutionCompletionRetryPublicationTest {
         var record = seed("configured");
         var due = new java.util.concurrent.atomic.AtomicReference<Instant>();
         var before = Instant.now();
-        var handler = new ExecutionCompletionHandler(store, (task, instant, rejected) -> {
+        var handler = ServiceFixtures.completionHandler(store, (task, instant, rejected) -> {
             due.set(instant);
             return true;
         }, mock(DispatcherRouter.class), metrics, null, null,

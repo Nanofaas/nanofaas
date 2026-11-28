@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -64,8 +65,8 @@ class P07dWaiterAdmissionTest {
 
         long executionOwners = h.invocations.executionReservedGlobally();
         long inputBytes = h.invocations.inputReservedGlobally();
-        int liveExecutions = h.store.inFlightCount();
-        int archivedOutcomes = h.store.size();
+        long liveExecutions = ExecutionFixtures.inFlight(h.store);
+        long archivedOutcomes = ExecutionFixtures.outcomesHeld(h.store);
 
         for (int i = 0; i < 100; i++) {
             assertThatThrownBy(() ->
@@ -75,8 +76,8 @@ class P07dWaiterAdmissionTest {
                                     .isEqualTo(InvocationQuotaExceededException.Resource.WAITER));
             assertThat(h.invocations.executionReservedGlobally()).isEqualTo(executionOwners);
             assertThat(h.invocations.inputReservedGlobally()).isEqualTo(inputBytes);
-            assertThat(h.store.inFlightCount()).isEqualTo(liveExecutions);
-            assertThat(h.store.size()).isEqualTo(archivedOutcomes);
+            assertThat(ExecutionFixtures.inFlight(h.store)).isEqualTo(liveExecutions);
+            assertThat(ExecutionFixtures.outcomesHeld(h.store)).isEqualTo(archivedOutcomes);
         }
         assertThat(dispatches).hasValue(1);
         assertThat(h.waiters.reservedGlobally()).isEqualTo(2);
@@ -94,8 +95,8 @@ class P07dWaiterAdmissionTest {
         assertThat(h.waiters.retainedWaiters()).isZero();
         assertThat(h.invocations.executionReservedGlobally()).isZero();
         assertThat(h.invocations.inputReservedGlobally()).isZero();
-        assertThat(h.store.inFlightCount()).isZero();
-        assertThat(h.store.size()).isOne();
+        assertThat(ExecutionFixtures.inFlight(h.store)).isZero();
+        assertThat(ExecutionFixtures.outcomesHeld(h.store)).isOne();
     }
 
     @Test
@@ -109,7 +110,7 @@ class P07dWaiterAdmissionTest {
         var newLookup = h.lookup("fn", "new-key");
         String newExecutionId = newLookup.executionRecord().executionId();
         assertThat(h.store.getOrNull(newExecutionId)).isSameAs(newLookup.executionRecord());
-        assertThat(h.store.inFlightCount()).isEqualTo(2);
+        assertThat(ExecutionFixtures.inFlight(h.store)).isEqualTo(2);
         assertThat(h.invocations.executionReservedGlobally()).isEqualTo(2);
         assertThat(h.invocations.inputReservedGlobally()).isGreaterThan(occupyingInputBytes);
 
@@ -119,7 +120,7 @@ class P07dWaiterAdmissionTest {
                                 .isEqualTo(InvocationQuotaExceededException.Resource.WAITER));
 
         assertThat(h.store.getOrNull(newExecutionId)).isNull();
-        assertThat(h.store.inFlightCount()).isOne();
+        assertThat(ExecutionFixtures.inFlight(h.store)).isOne();
         assertThat(h.invocations.executionReservedGlobally()).isOne();
         assertThat(h.invocations.inputReservedGlobally()).isEqualTo(occupyingInputBytes);
         assertThat(h.waiters.reservedGlobally()).isOne();
@@ -329,15 +330,14 @@ class P07dWaiterAdmissionTest {
                                    InvocationEnqueuer enqueuer,
                                    SyncQueueGateway syncGateway,
                                    LocalDispatcher dispatcher) {
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         InvocationCapacity invocations = new InvocationCapacity(
                 generations, 20, 20, 1_000_000, 1_000_000, 16);
         WaiterCapacity waiters = new WaiterCapacity(generations, globalWaiters, perFunctionWaiters);
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(
-                store, new IdempotencyStore(), metrics, invocations,
+        InvocationExecutionFactory factory = ServiceFixtures.factory(store, metrics, invocations,
                 new RetainedInputEstimator.Limits(12, 128, 1_024, 64 * 1_024));
-        ExecutionCompletionHandler completion = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler completion = ServiceFixtures.completionHandler(
                 store, (queued, due, rejected) -> enqueuer.enqueue(queued), new DispatcherRouter(dispatcher, null), metrics, null, generations);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
                 enqueuer, metrics, syncGateway, null, completion, new InvocationResponseMapper(), waiters);

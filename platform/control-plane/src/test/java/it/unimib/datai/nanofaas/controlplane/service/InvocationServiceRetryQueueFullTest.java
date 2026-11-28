@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -44,10 +45,10 @@ class InvocationServiceRetryQueueFullTest {
 
     @BeforeEach
     void setUp() {
-        executionStore = new ExecutionStore();
-        idempotencyStore = new IdempotencyStore();
+        idempotencyStore = ExecutionFixtures.keys();
+        executionStore = ExecutionFixtures.store(idempotencyStore);
 
-        ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler completionHandler = ServiceFixtures.completionHandler(
                 executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
@@ -86,7 +87,7 @@ class InvocationServiceRetryQueueFullTest {
                 "testFunc", new InvocationRequest("payload", null), null, null
         );
 
-        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(response.executionId())).orElseThrow();
         assertThat(executionRecord.completion().isDone()).isFalse();
 
         // Now make queue reject on retry
@@ -120,7 +121,7 @@ class InvocationServiceRetryQueueFullTest {
                 "testFunc", new InvocationRequest("payload", null), null, null
         );
 
-        ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(response.executionId())).orElseThrow();
 
         // First failure -> retry (attempt 2)
         ownership.attach(executionRecord);

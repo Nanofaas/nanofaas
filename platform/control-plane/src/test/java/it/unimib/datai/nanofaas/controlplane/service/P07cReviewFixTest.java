@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -271,7 +272,7 @@ class P07cReviewFixTest {
 
         private Fixture(AtomicLong tickerNanos, long canonicalInputBytes) {
             this.tickerNanos = tickerNanos;
-            this.store = new ExecutionStore(new ExecutionStoreProperties(
+            this.store = ExecutionFixtures.store(new ExecutionStoreProperties(
                     Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30),
                     100, 100, 11600), (Ticker) tickerNanos::get);
             generations.register("fn", 1);
@@ -279,12 +280,11 @@ class P07cReviewFixTest {
             capacity = new InvocationCapacity(
                     generations, 10, 10,
                     canonicalInputBytes, canonicalInputBytes, 16);
-            factory = new InvocationExecutionFactory(
-                    store, new IdempotencyStore(), metrics, capacity, INPUT_LIMITS);
+            factory = ServiceFixtures.factory(store, metrics, capacity, INPUT_LIMITS);
         }
 
         private ExecutionCompletionHandler handler(DispatcherRouter router, DeploymentWakeUpGate gate) {
-            return new ExecutionCompletionHandler(store, null, router, metrics, gate, generations);
+            return ServiceFixtures.completionHandler(store, null, router, metrics, gate, generations);
         }
 
         private WaiterCapacity waiters() {
@@ -299,7 +299,7 @@ class P07cReviewFixTest {
 
         private void expire(ExecutionRecord executionRecord) {
             tickerNanos.set(Duration.ofMinutes(31).toNanos());
-            store.inFlightCount();
+            ExecutionFixtures.inFlight(store);
             await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
                     assertThat(executionRecord.completion()).isDone());
         }

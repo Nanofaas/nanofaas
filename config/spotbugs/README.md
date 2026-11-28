@@ -1,7 +1,7 @@
 # SpotBugs baseline
 
 `exclude.xml` documents narrowly scoped false positives. `baseline.xml` freezes
-226 unique findings (228 when frozen at NanoFaaS `ef856960` with SpotBugs 4.10.4; the Kubernetes provider constructor finding moved to `exclude.xml`, and `WaitEstimator`'s constructor finding was fixed by making the class final). It is debt, not a
+222 unique findings (228 when frozen at NanoFaaS `ef856960` with SpotBugs 4.10.4; the Kubernetes provider and `FunctionService` constructor findings, the execution lookup's monitor finding and `ExecutionStore`'s two constructor-throw findings moved to `exclude.xml`, and `WaitEstimator`'s constructor finding was fixed by making the class final). It is debt, not a
 claim that these findings are safe. Exact instance hashes ensure a new finding
 is not admitted merely because its bug type or package already exists.
 

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.capacity.*;
@@ -27,17 +28,17 @@ class ReviewLifecycleGateTest {
                 concurrency, 100, 0, "http://unused/invoke", mode, null, null, null);
     }
     private static ExecutionRecord newRecord(String id, FunctionSpec spec) {
-        return new ExecutionRecord(id, new InvocationTask(id, "fn", spec,
+        return ExecutionFixtures.record(id, new InvocationTask(id, "fn", spec,
                 new InvocationRequest("payload", Map.of()), null, null, Instant.now(),
                 1, InvocationKind.ASYNC));
     }
     private static ExecutionStore timedStore(AtomicLong clock) {
-        return new ExecutionStore(new ExecutionStoreProperties(Duration.ofMinutes(5),
+        return ExecutionFixtures.store(new ExecutionStoreProperties(Duration.ofMinutes(5),
                 Duration.ofMinutes(30), Duration.ofSeconds(30), 100, 100, 11600), clock::get);
     }
     private static void expire(AtomicLong clock, ExecutionStore store, ExecutionRecord executionRecord) {
         clock.set(Duration.ofMinutes(31).toNanos());
-        store.inFlightCount();
+        ExecutionFixtures.inFlight(store);
         await().atMost(Duration.ofSeconds(3)).until(() -> executionRecord.completion().isDone());
     }
     private static void awaitLatch(CountDownLatch latch) {
@@ -47,30 +48,30 @@ class ReviewLifecycleGateTest {
 
     @Test
     void metricFailureMustNotLeaveATerminalExecutionLiveWithPendingFuture() {
-        var store = new ExecutionStore();
+        var store = ExecutionFixtures.store();
         Metrics metrics = new Metrics(new SimpleMeterRegistry()) {
             @Override public void success(String fn) { throw new IllegalStateException("metric failure"); }
         };
-        var handler = new ExecutionCompletionHandler(store, null, mock(DispatcherRouter.class), metrics);
+        var handler = ServiceFixtures.completionHandler(store, null, mock(DispatcherRouter.class), metrics);
         var rec = newRecord("metrics", spec(ExecutionMode.LOCAL, 1));
         store.put(rec);
         handler.completeExecution(rec.executionId(), InvocationResult.success("done"));
         System.out.println("METRIC_FAILURE state=" + rec.state() + " sharedDone="
-                + rec.completion().isDone() + " live=" + store.inFlightCount());
+                + rec.completion().isDone() + " live=" + ExecutionFixtures.inFlight(store));
         assertThat(rec.completion()).isDone();
-        assertThat(store.inFlightCount()).isZero();
+        assertThat(ExecutionFixtures.inFlight(store)).isZero();
     }
 
     @Test
     void lateOffloadCompletionMustUseTheAlreadySelectedResult() throws Exception {
-        var store = new ExecutionStore();
+        var store = ExecutionFixtures.store();
         CountDownLatch firstMarked = new CountDownLatch(1), continueFirst = new CountDownLatch(1);
         Metrics metrics = new Metrics(new SimpleMeterRegistry()) {
             @Override public void success(String fn) {
                 firstMarked.countDown(); awaitLatch(continueFirst); super.success(fn);
             }
         };
-        var handler = new ExecutionCompletionHandler(store, null, mock(DispatcherRouter.class), metrics);
+        var handler = ServiceFixtures.completionHandler(store, null, mock(DispatcherRouter.class), metrics);
         var rec = newRecord("offload-race", spec(ExecutionMode.LOCAL, 1));
         store.put(rec);
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -106,12 +107,12 @@ class ReviewLifecycleGateTest {
     @Test
     void directDispatchMustObserveAnUpdatedConcurrency() {
         var capacity = new FunctionCapacityRegistry();
-        var store = new ExecutionStore();
+        var store = ExecutionFixtures.store();
         var router = mock(DispatcherRouter.class);
         var first = CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("done")));
         var blocked = new CompletableFuture<DispatchResult>();
         when(router.dispatchLocal(any())).thenReturn(first, blocked, blocked);
-        var handler = new ExecutionCompletionHandler(store, null, router,
+        var handler = ServiceFixtures.completionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), null, capacity);
         var warm = newRecord("warm", spec(ExecutionMode.LOCAL, 2)); store.put(warm);
         handler.dispatchDirect(warm.task());
@@ -136,7 +137,7 @@ class ReviewLifecycleGateTest {
         when(router.dispatchExternal(any())).thenAnswer(inv -> {
             entered.countDown(); awaitLatch(allowReturn); return raw;
         });
-        var handler = new ExecutionCompletionHandler(store, null, router,
+        var handler = ServiceFixtures.completionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), null, capacity);
         var rec = newRecord("publish-race", spec(ExecutionMode.EXTERNAL, 1)); store.put(rec);
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -160,7 +161,7 @@ class ReviewLifecycleGateTest {
         when(gate.ensureReady(any())).thenReturn(CompletableFuture.completedFuture(null));
         var router = mock(DispatcherRouter.class);
         when(router.dispatchExternal(any())).thenReturn(transport);
-        var handler = new ExecutionCompletionHandler(store, null, router,
+        var handler = ServiceFixtures.completionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), gate, new FunctionCapacityRegistry());
         var rec = newRecord("deployment-expiry", spec(ExecutionMode.DEPLOYMENT, 1)); store.put(rec);
         handler.dispatchDirect(rec.task());
@@ -180,7 +181,7 @@ class ReviewLifecycleGateTest {
         when(gate.ensureReady(any())).thenReturn(readiness);
         var router = mock(DispatcherRouter.class);
         var capacity = new FunctionCapacityRegistry();
-        var handler = new ExecutionCompletionHandler(store, null, router,
+        var handler = ServiceFixtures.completionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), gate, capacity);
         var rec = newRecord("before-wakeup", spec(ExecutionMode.DEPLOYMENT, 1));
         store.put(rec);
@@ -194,13 +195,13 @@ class ReviewLifecycleGateTest {
 
     @Test
     void externalAttemptDeadlineMustDisposeItsTransport() {
-        var store = new ExecutionStore();
+        var store = ExecutionFixtures.store();
         AtomicBoolean cancelled = new AtomicBoolean();
         var raw = Mono.<DispatchResult>never().doOnCancel(() -> cancelled.set(true)).toFuture();
         var router = mock(DispatcherRouter.class);
         when(router.dispatchExternal(any())).thenReturn(raw);
         var capacity = new FunctionCapacityRegistry();
-        var handler = new ExecutionCompletionHandler(store, null, router,
+        var handler = ServiceFixtures.completionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), null, capacity);
         var spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null, 50,
                 1, 100, 0, "http://unused/invoke", ExecutionMode.EXTERNAL, null, null, null);
@@ -230,7 +231,7 @@ class ReviewLifecycleGateTest {
         }, worker);
         var router = mock(DispatcherRouter.class);
         when(router.dispatchLocal(any())).thenReturn(work);
-        var handler = new ExecutionCompletionHandler(store, null, router,
+        var handler = ServiceFixtures.completionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), null, capacity);
         var rec = newRecord("local-expiry", spec(ExecutionMode.LOCAL, 1)); store.put(rec);
         try {

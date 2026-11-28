@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -60,8 +61,8 @@ class R4OffloadCompletionAfterWaiterTimeoutRegressionTest {
 
     @Test
     void offloadedResultArrivingAfterAShortWaiterTimeoutStillConcludesTheLocalAttempt() {
-        ExecutionStore store = new ExecutionStore();
-        IdempotencyStore keys = new IdempotencyStore();
+        IdempotencyStore keys = ExecutionFixtures.keys();
+        ExecutionStore store = ExecutionFixtures.store(keys);
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         Sinks.One<InvocationResult> remote = Sinks.one();
         OffloadGateway gateway = new OffloadGateway() {
@@ -93,7 +94,7 @@ class R4OffloadCompletionAfterWaiterTimeoutRegressionTest {
         };
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
         InvocationExecutionFactory factory = runtime.factory();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, null,
                 new DispatcherRouter(new LocalDispatcher(), null), metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(null, metrics, null, gateway, handler,
@@ -112,7 +113,7 @@ class R4OffloadCompletionAfterWaiterTimeoutRegressionTest {
             // The remote call now finishes successfully. The finished call must not stay
             // live: the shared future completes and the record is settled (archived).
             remote.tryEmitValue(InvocationResult.success("remote success"));
-            assertThat(store.inFlightCount())
+            assertThat(ExecutionFixtures.inFlight(store))
                     .as("a finished offloaded execution must not remain in the live store")
                     .isZero();
             assertThat(first.executionRecord().completion())

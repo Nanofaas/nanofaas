@@ -13,9 +13,11 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.time.Duration;
 import java.time.InstantSource;
 import java.util.Collection;
 import java.util.List;
@@ -41,7 +43,7 @@ public class FunctionService {
                            @Autowired(required = false) List<FunctionRegistrationListener> listeners,
                            DeploymentProviderResolver deploymentProviderResolver) {
         this(registry, defaults, imageValidator, listeners, deploymentProviderResolver,
-                new FunctionOperationLocks(), null, null);
+                new FunctionOperationLocks(), null, null, null);
     }
 
     public FunctionService(FunctionRegistry registry,
@@ -52,7 +54,7 @@ public class FunctionService {
                            FunctionOperationLocks locks,
                            ManagedDeploymentCoordinator managedDeploymentCoordinator) {
         this(registry, defaults, imageValidator, listeners, deploymentProviderResolver,
-                locks, managedDeploymentCoordinator, null);
+                locks, managedDeploymentCoordinator, null, null);
     }
 
     @Autowired
@@ -63,10 +65,11 @@ public class FunctionService {
                            DeploymentProviderResolver deploymentProviderResolver,
                            FunctionOperationLocks locks,
                            @Autowired(required = false) ManagedDeploymentCoordinator managedDeploymentCoordinator,
-                           @Autowired(required = false) FunctionRestoreGate restoreGate) {
+                           @Autowired(required = false) FunctionRestoreGate restoreGate,
+                           @Autowired(required = false) @Qualifier("executionMaxLifetime") Duration maxLifetime) {
         this.registry = registry;
         this.applicationState = registry.applicationState();
-        this.resolver = new FunctionSpecResolver(defaults);
+        this.resolver = new FunctionSpecResolver(defaults, maxLifetime);
         this.deploymentProviderResolver = deploymentProviderResolver;
         this.locks = locks;
         // The fallback exists for direct construction in tests. It deliberately uses a snapshot

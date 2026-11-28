@@ -14,8 +14,8 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,45 +90,19 @@ public class ExecutionStore implements QueueLifecycle {
     private final List<Consumer<ExecutionRecord>> terminalListeners = new CopyOnWriteArrayList<>();
 
     /**
-     * The owner of the terminal transition, attached by {@link ExecutionLifecycle} when the
-     * store and the idempotency store are wired together (in production, by
-     * {@code InvocationExecutionFactory}). {@link #settle} fails fast when a <b>keyed</b>
-     * record is settled without one: that transition would otherwise silently leave the key
-     * binding reclaimable, which is exactly the re-execution window the owner closes.
+     * The owner of the terminal transition, built with the store and the key store it binds it to:
+     * {@link #settle} always goes through it, so a keyed record can never settle without its key
+     * moving to the tombstone first.
      */
-    private ExecutionLifecycle lifecycle;
+    private final ExecutionLifecycle lifecycle;
 
-    public ExecutionStore() {
-        this(ExecutionStoreProperties.of(null, null, null));
-    }
-
-    // Production timers have one owner (wired explicitly by the control plane's
-    // ExecutionExpiryConfiguration) and cancellation removes their queued work.
-    public ExecutionStore(ExecutionStoreProperties properties, MeterRegistry registry,
-                          Scheduler scheduler) {
-        this(properties, Ticker.systemTicker(), scheduler);
-        // How much the platform is remembering, and how much it is actually executing.
-        // It was the distance between these two numbers that exposed the problem:
-        // without the second, the first could still be mistaken for work in progress.
-        Gauge.builder("execution_store_size", outcomes::estimatedSize).register(registry);
-        Gauge.builder("execution_in_flight_records", inFlight::estimatedSize).register(registry);
-    }
-
-    /** Direct-construction compatibility; production injects the owned scheduler above. */
-    public ExecutionStore(ExecutionStoreProperties properties, MeterRegistry registry) {
-        this(properties, registry, Scheduler.systemScheduler());
-    }
-
-    ExecutionStore(ExecutionStoreProperties properties) {
-        this(properties, Ticker.systemTicker());
-    }
-
-    /** Eviction tests move the clock instead of sleeping; public for the tests in the service package. */
-    public ExecutionStore(ExecutionStoreProperties properties, Ticker ticker) {
-        this(properties, ticker, Scheduler.systemScheduler());
-    }
-
-    private ExecutionStore(ExecutionStoreProperties properties, Ticker ticker, Scheduler scheduler) {
+    /**
+     * The one constructor: production passes the owned expiry scheduler, the system ticker and
+     * the common pool for maintenance and removal notifications (ExecutionExpiryConfiguration); a
+     * test passes its own clock, timers and executor.
+     */
+    public ExecutionStore(ExecutionStoreProperties properties, MeterRegistry registry, Scheduler scheduler,
+                          Ticker ticker, Executor executor, IdempotencyStore idempotencyStore) {
         this.maximumOutcomeBytes = properties.maxOutcomeBytes();
         this.inFlight = Caffeine.newBuilder()
                 .expireAfterWrite(properties.maxLifetime())
@@ -141,6 +115,7 @@ public class ExecutionStore implements QueueLifecycle {
                 // plans the eviction on wall-clock time, independent of any later traffic
                 // on the cache.
                 .scheduler(scheduler)
+                .executor(executor)
                 .removalListener((String executionId, ExecutionRecord executionRecord, RemovalCause cause) -> {
                     // EXPLICIT is settle()/remove() - already handled by their callers.
                     // REPLACED does not apply: no path calls put() twice on the same id.
@@ -165,7 +140,16 @@ public class ExecutionStore implements QueueLifecycle {
                 .ticker(ticker)
                 // Physically release expired outcomes during idle periods as well.
                 .scheduler(scheduler)
+                .executor(executor)
                 .build();
+        // How much the platform is remembering, and how much it is actually executing.
+        // It was the distance between these two numbers that exposed the problem:
+        // without the second, the first could still be mistaken for work in progress.
+        Gauge.builder("execution_store_size", outcomes::estimatedSize).register(registry);
+        Gauge.builder("execution_in_flight_records", inFlight::estimatedSize).register(registry);
+        // No null check: a throwing constructor in this non-final class is open to finalizer attacks
+        // (CT_CONSTRUCTOR_THROW), and the key store is always the application bean or a test fixture.
+        this.lifecycle = new ExecutionLifecycle(this, idempotencyStore);
     }
 
     /**
@@ -187,24 +171,8 @@ public class ExecutionStore implements QueueLifecycle {
         terminalListeners.add(Objects.requireNonNull(listener, "listener"));
     }
 
-    /** How many outcomes are archived right now. */
-    public int size() {
-        outcomes.cleanUp();
-        return (int) outcomes.estimatedSize();
-    }
-
-    /** How many records are still executing. */
-    public int inFlightCount() {
-        inFlight.cleanUp();
-        return (int) inFlight.estimatedSize();
-    }
-
     public void put(ExecutionRecord executionRecord) {
         inFlight.put(executionRecord.executionId(), executionRecord);
-    }
-
-    public Optional<ExecutionRecord> get(String executionId) {
-        return Optional.ofNullable(inFlight.getIfPresent(executionId));
     }
 
     /** A read on the hot path, without allocating an Optional. May return null. */
@@ -265,32 +233,12 @@ public class ExecutionStore implements QueueLifecycle {
     }
 
     /**
-     * The terminal transition called by core completion and queue event adapters. It delegates to the attached {@link ExecutionLifecycle}, which
-     * owns the key protection as well as the archive and removal.
-     *
-     * <p>There is no silent downgrade for a <b>keyed</b> record: settling one without an
-     * owner would leave its key binding reclaimable (dropping {@code markTerminal}), so it
-     * fails fast instead of losing the dedup guarantee. A keyless record has nothing to
-     * protect, so its archive-and-remove half is the whole transition and needs no owner.
-     * The record must be terminal; a live record is ignored.
+     * The terminal transition called by core completion and queue event adapters. It belongs to
+     * the {@link ExecutionLifecycle}, which owns the key protection as well as the archive and
+     * removal. The record must be terminal; a live record is ignored.
      */
     public void settle(ExecutionRecord executionRecord) {
-        ExecutionLifecycle owner = lifecycle;
-        if (owner != null) {
-            owner.settle(executionRecord);
-            return;
-        }
-        String key = executionRecord.idempotencyKey();
-        if (key != null && !key.isBlank()) {
-            throw new IllegalStateException(
-                    "No ExecutionLifecycle attached to ExecutionStore: a keyed terminal "
-                    + "transition cannot protect its idempotency key. InvocationExecutionFactory "
-                    + "attaches the owner in production.");
-        }
-        if (!executionRecord.beginSettlement()) return;
-        executionRecord.publishTerminal();
-        archiveAndRemove(executionRecord);
-        notifyTerminal(executionRecord);
+        lifecycle.settle(executionRecord);
     }
 
     /**
@@ -325,11 +273,6 @@ public class ExecutionStore implements QueueLifecycle {
         notifyAll(terminalListeners, executionRecord, "Terminal");
     }
 
-    /** Called by {@link ExecutionLifecycle} to become the owner of the terminal transition. */
-    void attachLifecycle(ExecutionLifecycle lifecycle) {
-        this.lifecycle = lifecycle;
-    }
-
     private void notifyExpiry(ExecutionRecord executionRecord) {
         notifyAll(expiryListeners, executionRecord, "Administrative-expiry");
     }
@@ -354,11 +297,5 @@ public class ExecutionStore implements QueueLifecycle {
     public void remove(String executionId) {
         inFlight.invalidate(executionId);
         outcomes.invalidate(executionId);
-    }
-
-    /** Deterministic tests force maintenance instead of waiting for it. */
-    void cleanUp() {
-        inFlight.cleanUp();
-        outcomes.cleanUp();
     }
 }

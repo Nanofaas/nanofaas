@@ -28,8 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * binding is claimed, so a configured budget of one admits exactly one concurrent
  * new key.
  *
- * <p>This test asserts the desired behavior, so it is RED on the current baseline,
- * where all 16 claims are accepted.
+ * <p>The store now reserves the slot atomically and never reads its own size, so the barrier
+ * that once held each claimant after that read has nothing to hook: the claimants are released
+ * together instead, the most contended start the scheduler allows.
  */
 class R7KeyBudgetAtomicityRegressionTest {
 
@@ -38,27 +39,16 @@ class R7KeyBudgetAtomicityRegressionTest {
         int threads = 16;
         CyclicBarrier barrier = new CyclicBarrier(threads);
         ExecutionStoreProperties props = new ExecutionStoreProperties(null, null, null, 100, 1, 11_600);
-        IdempotencyStore keys = new IdempotencyStore(props, Ticker.systemTicker()) {
-            @Override
-            public int size() {
-                // Pause every claimant after the real size read and before its insert, so
-                // each of them observes the same pre-insert spare capacity. This models a
-                // legal scheduling interleaving; it is not a sleep-based guess.
-                int observed = super.size();
-                try {
-                    barrier.await(5, TimeUnit.SECONDS);
-                } catch (Exception e) {
-                    throw new RuntimeException("barrier interrupted while synchronizing key claims", e);
-                }
-                return observed;
-            }
-        };
+        IdempotencyStore keys = ExecutionFixtures.keys(props, Ticker.systemTicker());
 
         List<Future<IdempotencyStore.AcquireResult>> futures = new ArrayList<>();
         try (ExecutorService executor = Executors.newFixedThreadPool(threads)) {
             for (int i = 0; i < threads; i++) {
                 int n = i;
-                futures.add(executor.submit(() -> keys.acquireOrGet("fn", "key" + n)));
+                futures.add(executor.submit(() -> {
+                    barrier.await(5, TimeUnit.SECONDS);
+                    return keys.acquireOrGet("fn", "key" + n);
+                }));
             }
             int claimed = 0;
             for (Future<IdempotencyStore.AcquireResult> future : futures) {

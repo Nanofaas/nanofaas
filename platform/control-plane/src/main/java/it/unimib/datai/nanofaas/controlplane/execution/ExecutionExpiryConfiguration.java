@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
 import com.github.benmanes.caffeine.cache.Scheduler;
+import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
@@ -11,7 +12,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 
+import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 /**
@@ -57,6 +60,15 @@ public class ExecutionExpiryConfiguration {
                 "nanofaas.execution-store", ExecutionStoreProperties.class);
     }
 
+    /**
+     * The normalized max-lifetime, as a plain value: registration refuses a function whose attempts
+     * cannot finish inside it, and the registry may not depend on this configuration's types.
+     */
+    @Bean("executionMaxLifetime")
+    public Duration executionMaxLifetime(ExecutionStoreProperties properties) {
+        return properties.maxLifetime();
+    }
+
     /** Report the normalized retention values that the stores actually use. */
     @Bean
     public InfoContributor executionStoreInfoContributor(ExecutionStoreProperties properties) {
@@ -66,11 +78,15 @@ public class ExecutionExpiryConfiguration {
                 "maxLifetime", properties.maxLifetime().toString()));
     }
 
-    /** Explicit construction: {@link ExecutionStore} carries no Spring annotations of its own. */
+    /**
+     * Explicit construction: {@link ExecutionStore} carries no Spring annotations of its own. It
+     * builds the owner of its terminal transition from the key store it is given.
+     */
     @Bean
     public ExecutionStore executionStore(ExecutionStoreProperties properties, MeterRegistry registry,
-            @Qualifier("executionExpiryScheduler") Scheduler scheduler) {
-        return new ExecutionStore(properties, registry, scheduler);
+            @Qualifier("executionExpiryScheduler") Scheduler scheduler, IdempotencyStore idempotencyStore) {
+        return new ExecutionStore(properties, registry, scheduler, Ticker.systemTicker(), ForkJoinPool.commonPool(),
+                idempotencyStore);
     }
 
     /**
@@ -79,7 +95,8 @@ public class ExecutionExpiryConfiguration {
      * {@code @PreDestroy} gave it — draining the store and returning every reserved slot.
      */
     @Bean(destroyMethod = "clear")
-    public IdempotencyStore idempotencyStore(ExecutionStoreProperties properties, MeterRegistry registry) {
-        return new IdempotencyStore(properties, registry);
+    public IdempotencyStore idempotencyStore(ExecutionStoreProperties properties, MeterRegistry registry,
+            @Qualifier("executionExpiryScheduler") Scheduler scheduler) {
+        return new IdempotencyStore(properties, registry, scheduler, Ticker.systemTicker(), ForkJoinPool.commonPool());
     }
 }

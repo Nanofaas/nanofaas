@@ -30,19 +30,16 @@ package it.unimib.datai.nanofaas.controlplane.execution;
  *
  * <p>There is no global lock on the hot path: the record itself is the monitor, and no
  * listener, dispatcher or other external code runs while it is held. The {@link ExecutionStore}
- * keeps its {@code settle} method as the adapter the queue modules still call (their direct
- * use is retired in P20); when this owner is attached, that adapter delegates here.
+ * keeps its {@code settle} method as the adapter every caller uses; it always delegates here.
  */
-public class ExecutionLifecycle {
+final class ExecutionLifecycle {
     private final ExecutionStore executionStore;
     private final IdempotencyStore idempotencyStore;
 
-    public ExecutionLifecycle(ExecutionStore executionStore, IdempotencyStore idempotencyStore) {
+    /** Built by its {@link ExecutionStore}, whose public settle() delegates here. */
+    ExecutionLifecycle(ExecutionStore executionStore, IdempotencyStore idempotencyStore) {
         this.executionStore = executionStore;
         this.idempotencyStore = idempotencyStore;
-        // Behind the store's public settle() adapter: from now on the terminal transition
-        // is this owner's, and the store's own settle delegates to it.
-        executionStore.attachLifecycle(this);
     }
 
     /**
@@ -54,7 +51,7 @@ public class ExecutionLifecycle {
      * <p>The record selects the definitive answer under its monitor. This owner
      * publishes that answer before archiving and notifying best-effort observers.
      */
-    public void settle(ExecutionRecord executionRecord) {
+    void settle(ExecutionRecord executionRecord) {
         if (!executionRecord.isTerminal()) {
             return;
         }

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -10,7 +11,6 @@ import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionLifecycle;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
@@ -77,11 +77,11 @@ class ExecutionLifecycleTerminalTransitionTest {
             inFlight.put(task.executionId(), future);
             return future;
         });
-        this.store = new ExecutionStore(props, ticker);
-        this.keys = new IdempotencyStore(props, ticker);
+        this.keys = ExecutionFixtures.keys(props, ticker);
+        this.store = ExecutionFixtures.store(props, ticker, keys);
         // The factory attaches the ExecutionLifecycle to the store, as in production.
-        this.factory = new InvocationExecutionFactory(store, keys, metrics);
-        this.completionHandler = new ExecutionCompletionHandler(store, RetryScheduler.unavailable(), dispatcher, metrics);
+        this.factory = ServiceFixtures.factory(store, keys, metrics, "fn");
+        this.completionHandler = ServiceFixtures.completionHandler(store, RetryScheduler.unavailable(), dispatcher, metrics);
     }
 
     private static FunctionSpec spec() {
@@ -106,7 +106,7 @@ class ExecutionLifecycleTerminalTransitionTest {
     private void drain() {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (System.nanoTime() < deadline
-                && (store.size() != 0 || store.inFlightCount() != 0 || keys.size() != 0)) {
+                && (ExecutionFixtures.outcomesHeld(store) != 0 || ExecutionFixtures.inFlight(store) != 0 || ExecutionFixtures.keyCount(keys) != 0)) {
             // size()/inFlightCount()/size() each run cleanUp(); repeat until the expired
             // entries have left. Never a sleep as proof of ordering: the loop only spins
             // while entries remain and returns immediately once they are gone.
@@ -133,13 +133,13 @@ class ExecutionLifecycleTerminalTransitionTest {
         InvocationExecutionFactory.ExecutionLookup replay = factory.createOrReuseExecution(
                 "fn", spec(), request(), "race", "trace-2", InvocationKind.SYNC);
         assertThat(replay.isNew()).isFalse();
-        assertThat(replay.gone()).isTrue();
+        assertThat(replay).isInstanceOf(InvocationExecutionFactory.ExecutionLookup.Gone.class);
         assertThat(dispatches.get()).as("no second backend for the same key").isEqualTo(1);
     }
 
     @Test
     void ttlEvictionDuringCompletionRespectsTheRetentionBoundary() {
-        rebuild(ExecutionStoreProperties.of(Duration.ofSeconds(30), Duration.ofMinutes(30), Duration.ofSeconds(30)));
+        rebuild(ExecutionFixtures.properties(Duration.ofSeconds(30), Duration.ofMinutes(30), Duration.ofSeconds(30)));
 
         InvocationExecutionFactory.ExecutionLookup first = admitAndDispatch("ttl");
         String executionId = first.executionRecord().executionId();
@@ -149,7 +149,8 @@ class ExecutionLifecycleTerminalTransitionTest {
         InvocationExecutionFactory.ExecutionLookup replay = factory.createOrReuseExecution(
                 "fn", spec(), request(), "ttl", "trace-2", InvocationKind.SYNC);
         assertThat(replay.isNew()).isFalse();
-        assertThat(replay.settledExecutionId()).isEqualTo(executionId);
+        assertThat(replay).isInstanceOfSatisfying(InvocationExecutionFactory.ExecutionLookup.Settled.class,
+                settled -> assertThat(settled.executionId()).isEqualTo(executionId));
         assertThat(dispatches.get()).isEqualTo(1);
 
         // Past the TTL, the outcome AND the key expire together; only then is a fresh
@@ -184,8 +185,7 @@ class ExecutionLifecycleTerminalTransitionTest {
         InvocationExecutionFactory.ExecutionLookup replay = factory.createOrReuseExecution(
                 "fn", spec(), request(), "late", "trace-2", InvocationKind.SYNC);
         assertThat(replay.isNew()).isFalse();
-        assertThat(replay.gone()).isTrue();
-        assertThat(replay.settledExecutionId()).isEqualTo(executionId);
+        assertThat(replay).isEqualTo(new InvocationExecutionFactory.ExecutionLookup.Gone(executionId));
         assertThat(dispatches.get()).as("no dispatcher was ever started").isZero();
     }
 
@@ -253,7 +253,7 @@ class ExecutionLifecycleTerminalTransitionTest {
 
     @Test
     void aThrowingTerminalListenerDoesNotInterruptTheTransitionOrCleanup() {
-        rebuild(ExecutionStoreProperties.of(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30)));
+        rebuild(ExecutionFixtures.properties(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30)));
         AtomicBoolean secondObserverRan = new AtomicBoolean();
         store.onTerminal(executionRecord -> {
             throw new RuntimeException("metric boom");
@@ -275,7 +275,7 @@ class ExecutionLifecycleTerminalTransitionTest {
 
     @Test
     void doubleCompletionIsIdempotent() {
-        rebuild(ExecutionStoreProperties.of(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30)));
+        rebuild(ExecutionFixtures.properties(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30)));
 
         InvocationExecutionFactory.ExecutionLookup first = admitAndDispatch("twice");
         String executionId = first.executionRecord().executionId();
@@ -312,10 +312,10 @@ class ExecutionLifecycleTerminalTransitionTest {
             inFlight.put(task.executionId(), future);
             return future;
         });
-        this.store = new ExecutionStore(props, new SimpleMeterRegistry());
-        this.keys = new IdempotencyStore(props, Ticker.systemTicker());
-        this.factory = new InvocationExecutionFactory(store, keys, metrics);
-        this.completionHandler = new ExecutionCompletionHandler(store, RetryScheduler.unavailable(), dispatcher, metrics);
+        this.keys = ExecutionFixtures.keys(props, Ticker.systemTicker());
+        this.store = ExecutionFixtures.store(props, new SimpleMeterRegistry(), com.github.benmanes.caffeine.cache.Ticker.systemTicker(), keys);
+        this.factory = ServiceFixtures.factory(store, keys, metrics, "fn");
+        this.completionHandler = ServiceFixtures.completionHandler(store, RetryScheduler.unavailable(), dispatcher, metrics);
 
         InvocationExecutionFactory.ExecutionLookup first = admitAndDispatch("expire");
         String executionId = first.executionRecord().executionId();

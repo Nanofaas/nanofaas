@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import com.sun.net.httpserver.HttpServer;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedReplicaPoolFactory;
@@ -63,7 +64,8 @@ class QueuedAllocationTransitionTest {
             var spec = new FunctionSpec("f", "image", List.of(), Map.of("NANOFAAS_ONE_SHOT_PROFILE", "true"), null, 5000, 1, 10, 0,
                     null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null, null);
             var metrics = new Metrics(new SimpleMeterRegistry());
-            var runtime = TestWaiterCapacity.runtime(new ExecutionStore(), new IdempotencyStore(), metrics, "f");
+            var keys = ExecutionFixtures.keys();
+            var runtime = TestWaiterCapacity.runtime(ExecutionFixtures.store(keys), keys, metrics, "f");
             var lookup = runtime.factory().createOrReuseExecution("f", spec,
                     new InvocationRequest(it.unimib.datai.nanofaas.controlplane.json.RawJsonReader.read(
                             "{\"value\":1}".getBytes(java.nio.charset.StandardCharsets.UTF_8)), Map.of()), null, null, InvocationKind.SYNC);

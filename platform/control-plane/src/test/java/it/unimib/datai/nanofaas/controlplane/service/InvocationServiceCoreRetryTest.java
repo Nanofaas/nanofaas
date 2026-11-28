@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -59,7 +60,7 @@ class InvocationServiceCoreRetryTest {
      * creation for, so the handler reference is simply patched in right after construction.
      */
     private ExecutionCompletionHandler newHandlerWithRealRetryEnqueuer(DispatcherRouter dispatcherRouter) {
-        store = new ExecutionStore();
+        store = ExecutionFixtures.store();
         retryExecutor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
                 .newBoundedExecutor("test-core-retry", 2, 4, 32);
         return handlerBackedBy(store, dispatcherRouter, retryExecutor);
@@ -75,7 +76,7 @@ class InvocationServiceCoreRetryTest {
         ExecutorBackedInvocationEnqueuer enqueuer =
                 new ExecutorBackedInvocationEnqueuer(t -> handlerHolder[0].dispatch(t), capacity, executor, timer, 264, java.time.Clock.systemUTC(), store); // NOSONAR (java:S1612): handlerHolder[0]::dispatch would capture null
         ExecutionCompletionHandler handler =
-                new ExecutionCompletionHandler(store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()),
+                ServiceFixtures.completionHandler(store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()),
                         null, capacity, retryProperties);
         enqueuers.add(enqueuer);
         handlerHolder[0] = handler;
@@ -94,7 +95,7 @@ class InvocationServiceCoreRetryTest {
 
     private ExecutionRecord seedRecord(FunctionSpec spec, String executionId) {
         InvocationTask task = task(executionId, spec);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
         return executionRecord;
     }
@@ -235,7 +236,7 @@ class InvocationServiceCoreRetryTest {
 
     @Test
     void poolSaturation_terminatesTheRequestWithoutOrphanedQueuedState() throws InterruptedException {
-        store = new ExecutionStore();
+        store = ExecutionFixtures.store();
         // core=1, max=1, queue capacity=1: pin the worker and fill the queue before the
         // execution's own retry attempt is scheduled, forcing enqueue() to reject it.
         retryExecutor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport

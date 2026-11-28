@@ -30,13 +30,11 @@ class ExecutionStoreEvictionTest {
     private final Ticker ticker = clock::get;
 
     private ExecutionStore store() {
-        return store(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL));
+        return store(ExecutionFixtures.properties(TTL, MAX_LIFETIME, SYNC_TTL));
     }
 
     private ExecutionStore store(ExecutionStoreProperties props) {
-        ExecutionStore store = new ExecutionStore(props, ticker);
-        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
-        new ExecutionLifecycle(store, new IdempotencyStore(props, ticker));
+        ExecutionStore store = ExecutionFixtures.store(props, ticker);
         return store;
     }
 
@@ -51,8 +49,8 @@ class ExecutionStoreEvictionTest {
 
         assertThat(store.getOrNull("running")).isNotNull();
         assertThat(store.outcomeOf("running")).isNull();
-        assertThat(store.inFlightCount()).isEqualTo(1);
-        assertThat(store.size()).isZero();
+        assertThat(ExecutionFixtures.inFlight(store)).isEqualTo(1);
+        assertThat(ExecutionFixtures.outcomesHeld(store)).isZero();
     }
 
     @Test
@@ -68,8 +66,8 @@ class ExecutionStoreEvictionTest {
         // future, the task, the request, the set of attempts - stops being reachable.
         assertThat(store.getOrNull("done")).isNull();
         assertThat(store.outcomeOf("done")).isNotNull();
-        assertThat(store.inFlightCount()).isZero();
-        assertThat(store.size()).isEqualTo(1);
+        assertThat(ExecutionFixtures.inFlight(store)).isZero();
+        assertThat(ExecutionFixtures.outcomesHeld(store)).isEqualTo(1);
     }
 
     @Test
@@ -97,7 +95,7 @@ class ExecutionStoreEvictionTest {
         store.settle(execution);
         store.settle(execution);
 
-        assertThat(store.size()).isEqualTo(1);
+        assertThat(ExecutionFixtures.outcomesHeld(store)).isEqualTo(1);
     }
 
     @Test
@@ -124,7 +122,7 @@ class ExecutionStoreEvictionTest {
     void theOutcomeCapBoundsMemoryWhereTheClockCannot() {
         // Retention declared in time lets memory grow with the arrival rate: that is how
         // 2026-08-23 reached 1.05 GB. The capacity cap is the knob that did not exist then.
-        ExecutionStore store = store(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL, 10));
+        ExecutionStore store = store(ExecutionFixtures.properties(TTL, MAX_LIFETIME, SYNC_TTL, 10));
 
         for (int i = 0; i < 500; i++) {
             ExecutionRecord execution = executionRecord("exec-" + i);
@@ -137,7 +135,7 @@ class ExecutionStoreEvictionTest {
         // follows the weight of the individual outcome instead of being exactly 10. What
         // the test asserts - that the cap bounds memory where the clock cannot - holds
         // regardless: 500 insertions, about a dozen retained.
-        assertThat(store.size()).isLessThanOrEqualTo(15);
+        assertThat(ExecutionFixtures.outcomesHeld(store)).isLessThanOrEqualTo(15);
     }
 
     @Test
@@ -170,13 +168,13 @@ class ExecutionStoreEvictionTest {
 
         ExecutionRecord timeout = executionRecord("timeout");
         store.put(timeout);
-        timeout.markTimeout();
+        ExecutionFixtures.timeOut(timeout);
         store.settle(timeout);
 
         assertThat(store.outcomeOf("success").state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(store.outcomeOf("error").state()).isEqualTo(ExecutionState.ERROR);
         assertThat(store.outcomeOf("timeout").state()).isEqualTo(ExecutionState.TIMEOUT);
-        assertThat(store.inFlightCount()).isZero();
+        assertThat(ExecutionFixtures.inFlight(store)).isZero();
     }
 
     @Test
@@ -219,7 +217,7 @@ class ExecutionStoreEvictionTest {
         executionRecord.markSuccess(payload);
         store.settle(executionRecord);
 
-        assertThat(store.size()).isZero();
+        assertThat(ExecutionFixtures.outcomesHeld(store)).isZero();
         assertThat(store.outcomeOf("oversized")).isNull();
         assertThat(terminal).containsExactly("oversized");
     }
@@ -238,6 +236,6 @@ class ExecutionStoreEvictionTest {
         InvocationTask task = new InvocationTask(id, "fn", spec,
                 new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
                 kind);
-        return new ExecutionRecord(id, task);
+        return ExecutionFixtures.record(id, task);
     }
 }

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.execution;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -49,9 +50,9 @@ class AttemptCoordinatorTest {
                 30000, 1, 10, 0, null, ExecutionMode.LOCAL, null, null, null);
         var task = new InvocationTask("remote-reject", "fn", spec, new InvocationRequest("input", null),
                 null, null, Instant.now(), 1, InvocationKind.ASYNC);
-        var record = new ExecutionRecord("remote-reject", task);
-        var store = new ExecutionStore(); store.put(record);
-        var coordinator = new AttemptCoordinator(store, new FunctionCapacityRegistry(),
+        var record = ExecutionFixtures.record("remote-reject", task);
+        var store = ExecutionFixtures.store(); store.put(record);
+        var coordinator = AttemptFixtures.coordinator(store, new FunctionCapacityRegistry(),
                 RetryScheduler.unavailable(), mock(AttemptTransport.class), mock(AttemptObserver.class));
         var failure = new it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException(
                 "http://peer", 429, "1", "admission rejected");
@@ -67,10 +68,10 @@ class AttemptCoordinatorTest {
                 30000, 1, 10, 0, null, ExecutionMode.LOCAL, null, null, null);
         var task = new InvocationTask("reject", "fn", spec, new InvocationRequest("input", null),
                 null, null, Instant.now(), 1, InvocationKind.ASYNC);
-        var record = new ExecutionRecord("reject", task);
+        var record = ExecutionFixtures.record("reject", task);
         record.markRunning();
-        var store = new ExecutionStore(); store.put(record);
-        var coordinator = new AttemptCoordinator(store, new FunctionCapacityRegistry(),
+        var store = ExecutionFixtures.store(); store.put(record);
+        var coordinator = AttemptFixtures.coordinator(store, new FunctionCapacityRegistry(),
                 RetryScheduler.unavailable(), mock(AttemptTransport.class), mock(AttemptObserver.class));
         var result = new InvocationResult(false, null,
                 new it.unimib.datai.nanofaas.common.model.ErrorInfo("RUNTIME_HANDLER_SATURATED", "busy"),
@@ -87,14 +88,14 @@ class AttemptCoordinatorTest {
         for(String path:List.of("local","cloud","unknown")) {
             var spec=new FunctionSpec("fn","image",null,null,null,30000,1,10,0,null,ExecutionMode.LOCAL,null,null,null);
             var task=new InvocationTask(path,"fn",spec,new InvocationRequest("input",null),null,null,Instant.now(),1,InvocationKind.SYNC);
-            var record=new ExecutionRecord(path,task);
+            var record=ExecutionFixtures.record(path,task);
             var remote=new it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE,"http://cloud","cloud",1,"cloud",Map.of(),null);
             record.pinPlannedRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.localThenCloud("edge",remote));
             record.markRunning();
             if(path.equals("local")) record.transportOwnsCapacity();
             if(path.equals("cloud")) record.attributeExecutionNode("cloud");
-            var store=new ExecutionStore();store.put(record);
-            var coordinator=new AttemptCoordinator(store,new FunctionCapacityRegistry(),RetryScheduler.unavailable(),mock(AttemptTransport.class),mock(AttemptObserver.class));
+            var store=ExecutionFixtures.store();store.put(record);
+            var coordinator=AttemptFixtures.coordinator(store,new FunctionCapacityRegistry(),RetryScheduler.unavailable(),mock(AttemptTransport.class),mock(AttemptObserver.class));
             if(path.equals("local")) coordinator.completeExecution(path,DispatchResult.warm(InvocationResult.success("done")),1);
             else coordinator.completeOffloadedExecution(path,InvocationResult.success("done"));
             assertThat(record.completion().join().success()).isTrue();
@@ -107,11 +108,11 @@ class AttemptCoordinatorTest {
         for(boolean executed:List.of(true,false)) {
             var spec=new FunctionSpec("fn","image",null,null,null,30000,1,10,0,null,ExecutionMode.LOCAL,null,null,null);
             var task=new InvocationTask("error-"+executed,"fn",spec,new InvocationRequest("input",null),null,null,Instant.now(),1,InvocationKind.SYNC);
-            var record=new ExecutionRecord(task.executionId(),task);
+            var record=ExecutionFixtures.record(task.executionId(),task);
             record.pinPlannedRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.local("edge-b"));
             record.markRunning();
-            var store=new ExecutionStore();store.put(record);
-            var coordinator=new AttemptCoordinator(store,new FunctionCapacityRegistry(),RetryScheduler.unavailable(),mock(AttemptTransport.class),mock(AttemptObserver.class));
+            var store=ExecutionFixtures.store();store.put(record);
+            var coordinator=AttemptFixtures.coordinator(store,new FunctionCapacityRegistry(),RetryScheduler.unavailable(),mock(AttemptTransport.class),mock(AttemptObserver.class));
             var result=new DispatchResult(InvocationResult.error(executed?"HANDLER_ERROR":"RUNTIME_HANDLER_BUSY","failed"),false,null,null,executed);
             coordinator.completeExecution(task.executionId(),result,2);
             assertThat(record.executionNode()).isNull();
@@ -128,10 +129,10 @@ class AttemptCoordinatorTest {
                 30000, 1, 10, 0, null, ExecutionMode.LOCAL, null, null, null);
         var task = new InvocationTask("origin", "fn", spec, new InvocationRequest("input", null),
                 null, null, Instant.now(), 1, InvocationKind.SYNC);
-        var record = new ExecutionRecord("origin", task);
-        var store = new ExecutionStore();
+        var record = ExecutionFixtures.record("origin", task);
+        var store = ExecutionFixtures.store();
         store.put(record);
-        var coordinator = new AttemptCoordinator(store, new FunctionCapacityRegistry(),
+        var coordinator = AttemptFixtures.coordinator(store, new FunctionCapacityRegistry(),
                 RetryScheduler.unavailable(), mock(AttemptTransport.class), mock(AttemptObserver.class));
         coordinator.completeOffloadedExecution("origin", new InvocationResult(false, null,
                 new it.unimib.datai.nanofaas.common.model.ErrorInfo("HANDLER_ERROR", "failed"),
@@ -148,9 +149,9 @@ class AttemptCoordinatorTest {
                 30000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
         var task = new InvocationTask("e1", "fn", spec, new InvocationRequest("in", null),
                 null, null, now, 1, InvocationKind.SYNC);
-        var record = new ExecutionRecord("e1", task,
+        var record = ExecutionFixtures.record("e1", task,
                 new it.unimib.datai.nanofaas.controlplane.execution.TimeSource(() -> now, () -> 0L));
-        var store = new ExecutionStore();
+        var store = ExecutionFixtures.store();
         store.put(record);
         var dueTimes = new java.util.ArrayList<Instant>();
         RetryScheduler retry = (next, due, rejected) -> {
@@ -159,7 +160,7 @@ class AttemptCoordinatorTest {
             dueTimes.add(due);
             return true;
         };
-        var coordinator = new AttemptCoordinator(store, new FunctionCapacityRegistry(), retry,
+        var coordinator = AttemptFixtures.coordinator(store, new FunctionCapacityRegistry(), retry,
                 mock(AttemptTransport.class), mock(AttemptObserver.class));
         record.markRunning();
         coordinator.completeExecution("e1", new DispatchResult(
@@ -171,19 +172,19 @@ class AttemptCoordinatorTest {
 
     @Test
     void logicalOutcomeDoesNotReleasePhysicalOwnership() {
-        var store = new ExecutionStore();
+        var store = ExecutionFixtures.store();
         var capacity = new FunctionCapacityRegistry();
         var spec = new FunctionSpec("fn", "test-image", null, null, null,
                 30000, 1, 10, 0, null, ExecutionMode.LOCAL, null, null, null);
         var task = new InvocationTask("e1", "fn", spec, new InvocationRequest("payload", null),
                 null, null, Instant.now(), 1, InvocationKind.SYNC);
-        store.put(new ExecutionRecord("e1", task));
+        store.put(ExecutionFixtures.record("e1", task));
         capacity.register("fn", 1);
         var lease = capacity.tryAcquireLease(capacity.activeGeneration("fn"), ignored -> {});
         var outcome = new CompletableFuture<DispatchResult>();
         var drained = new CompletableFuture<Void>();
         AttemptTransport transport = ignored -> new AttemptHandle(outcome, drained, mock(Future.class));
-        var coordinator = new AttemptCoordinator(store, capacity, RetryScheduler.unavailable(),
+        var coordinator = AttemptFixtures.coordinator(store, capacity, RetryScheduler.unavailable(),
                 transport, mock(AttemptObserver.class));
         coordinator.dispatch(task.withDispatchLease(lease));
         outcome.complete(DispatchResult.warm(InvocationResult.success("ok")));
@@ -221,19 +222,19 @@ class AttemptCoordinatorTest {
      */
     @Test
     void logicalOutcomeDoesNotReleasePhysicalOwnershipAcrossAStrategySwitch() {
-        var store = new ExecutionStore();
+        var store = ExecutionFixtures.store();
         var capacity = new FunctionCapacityRegistry();
         var spec = new FunctionSpec("fn", "test-image", null, null, null,
                 30000, 1, 10, 0, null, ExecutionMode.LOCAL, null, null, null);
         var task = new InvocationTask("e1", "fn", spec, new InvocationRequest("payload", null),
                 null, null, Instant.now(), 1, InvocationKind.SYNC);
-        store.put(new ExecutionRecord("e1", task));
+        store.put(ExecutionFixtures.record("e1", task));
         capacity.register("fn", 1);
         var lease = capacity.tryAcquireLease(capacity.activeGeneration("fn"), ignored -> {});
         var outcome = new CompletableFuture<DispatchResult>();
         var drained = new CompletableFuture<Void>();
         AttemptTransport transport = ignored -> new AttemptHandle(outcome, drained, mock(Future.class));
-        var coordinator = new AttemptCoordinator(store, capacity, RetryScheduler.unavailable(),
+        var coordinator = AttemptFixtures.coordinator(store, capacity, RetryScheduler.unavailable(),
                 transport, mock(AttemptObserver.class));
         coordinator.dispatch(task.withDispatchLease(lease));
 
@@ -337,9 +338,9 @@ class AttemptCoordinatorTest {
                     30000, 1, 10, maxRetries, null, ExecutionMode.LOCAL, null, null, null);
             var task = new InvocationTask("retry", "fn", spec, new InvocationRequest("in", null),
                     null, null, now, 1, InvocationKind.SYNC);
-            record = new ExecutionRecord("retry", task,
+            record = ExecutionFixtures.record("retry", task,
                     new it.unimib.datai.nanofaas.controlplane.execution.TimeSource(() -> now, () -> 0L));
-            var store = new ExecutionStore();
+            var store = ExecutionFixtures.store();
             store.put(record);
             coordinator = new AttemptCoordinator(store, capacity, (next, due, rejected) -> {
                 dueTimes.add(due);

@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.service.ServiceFixtures;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -68,7 +70,7 @@ class SyncQueueRuntimeLifecycleTest {
     static class TestSupport {
         @Bean
         ExecutionStore executionStore() {
-            return new ExecutionStore();
+            return ExecutionFixtures.store();
         }
 
         @Bean
@@ -148,7 +150,7 @@ class SyncQueueRuntimeLifecycleTest {
             // Task admitted while the queue is enabled, but the function's one slot is held,
             // so the engine cannot dispatch it: it stays queued across the flip.
             InvocationTask admitted = task("admitted-while-enabled", spec);
-            store.put(new ExecutionRecord(admitted.executionId(), admitted));
+            store.put(ExecutionFixtures.record(admitted.executionId(), admitted));
             assertThat(configSource.syncQueueEnabled()).isTrue();
             assertThat(gateway.enqueue(admitted)).isTrue();
 
@@ -170,7 +172,7 @@ class SyncQueueRuntimeLifecycleTest {
             assertThat(configSource.syncQueueEnabled()).isTrue();
 
             InvocationTask reactivated = task("admitted-after-reactivation", spec);
-            store.put(new ExecutionRecord(reactivated.executionId(), reactivated));
+            store.put(ExecutionFixtures.record(reactivated.executionId(), reactivated));
             assertThat(gateway.enqueue(reactivated)).isTrue();
 
             Awaitility.await("reactivated queue dispatches new work")
@@ -196,18 +198,18 @@ class SyncQueueRuntimeLifecycleTest {
 
             listener.onRegister(spec);
             InvocationTask admitted = task("admitted-before-removal", spec);
-            store.put(new ExecutionRecord(admitted.executionId(), admitted));
+            store.put(ExecutionFixtures.record(admitted.executionId(), admitted));
             assertThatCode(() -> gateway.enqueueOrThrow(admitted)).doesNotThrowAnyException();
 
             listener.onRemove(spec.name());
             InvocationTask duringRemoval = task("admitted-during-removal", spec);
-            store.put(new ExecutionRecord(duringRemoval.executionId(), duringRemoval));
+            store.put(ExecutionFixtures.record(duringRemoval.executionId(), duringRemoval));
             assertThatThrownBy(() -> gateway.enqueueOrThrow(duringRemoval))
                     .isInstanceOf(SyncQueueRejectedException.class);
 
             listener.onRegister(spec);
             InvocationTask afterReRegistration = task("admitted-after-reregistration", spec);
-            store.put(new ExecutionRecord(afterReRegistration.executionId(), afterReRegistration));
+            store.put(ExecutionFixtures.record(afterReRegistration.executionId(), afterReRegistration));
             assertThatCode(() -> gateway.enqueueOrThrow(afterReRegistration))
                     .doesNotThrowAnyException();
         });
@@ -231,7 +233,7 @@ class SyncQueueRuntimeLifecycleTest {
                     "syncQueueMetricsLifecycleListener", FunctionRegistrationListener.class);
             metricsListener.onRegister(spec);
             InvocationTask task = task("admission-racing-removal", spec);
-            ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+            ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
             store.put(executionRecord);
 
             AtomicBoolean armed = new AtomicBoolean(duringGenerationRead);
@@ -284,7 +286,7 @@ class SyncQueueRuntimeLifecycleTest {
             var estimator = context.getBean(
                     it.unimib.datai.nanofaas.execution.admission.WaitEstimator.class);
             InvocationTask queued = task("profile-dispatch", spec);
-            context.getBean(ExecutionStore.class).put(new ExecutionRecord(queued.executionId(), queued));
+            context.getBean(ExecutionStore.class).put(ExecutionFixtures.record(queued.executionId(), queued));
             doAnswer(invocation -> {
                 InvocationTask dispatched = invocation.getArgument(0);
                 dispatched.dispatchLease().release();
@@ -345,14 +347,14 @@ class SyncQueueRuntimeLifecycleTest {
                 }
                 return CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok")));
             });
-            var handler = new ExecutionCompletionHandler(store, enqueuer, router,
+            var handler = ServiceFixtures.completionHandler(store, enqueuer, router,
                     new Metrics(context.getBean(MeterRegistry.class)));
             doAnswer(invocation -> {
                 handler.dispatch(invocation.getArgument(0));
                 return null;
             }).when(context.getBean(InvocationDispatch.class)).dispatch(any(InvocationTask.class));
             InvocationTask admitted = task("retry-after-disable", spec);
-            ExecutionRecord executionRecord = new ExecutionRecord(admitted.executionId(), admitted);
+            ExecutionRecord executionRecord = ExecutionFixtures.record(admitted.executionId(), admitted);
             store.put(executionRecord);
             assertThat(enqueuer.enqueue(admitted)).isTrue();
             // The production clock keeps the retry ineligible during its backoff.

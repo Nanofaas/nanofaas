@@ -21,7 +21,7 @@ class OutcomeWeigherTest {
 
     private static Outcome outcome(Object output) {
         return new Outcome(ExecutionState.SUCCESS, 0L, 1L, output, null, null, null,
-                200, 0L, false, true);
+                200, 0L, false, true, null);
     }
 
     @Test

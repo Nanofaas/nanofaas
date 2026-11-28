@@ -25,12 +25,14 @@ public final class InvocationResponseMapper {
 
     public InvocationResponse terminalResponse(ExecutionRecord executionRecord) {
         ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
-        if (snapshot.state() == ExecutionState.SUCCESS || snapshot.state() == ExecutionState.ERROR) {
-            InvocationResult result = snapshot.lastError() == null
-                    ? InvocationResult.successWithEnvelope(snapshot.output(), snapshot.statusCode(),
-                            snapshot.headers(), snapshot.encoding())
-                    : new InvocationResult(false, null, snapshot.lastError(), snapshot.statusCode(), snapshot.headers(), null);
-            return toResponse(executionRecord, result);
+        // Success or error is the state, as the shared future and the status endpoint read it.
+        if (snapshot.state() == ExecutionState.SUCCESS) {
+            return toResponse(executionRecord, InvocationResult.successWithEnvelope(snapshot.output(),
+                    snapshot.statusCode(), snapshot.headers(), snapshot.encoding()));
+        }
+        if (snapshot.state() == ExecutionState.ERROR) {
+            return toResponse(executionRecord, new InvocationResult(false, null, snapshot.lastError(),
+                    snapshot.statusCode(), snapshot.headers(), null));
         }
         if (snapshot.state() == ExecutionState.TIMEOUT) {
             return timeoutResponse(executionRecord);
@@ -68,7 +70,7 @@ public final class InvocationResponseMapper {
         if (outcome.state() == ExecutionState.TIMEOUT) {
             return new InvocationResponse(executionId, "timeout", null, null);
         }
-        String status = outcome.error() == null ? "success" : "error";
+        String status = outcome.state() == ExecutionState.SUCCESS ? "success" : "error";
         return new InvocationResponse(executionId, status, outcome.output(), outcome.error(),
                 outcome.statusCodeOrNull(), outcome.headers(), outcome.encoding());
     }

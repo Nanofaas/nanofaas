@@ -38,15 +38,13 @@ class RetentionFollowsTheReaderTest {
     private static final Duration SYNC_TTL = Duration.ofSeconds(30);
     private static final Duration TTL = Duration.ofMinutes(5);
     private static final ExecutionStoreProperties PROPS =
-            ExecutionStoreProperties.of(TTL, Duration.ofMinutes(30), SYNC_TTL);
+            ExecutionFixtures.properties(TTL, Duration.ofMinutes(30), SYNC_TTL);
 
     private final AtomicLong clock = new AtomicLong();
     private final Ticker ticker = clock::get;
 
     private ExecutionStore store() {
-        ExecutionStore store = new ExecutionStore(PROPS, ticker);
-        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
-        new ExecutionLifecycle(store, new IdempotencyStore(PROPS, ticker));
+        ExecutionStore store = ExecutionFixtures.store(PROPS, ticker);
         return store;
     }
 
@@ -93,7 +91,7 @@ class RetentionFollowsTheReaderTest {
     @Test
     void aRetryDoesNotDemoteAKeyedExecution() {
         ExecutionStore store = store();
-        ExecutionRecord execution = new ExecutionRecord("retried", task("retried", InvocationKind.SYNC, "order-8821", 1));
+        ExecutionRecord execution = ExecutionFixtures.record("retried", task("retried", InvocationKind.SYNC, "order-8821", 1));
         store.put(execution);
 
         // ExecutionCompletionHandler builds the retry task WITHOUT the key - the retry
@@ -150,7 +148,7 @@ class RetentionFollowsTheReaderTest {
     @Test
     void everyOutcomeKeepsItsErrorAndItsTimings() {
         ExecutionStore store = store();
-        ExecutionRecord execution = new ExecutionRecord("failed", task("failed", InvocationKind.SYNC, null, 1));
+        ExecutionRecord execution = ExecutionFixtures.record("failed", task("failed", InvocationKind.SYNC, null, 1));
         execution.markRunning();
         execution.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("BOOM", "blew up"));
         store.put(execution);
@@ -167,7 +165,7 @@ class RetentionFollowsTheReaderTest {
     // --- fixture -----------------------------------------------------------
 
     private static ExecutionRecord settled(ExecutionStore store, String id, InvocationKind kind, String key) {
-        ExecutionRecord execution = new ExecutionRecord(id, task(id, kind, key, 1));
+        ExecutionRecord execution = ExecutionFixtures.record(id, task(id, kind, key, 1));
         store.put(execution);
         execution.markRunning();
         execution.markSuccess("done", 200, Map.of("Content-Type", "application/json"), "json");

@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.OverridableExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -83,10 +85,10 @@ class InvocationServiceDispatchTest {
 
     @BeforeEach
     void setUp() {
-        executionStore = new ExecutionStore();
-        idempotencyStore = new IdempotencyStore();
+        idempotencyStore = ExecutionFixtures.keys();
+        executionStore = ExecutionFixtures.store(idempotencyStore);
 
-        completionHandler = new ExecutionCompletionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
+        completionHandler = ServiceFixtures.completionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
                 functionService,
@@ -123,10 +125,10 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-success-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-replay-success", "replay-success-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         executionRecord.markSuccess("replayed-ok");
         executionStore.put(executionRecord);
-        idempotencyStore.put("replay-success-fn", "idem-1", executionRecord.executionId());
+        ExecutionFixtures.bind(idempotencyStore, "replay-success-fn", "idem-1", executionRecord.executionId());
 
         InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-success-fn",
@@ -150,10 +152,10 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-reactive-success-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-reactive-replay-success", "replay-reactive-success-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         executionRecord.markSuccess("reactive-replayed-ok");
         executionStore.put(executionRecord);
-        idempotencyStore.put("replay-reactive-success-fn", "idem-reactive-success", executionRecord.executionId());
+        ExecutionFixtures.bind(idempotencyStore, "replay-reactive-success-fn", "idem-reactive-success", executionRecord.executionId());
 
         InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-reactive-success-fn",
@@ -178,10 +180,10 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-sync-timeout-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-sync-replay-timeout", "replay-sync-timeout-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
-        executionRecord.markTimeout();
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
+        ExecutionFixtures.timeOut(executionRecord);
         executionStore.put(executionRecord);
-        idempotencyStore.put("replay-sync-timeout-fn", "idem-sync-timeout", executionRecord.executionId());
+        ExecutionFixtures.bind(idempotencyStore, "replay-sync-timeout-fn", "idem-sync-timeout", executionRecord.executionId());
 
         InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-sync-timeout-fn",
@@ -204,10 +206,10 @@ class InvocationServiceDispatchTest {
         when(functionService.get("replay-timeout-fn")).thenReturn(Optional.of(spec));
 
         InvocationTask task = task("exec-replay-timeout", "replay-timeout-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
-        executionRecord.markTimeout();
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
+        ExecutionFixtures.timeOut(executionRecord);
         executionStore.put(executionRecord);
-        idempotencyStore.put("replay-timeout-fn", "idem-timeout", executionRecord.executionId());
+        ExecutionFixtures.bind(idempotencyStore, "replay-timeout-fn", "idem-timeout", executionRecord.executionId());
 
         InvocationResponse response = invocationService.invokeSyncReactive(
                 "replay-timeout-fn",
@@ -249,7 +251,7 @@ class InvocationServiceDispatchTest {
     @Test
     void dispatch_whenRouterThrowsSynchronously_completesExecutionWithError() throws Exception {
         InvocationTask task = task("exec-1", "local-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchLocal(any())).thenThrow(new RuntimeException("router down"));
@@ -267,7 +269,7 @@ class InvocationServiceDispatchTest {
     @Test
     void dispatch_poolMode_routesToPoolDispatcherAndCompletesSuccess() throws Exception {
         InvocationTask task = task("exec-2", "pool-fn", ExecutionMode.EXTERNAL);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchExternal(any())).thenReturn(
@@ -309,12 +311,12 @@ class InvocationServiceDispatchTest {
 
     @Test
     void invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInline() {
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
         InvocationService invocationServiceWithoutSyncQueue = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
                 executionStore,
-                new IdempotencyStore(),
+                ExecutionFixtures.keysOf(executionStore),
                 metrics,
                 null,
                 handler,
@@ -582,15 +584,15 @@ class InvocationServiceDispatchTest {
         org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
-        IdempotencyStore staleStore = new IdempotencyStore(Duration.ofMinutes(15));
-        staleStore.put("stale-idem-fn", "same-key", "evicted-execution");
+        IdempotencyStore staleStore = ExecutionFixtures.keys(Duration.ofMinutes(15));
+        ExecutionFixtures.bind(staleStore, "stale-idem-fn", "same-key", "evicted-execution");
         // The stale mapping is explicitly abandoned after publication: that is what makes
         // it reclaimable, not the mere absence of the execution it points at (finding R2).
         staleStore.markReclaimable("stale-idem-fn", "same-key", "evicted-execution");
         InvocationService racingService = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
-                executionStore,
+                ExecutionFixtures.store(staleStore),
                 staleStore,
                 metrics,
                 syncQueueGateway,
@@ -637,9 +639,9 @@ class InvocationServiceDispatchTest {
         org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
-        BlockingExecutionStore blockedStore = new BlockingExecutionStore();
-        IdempotencyStore staleStore = new IdempotencyStore(Duration.ofMinutes(15));
-        staleStore.put("stale-publication-fn", "same-key", "evicted-execution");
+        IdempotencyStore staleStore = ExecutionFixtures.keys(Duration.ofMinutes(15));
+        BlockingExecutionStore blockedStore = new BlockingExecutionStore(staleStore);
+        ExecutionFixtures.bind(staleStore, "stale-publication-fn", "same-key", "evicted-execution");
         // The stale mapping is explicitly abandoned after publication: that is what makes
         // it reclaimable, not the mere absence of the execution it points at (finding R2).
         staleStore.markReclaimable("stale-publication-fn", "same-key", "evicted-execution");
@@ -650,7 +652,7 @@ class InvocationServiceDispatchTest {
                 staleStore,
                 metrics,
                 syncQueueGateway,
-                new ExecutionCompletionHandler(blockedStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
+                ServiceFixtures.completionHandler(blockedStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
                 "stale-publication-fn"
         );
 
@@ -706,7 +708,7 @@ class InvocationServiceDispatchTest {
         )).isInstanceOf(QueueFullException.class);
 
         assertThat(rejectedExecutionId).hasValueSatisfying(executionId ->
-                assertThat(executionStore.get(executionId)).isEmpty());
+                assertThat(java.util.Optional.ofNullable(executionStore.getOrNull(executionId))).isEmpty());
     }
 
     @Test
@@ -728,7 +730,7 @@ class InvocationServiceDispatchTest {
                 .isInstanceOf(QueueFullException.class);
 
         assertThat(rejectedExecutionId).hasValueSatisfying(executionId ->
-                assertThat(executionStore.get(executionId)).isEmpty());
+                assertThat(java.util.Optional.ofNullable(executionStore.getOrNull(executionId))).isEmpty());
     }
 
     @Test
@@ -748,7 +750,7 @@ class InvocationServiceDispatchTest {
                 .isInstanceOf(SyncQueueRejectedException.class);
 
         assertThat(rejectedExecutionId).hasValueSatisfying(executionId ->
-                assertThat(executionStore.get(executionId)).isEmpty());
+                assertThat(java.util.Optional.ofNullable(executionStore.getOrNull(executionId))).isEmpty());
     }
 
     @Test
@@ -797,20 +799,24 @@ class InvocationServiceDispatchTest {
                     .hasCauseInstanceOf(QueueFullException.class);
             InvocationResponse replacement = second.get(1, TimeUnit.SECONDS);
             assertThat(replacement.executionId()).isNotEqualTo(rejectedExecutionId.get());
-            assertThat(executionStore.get(rejectedExecutionId.get())).isEmpty();
-            assertThat(executionStore.get(replacement.executionId())).isPresent();
+            assertThat(java.util.Optional.ofNullable(executionStore.getOrNull(rejectedExecutionId.get()))).isEmpty();
+            assertThat(java.util.Optional.ofNullable(executionStore.getOrNull(replacement.executionId()))).isPresent();
         } finally {
             allowFirstRejection.countDown();
             executor.shutdownNow();
         }
     }
 
-    private static final class BlockingExecutionStore extends ExecutionStore {
+    private static final class BlockingExecutionStore extends OverridableExecutionStore {
         private final CountDownLatch firstPutStarted = new CountDownLatch(1);
         private final CountDownLatch hiddenExecutionLookup = new CountDownLatch(1);
         private final CountDownLatch allowFirstPutToComplete = new CountDownLatch(1);
         private final AtomicBoolean blockNextPut = new AtomicBoolean(true);
         private volatile String blockedExecutionId;
+
+        BlockingExecutionStore(IdempotencyStore keys) {
+            super(keys);
+        }
 
         @Override
         public void put(ExecutionRecord executionRecord) {

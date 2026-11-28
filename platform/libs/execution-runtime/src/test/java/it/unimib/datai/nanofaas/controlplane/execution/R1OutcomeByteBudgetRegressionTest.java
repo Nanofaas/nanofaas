@@ -64,9 +64,7 @@ class R1OutcomeByteBudgetRegressionTest {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
                 Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30),
                 100, 100, 11_600);
-        ExecutionStore store = new ExecutionStore(props, Ticker.systemTicker());
-        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
-        new ExecutionLifecycle(store, new IdempotencyStore(props, Ticker.systemTicker()));
+        ExecutionStore store = ExecutionFixtures.store(props, Ticker.systemTicker());
 
         // Deep case: 30 distinct 1 MiB strings, each wrapped in five lists. The current
         // weigher stops at depth 4 and prices the string at zero, so each outcome weighs
@@ -76,7 +74,7 @@ class R1OutcomeByteBudgetRegressionTest {
             for (int depth = 0; depth < 5; depth++) {
                 payload = List.of(payload);
             }
-            ExecutionRecord executionRecord = new ExecutionRecord("w" + i, task("w" + i));
+            ExecutionRecord executionRecord = ExecutionFixtures.record("w" + i, task("w" + i));
             store.put(executionRecord);
             executionRecord.markSuccess(payload);
             store.settle(executionRecord);
@@ -86,7 +84,7 @@ class R1OutcomeByteBudgetRegressionTest {
         // 256-element walk limit, so it too is priced far below its retained size.
         List<Object> wide = new ArrayList<>(Collections.nCopies(256, null));
         wide.add("x".repeat(bytes));
-        ExecutionRecord wideRecord = new ExecutionRecord("wide", task("wide"));
+        ExecutionRecord wideRecord = ExecutionFixtures.record("wide", task("wide"));
         store.put(wideRecord);
         wideRecord.markSuccess(wide);
         store.settle(wideRecord);
@@ -94,7 +92,7 @@ class R1OutcomeByteBudgetRegressionTest {
         // A conservative bound must refuse to retain these payloads under an 11,600-byte
         // budget: their retained bytes are three orders of magnitude larger. The baseline
         // retains all 31 of them and fails here.
-        assertThat(store.size())
+        assertThat(ExecutionFixtures.outcomesHeld(store))
                 .as("oversized nested/wide outcomes must not be silently retained within "
                         + "a %d-byte budget", props.maxOutcomeBytes())
                 .isZero();

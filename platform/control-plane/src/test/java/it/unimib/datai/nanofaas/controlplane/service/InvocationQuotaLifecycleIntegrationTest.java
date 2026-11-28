@@ -1,5 +1,8 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.OverridableExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
+import it.unimib.datai.nanofaas.controlplane.execution.PhysicalInput;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -54,7 +57,7 @@ class InvocationQuotaLifecycleIntegrationTest {
         // Immutable text: what is retained is what arrived, with no second representation.
         assertThat(executionRecord.task().request().input()).isSameAs(source);
 
-        ExecutionRecord.PhysicalInput physical = executionRecord.openPhysicalInput(executionRecord.task());
+        PhysicalInput physical = executionRecord.openPhysicalInput(executionRecord.task());
         assertThat(physical.task().request().input()).isSameAs(source);
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
 
@@ -101,14 +104,13 @@ class InvocationQuotaLifecycleIntegrationTest {
         FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("fn", 1);
         InvocationCapacity capacity = new InvocationCapacity(generations, 10, 10, 1_000_000, 1_000_000, 16);
-        ExecutionStore failingStore = new ExecutionStore() {
+        ExecutionStore failingStore = new OverridableExecutionStore() {
             @Override
             public void put(ExecutionRecord ignored) {
                 throw new IllegalStateException("publication failed");
             }
         };
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(
-                failingStore, new IdempotencyStore(), new Metrics(new SimpleMeterRegistry()),
+        InvocationExecutionFactory factory = ServiceFixtures.factory(failingStore, new Metrics(new SimpleMeterRegistry()),
                 capacity, INPUT_LIMITS);
 
         var spec = spec();
@@ -147,7 +149,7 @@ class InvocationQuotaLifecycleIntegrationTest {
                 return rawWork;
             }
         };
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 fixture.store, null, new DispatcherRouter(local, null),
                 new Metrics(new SimpleMeterRegistry()), null, fixture.generations);
         var lookup = fixture.factory.createOrReuseExecution(
@@ -159,7 +161,7 @@ class InvocationQuotaLifecycleIntegrationTest {
         handler.dispatchDirect(executionRecord.task());
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
 
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
         fixture.store.settle(executionRecord);
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
@@ -178,7 +180,7 @@ class InvocationQuotaLifecycleIntegrationTest {
         when(gateway.shouldOffloadEagerly(any())).thenReturn(true);
         when(gateway.targetUrl(any())).thenReturn("http://remote");
         when(gateway.invokeRemote(any(), any(), any(), anyInt())).thenReturn(Mono.fromFuture(remote));
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 fixture.store, null, new DispatcherRouter(new LocalDispatcher(), null),
                 new Metrics(new SimpleMeterRegistry()), null, fixture.generations);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
@@ -193,7 +195,7 @@ class InvocationQuotaLifecycleIntegrationTest {
         coordinator.invoke(lookup, spec(), 10_000, OffloadContext.none());
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
 
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
         fixture.store.settle(executionRecord);
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
 
@@ -235,7 +237,7 @@ class InvocationQuotaLifecycleIntegrationTest {
                 "fn", spec(), request, null, null, InvocationKind.SYNC);
         ExecutionRecord oldRecord = oldLookup.executionRecord();
         long oneCanonical = fixture.capacity.inputReservedGlobally();
-        ExecutionRecord.PhysicalInput oldPhysical = oldRecord.openPhysicalInput(oldRecord.task());
+        PhysicalInput oldPhysical = oldRecord.openPhysicalInput(oldRecord.task());
 
         fixture.generations.remove("fn");
         fixture.generations.register("fn", 1);
@@ -267,7 +269,7 @@ class InvocationQuotaLifecycleIntegrationTest {
         when(gateway.targetUrl(any())).thenReturn("http://remote");
         when(gateway.invokeRemote(any(), any(), any(), anyInt()))
                 .thenThrow(new IllegalStateException("submit failed"));
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 fixture.store, null, new DispatcherRouter(new LocalDispatcher(), null),
                 new Metrics(new SimpleMeterRegistry()), null, fixture.generations);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
@@ -296,7 +298,7 @@ class InvocationQuotaLifecycleIntegrationTest {
         var queuedTask = executionRecord.prepareForQueue();
         long retained = fixture.capacity.inputReservedGlobally();
 
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
         fixture.store.settle(executionRecord);
         assertThat(fixture.store.getOrNull(executionRecord.executionId())).isNull();
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
@@ -312,7 +314,7 @@ class InvocationQuotaLifecycleIntegrationTest {
     }
 
     private static final class Fixture {
-        private final ExecutionStore store = new ExecutionStore();
+        private final ExecutionStore store = ExecutionFixtures.store();
         private final FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         private final InvocationCapacity capacity;
         private final InvocationExecutionFactory factory;
@@ -321,8 +323,7 @@ class InvocationQuotaLifecycleIntegrationTest {
             generations.register("fn", 1);
             capacity = new InvocationCapacity(
                     generations, executions, executions, inputBytes, inputBytes, 16);
-            factory = new InvocationExecutionFactory(
-                    store, new IdempotencyStore(), new Metrics(new SimpleMeterRegistry()),
+            factory = ServiceFixtures.factory(store, new Metrics(new SimpleMeterRegistry()),
                     capacity, INPUT_LIMITS);
         }
     }

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.execution;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
@@ -458,10 +459,10 @@ class SchedulerSwitchRaceTest {
     @Test
     void clientDisconnectThenCommitThenGet_getReflectsTheRealOutcomeRegardlessOfTheDisconnect()
             throws Exception {
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         InvocationTask task = new InvocationTask("e1", "echo", null, null, null, null, NOW, 1,
                 InvocationKind.ASYNC);
-        ExecutionRecord executionRecord = new ExecutionRecord("e1", task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record("e1", task);
         store.put(executionRecord);
         executionRecord.markRunning();
 

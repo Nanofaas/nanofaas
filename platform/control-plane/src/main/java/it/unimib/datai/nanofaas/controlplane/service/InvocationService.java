@@ -133,21 +133,19 @@ public class InvocationService {
                 executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId,
                         InvocationKind.ASYNC);
 
-        // The key found an already-archived execution: the mutable record is gone,
-        // but the outcome the replay needs is still there. Same handling as the
-        // sync coordinator (ReactiveInvocationCoordinator.invoke) - checked before
-        // ever touching lookup.executionRecord(), which the factory returns as null
-        // for this branch.
-        Outcome settled = lookup.settledOutcome();
-        if (settled != null) {
-            return responseMapper.terminalResponse(lookup.settledExecutionId(), settled);
-        }
-
-        // Outcome evicted for capacity: the replay does not re-run the function, it
-        // returns 410. As on the sync branch, this must be checked before dereferencing
-        // executionRecord.
-        if (lookup.gone()) {
-            throw new OutcomeGoneException(lookup.settledExecutionId());
+        // A key that found an execution already over is answered from what is left of it, the
+        // same way the sync coordinator does (ReactiveInvocationCoordinator.invoke).
+        switch (lookup) {
+            case InvocationExecutionFactory.ExecutionLookup.Settled(String executionId, Outcome outcome) -> {
+                return responseMapper.terminalResponse(executionId, outcome);
+            }
+            // Outcome evicted for capacity: the replay does not re-run the function, it returns 410.
+            case InvocationExecutionFactory.ExecutionLookup.Gone(String executionId) ->
+                    throw new OutcomeGoneException(executionId);
+            case InvocationExecutionFactory.ExecutionLookup.Live _,
+                 InvocationExecutionFactory.ExecutionLookup.Fresh _ -> {
+                // Still running, or new: answered from the live record below.
+            }
         }
 
         ExecutionRecord executionRecord = lookup.executionRecord();

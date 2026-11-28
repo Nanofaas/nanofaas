@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -16,16 +17,23 @@ public class FunctionSpecResolver {
     private static final String QUEUE_DEPTH_METRIC = "queue_depth";
 
     private final FunctionDefaults defaults;
+    /** The execution store's max-lifetime, or null when nothing bounds an execution (direct construction). */
+    private final Duration maxLifetime;
     private static final Set<String> SUPPORTED_INTERNAL_SCALING_METRICS = Set.of(QUEUE_DEPTH_METRIC, "in_flight", "rps");
 
     public FunctionSpecResolver(FunctionDefaults defaults) {
+        this(defaults, null);
+    }
+
+    public FunctionSpecResolver(FunctionDefaults defaults, Duration maxLifetime) {
         this.defaults = defaults;
+        this.maxLifetime = maxLifetime;
     }
 
     public FunctionSpec resolve(FunctionSpec spec) {
         ExecutionMode mode = Optional.ofNullable(spec.executionMode()).orElse(ExecutionMode.DEPLOYMENT);
         ScalingConfig scaling = resolveScalingConfig(spec.scalingConfig(), mode);
-        return new FunctionSpec(
+        FunctionSpec resolved = new FunctionSpec(
                 spec.name(),
                 spec.image(),
                 Optional.ofNullable(spec.command()).orElse(List.of()),
@@ -43,6 +51,29 @@ public class FunctionSpecResolver {
                 spec.imagePullSecrets(),
                 spec.offload()
         );
+        requireAttemptsFitTheExecutionLifetime(resolved);
+        return resolved;
+    }
+
+    /**
+     * The execution store evicts a live execution max-lifetime after admission, concluding it as
+     * EXECUTION_EXPIRED whatever its timeout says. A function whose attempts cannot all run out
+     * their timeout inside that lifetime is a promise the platform cannot keep, so it is refused.
+     * ponytail: counts attempt timeouts only; retry backoff and queue wait come out of the same
+     * lifetime by design (docs/superpowers/specs/2026-09-24-retry-backoff-design.md), so a budget
+     * near the limit can still lose its last attempt to them.
+     */
+    private void requireAttemptsFitTheExecutionLifetime(FunctionSpec spec) {
+        if (maxLifetime == null) {
+            return;
+        }
+        long attempts = spec.maxRetries() + 1L;
+        long budgetMs = attempts * spec.timeoutMs();
+        if (budgetMs >= maxLifetime.toMillis()) {
+            throw new IllegalArgumentException(("timeoutMs x (maxRetries + 1) = %d ms must be shorter than "
+                    + "nanofaas.execution-store.max-lifetime (%d ms): the execution would expire before "
+                    + "its attempts could finish").formatted(budgetMs, maxLifetime.toMillis()));
+        }
     }
 
     private ScalingConfig resolveScalingConfig(ScalingConfig config, ExecutionMode mode) {

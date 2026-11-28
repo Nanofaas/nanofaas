@@ -53,6 +53,41 @@
         <Bug pattern="EI_EXPOSE_REP2"/>
     </Match>
 
+    <!-- The function registry is the application's injected Spring singleton, not an owned value:
+         copying it would detach the service from the catalog every other bean reads. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.registry.FunctionService"/>
+        <Field name="registry"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- ExecutionStore stays non-final so tests can wrap it in doubles; the only calls that can throw
+         from its constructor are the Micrometer gauge registrations on the injected registry. The
+         finding predates the single constructor, which only changed its hash. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    </Match>
+
+    <!-- The execution store, key store and metrics are the application's injected singletons, not
+         owned values: copying them would split the shared admission, dedup and meter state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory"/>
+        <Or><Field name="executionStore"/><Field name="idempotencyStore"/><Field name="metrics"/></Or>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- The execution record is the per-execution monitor every path shares by design: publishing
+         the key claim must serialize with the lifecycle's key protection on that same object. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory$ExecutionLookup$Fresh"/>
+        <Method name="publishAdmission"/>
+        <Bug pattern="USO_UNSAFE_ACCESSIBLE_OBJECT_SYNCHRONIZATION"/>
+    </Match>
+
     <!-- The injected metrics reader is shared with the decision calculator to observe live workload state. -->
     <Match>
         <Class name="it.unimib.datai.nanofaas.modules.autoscaler.InternalScaler"/>

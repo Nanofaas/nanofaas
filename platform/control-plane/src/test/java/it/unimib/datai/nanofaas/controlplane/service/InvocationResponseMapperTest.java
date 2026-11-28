@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -26,7 +27,7 @@ class InvocationResponseMapperTest {
         var original = task("exec-1");
         var keyed = new InvocationTask(original.executionId(), original.functionName(), original.functionSpec(),
                 original.request(), "replay-key", null, original.enqueuedAt(), 1, InvocationKind.SYNC);
-        var record = new ExecutionRecord("exec-1", keyed);
+        var record = ExecutionFixtures.record("exec-1", keyed);
         record.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("RUNTIME_STOPPING", "stopping"),
                 503, Map.of("Retry-After", "1"));
         var response = mapper.terminalResponse(record);
@@ -39,8 +40,8 @@ class InvocationResponseMapperTest {
 
     @Test
     void terminalResponse_mapsTimeoutRecordToTimeoutResponse() {
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
-        executionRecord.markTimeout();
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-1", task("exec-1"));
+        ExecutionFixtures.timeOut(executionRecord);
 
         InvocationResponse response = mapper.terminalResponse(executionRecord);
 
@@ -52,7 +53,7 @@ class InvocationResponseMapperTest {
     void terminalResponse_regression_plainOutput_hasNullEnvelope() {
         // Backward compatibility: a handler that returns a plain value (no envelope)
         // must produce exactly today's response on the replay path.
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-1", task("exec-1"));
         executionRecord.markSuccess("plain-body");
 
         InvocationResponse response = mapper.terminalResponse(executionRecord);
@@ -65,7 +66,7 @@ class InvocationResponseMapperTest {
 
     @Test
     void toResponse_propagatesStatusCodeAndHeadersFromResult() {
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-1", task("exec-1"));
         InvocationResult result = InvocationResult.successWithEnvelope(
                 "body", 404, Map.of("Content-Type", "application/json"), null);
 
@@ -77,7 +78,7 @@ class InvocationResponseMapperTest {
 
     @Test
     void toResponse_regression_plainResult_hasNullEnvelope() {
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-1", task("exec-1"));
         InvocationResult result = InvocationResult.success("body");
 
         InvocationResponse response = mapper.toResponse(executionRecord, result);
@@ -95,8 +96,8 @@ class InvocationResponseMapperTest {
             // This string is the public status field of GET /executions/{id}.
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
 
-            ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
-            executionRecord.markTimeout();
+            ExecutionRecord executionRecord = ExecutionFixtures.record("exec-1", task("exec-1"));
+            ExecutionFixtures.timeOut(executionRecord);
 
             assertThat(mapper.toStatus(executionRecord).status()).isEqualTo("timeout");
         } finally {
@@ -106,7 +107,7 @@ class InvocationResponseMapperTest {
 
     @Test
     void toStatus_propagatesStatusCodeAndHeadersFromSnapshot() {
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-1", task("exec-1"));
         executionRecord.markSuccess("body", 201, Map.of("Location", "/x"), "base64");
 
         ExecutionStatus status = mapper.toStatus(executionRecord);
@@ -118,7 +119,7 @@ class InvocationResponseMapperTest {
 
     @Test
     void toStatus_regression_plainSuccess_hasNullEnvelope() {
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-1", task("exec-1"));
         executionRecord.markSuccess("body");
 
         ExecutionStatus status = mapper.toStatus(executionRecord);
@@ -133,7 +134,7 @@ class InvocationResponseMapperTest {
         // Guards the field that is easiest to drop: terminalResponse rebuilds an
         // InvocationResult from the snapshot, so encoding must come from the snapshot,
         // not be hardcoded null.
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-1", task("exec-1"));
         executionRecord.markSuccess("body", 200, Map.of(), "base64");
 
         InvocationResponse response = mapper.terminalResponse(executionRecord);

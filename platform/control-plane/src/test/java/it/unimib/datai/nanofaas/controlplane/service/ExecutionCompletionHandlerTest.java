@@ -1,12 +1,13 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.OverridableExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionLifecycle;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
@@ -54,10 +55,8 @@ class ExecutionCompletionHandlerTest {
 
     @BeforeEach
     void setUp() {
-        executionStore = new ExecutionStore();
-        // The owner is mandatory for settling a keyed record; attach a minimal one.
-        new ExecutionLifecycle(executionStore, new IdempotencyStore());
-        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate);
+        executionStore = ExecutionFixtures.store();
+        completionHandler = ServiceFixtures.completionHandler(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate);
 
         testSpec = new FunctionSpec(
                 "testFunc", "test-image", null, null, null,
@@ -108,9 +107,9 @@ class ExecutionCompletionHandlerTest {
     @Test
     void dispatch_whenExecutionAlreadyTerminal_releasesSlotAndSkipsRouter() {
         InvocationTask task = task("exec-timeout-before-dispatch", "local-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         executionStore.put(executionRecord);
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
 
         completionHandler.dispatch(ownership.acquire(task));
 
@@ -122,7 +121,7 @@ class ExecutionCompletionHandlerTest {
     @Test
     void dispatch_whenRouterThrowsSynchronously_completesExecutionWithError() throws Exception {
         InvocationTask task = task("exec-1", "local-fn", ExecutionMode.LOCAL);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchLocal(any())).thenThrow(new RuntimeException("router down"));
@@ -140,7 +139,7 @@ class ExecutionCompletionHandlerTest {
     @Test
     void dispatch_poolMode_routesToPoolDispatcherAndCompletesSuccess() throws Exception {
         InvocationTask task = task("exec-2", "pool-fn", ExecutionMode.EXTERNAL);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         executionStore.put(executionRecord);
 
         when(dispatcherRouter.dispatchExternal(any())).thenReturn(
@@ -159,7 +158,7 @@ class ExecutionCompletionHandlerTest {
     @Test
     void dispatch_deploymentWaitsForWakeUpBeforeRoutingExternally() throws Exception {
         InvocationTask task = task("exec-deployment", "deployment-fn", ExecutionMode.DEPLOYMENT);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         executionStore.put(executionRecord);
         CompletableFuture<Void> wakeUp = new CompletableFuture<>();
         when(wakeUpGate.ensureReady(ownership.acquire(task))).thenReturn(wakeUp);
@@ -184,7 +183,7 @@ class ExecutionCompletionHandlerTest {
                 new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
                 InvocationKind.SYNC
             );
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         executionStore.put(executionRecord);
         CompletableFuture<Void> failedWakeUp = new CompletableFuture<>();
         failedWakeUp.completeExceptionally(new IllegalStateException("DEPLOYMENT_WAKE_UP_TIMEOUT"));
@@ -257,7 +256,7 @@ class ExecutionCompletionHandlerTest {
 
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(executionRecord.output()).isEqualTo("result");
+        assertThat(executionRecord.snapshot().output()).isEqualTo("result");
         assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
@@ -278,12 +277,12 @@ class ExecutionCompletionHandlerTest {
         ExecutionRecord executionRecord = recordInStore("exec-timeout", testSpec, null);
         ownership.attach(executionRecord);
         executionRecord.markRunning();
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
 
         completionHandler.completeExecution("exec-timeout", InvocationResult.success("late-result"));
 
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
-        assertThat(executionRecord.output()).isNull();
+        assertThat(executionRecord.snapshot().output()).isNull();
         verify(metrics, never()).success("testFunc");
         verify(metrics, never()).error("testFunc");
     }
@@ -308,7 +307,7 @@ class ExecutionCompletionHandlerTest {
         ,
         InvocationKind.SYNC
     );
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-idem", taskWithKey);
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-idem", taskWithKey);
         executionStore.put(executionRecord);
         when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
 
@@ -368,7 +367,7 @@ class ExecutionCompletionHandlerTest {
         ,
         InvocationKind.SYNC
     );
-        ExecutionRecord executionRecord = new ExecutionRecord(executionId, task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(executionId, task);
         executionStore.put(executionRecord);
         // A dispatch marks the attempt RUNNING and is what acquires its slot; the completion
         // path releases only what an attempt actually acquired (invariant I4).
@@ -411,7 +410,7 @@ class ExecutionCompletionHandlerTest {
         return executionRecord;
     }
 
-    private static final class CountingExecutionRecord extends ExecutionRecord {
+    private static final class CountingExecutionRecord extends OverridableExecutionRecord {
         private final AtomicInteger snapshotReads = new AtomicInteger();
         private final AtomicInteger finishedAtNanosReads = new AtomicInteger();
 
@@ -450,7 +449,7 @@ class ExecutionCompletionHandlerTest {
             var task = new InvocationTask("direct-unowned", "testFunc", testSpec,
                     new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
                     InvocationKind.SYNC);
-            var executionRecord = new ExecutionRecord(task.executionId(), task);
+            var executionRecord = ExecutionFixtures.record(task.executionId(), task);
             executionStore.put(executionRecord);
             completionHandler.completeExecution(task.executionId(),
                     DispatchResult.warm(InvocationResult.success("ok")));

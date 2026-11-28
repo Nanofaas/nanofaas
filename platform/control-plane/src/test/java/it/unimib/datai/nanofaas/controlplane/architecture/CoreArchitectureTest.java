@@ -44,7 +44,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @AnalyzeClasses(packages = {
         "it.unimib.datai.nanofaas.controlplane..",
-        "it.unimib.datai.nanofaas.modules.."}, importOptions = ImportOption.DoNotIncludeTests.class)
+        "it.unimib.datai.nanofaas.modules.."},
+        importOptions = {ImportOption.DoNotIncludeTests.class, CoreArchitectureTest.DoNotIncludeTestFixtures.class})
 class CoreArchitectureTest {
 
     // R1: the core must contain no cycles between its top-level packages.
@@ -257,6 +258,14 @@ class CoreArchitectureTest {
         URI source = classUri.normalize();
         URI relative = owner.relativize(source);
         return !relative.equals(source) && !relative.isAbsolute() && !relative.getPath().isEmpty();
+    }
+
+    /** Test fixtures are test code too: the rules here govern what ships. */
+    static final class DoNotIncludeTestFixtures implements ImportOption {
+        @Override
+        public boolean includes(com.tngtech.archunit.core.importer.Location location) {
+            return !location.contains("/testFixtures/") && !location.contains("-test-fixtures.jar");
+        }
     }
 
     private static URI codeSourceOf(Class<?> marker) {

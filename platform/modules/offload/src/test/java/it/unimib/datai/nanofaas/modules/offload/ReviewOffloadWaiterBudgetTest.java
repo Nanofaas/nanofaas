@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.offload;
 
+import it.unimib.datai.nanofaas.controlplane.service.ServiceFixtures;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.capacity.*;
@@ -27,15 +29,14 @@ class ReviewOffloadWaiterBudgetTest {
             var registry = new SimpleMeterRegistry();
             var gateway = new DefaultOffloadGateway(new OffloadProperties(true, "http://remote", true),
                     WebClient.builder().exchangeFunction(request -> remote.asMono()).build(), registry);
-            var store = new ExecutionStore();
+            var store = ExecutionFixtures.store();
             var metrics = new Metrics(registry);
             var generations = new FunctionCapacityRegistry();
             generations.register("fn", 1);
             var capacity = new InvocationCapacity(generations, 100, 100, 1_000_000, 1_000_000, 16);
-            var factory = new InvocationExecutionFactory(
-                    store, new IdempotencyStore(), metrics, capacity,
+            var factory = ServiceFixtures.factory(store, metrics, capacity,
                     new RetainedInputEstimator.Limits(32, 16_384, 65_536, 64L << 20));
-            var handler = new ExecutionCompletionHandler(
+            var handler = ServiceFixtures.completionHandler(
                     store, null, mock(DispatcherRouter.class), metrics, null, generations);
             var coordinator = new ReactiveInvocationCoordinator(null, metrics, null, gateway,
                     handler, new InvocationResponseMapper(), new WaiterCapacity(generations, 100, 100));
@@ -60,7 +61,7 @@ class ReviewOffloadWaiterBudgetTest {
                     .body("{\"executionId\":\"remote-id\",\"status\":\"success\",\"output\":\"done\"}")
                     .build());
             assertThat(longWaiter.join().response().output()).isEqualTo("done");
-            assertThat(store.inFlightCount()).isZero();
+            assertThat(ExecutionFixtures.inFlight(store)).isZero();
         } finally { VirtualTimeScheduler.reset(); }
     }
 }

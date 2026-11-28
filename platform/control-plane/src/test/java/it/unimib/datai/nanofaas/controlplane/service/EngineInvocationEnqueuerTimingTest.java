@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.capacity.*;
 import it.unimib.datai.nanofaas.controlplane.execution.*;
@@ -17,7 +18,7 @@ class EngineInvocationEnqueuerTimingTest {
     private final Instant now = Instant.parse("2026-09-24T12:00:00Z");
     private final SchedulerEngine engine = mock(SchedulerEngine.class);
     private final FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
-    private final ExecutionStore executions = new ExecutionStore();
+    private final ExecutionStore executions = ExecutionFixtures.store();
     private final FunctionSpec spec = new FunctionSpec("fn", "image", null, null, null,
             30000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
     private final InvocationTask task = new InvocationTask("e1", "fn", spec,
@@ -32,7 +33,7 @@ class EngineInvocationEnqueuerTimingTest {
         ObjectProvider<SchedulerEngine> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(engine);
         capacity.register("fn", 1);
-        executions.put(new ExecutionRecord("e1", task));
+        executions.put(ExecutionFixtures.record("e1", task));
         return new EngineInvocationEnqueuer(provider, capacity, () -> 1L,
                 profile, true,
                 mock(ObjectProvider.class), Clock.fixed(now, ZoneOffset.UTC), executions);

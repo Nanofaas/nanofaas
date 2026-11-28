@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -29,11 +30,11 @@ import static org.mockito.Mockito.when;
 
 class ExecutionCompletionHandlerOffloadTest {
 
-    private final ExecutionStore executionStore = new ExecutionStore();
+    private final ExecutionStore executionStore = ExecutionFixtures.store();
     private final RetryScheduler enqueuer = mock(RetryScheduler.class);
     private final DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
     private final TestDispatchOwnership ownership = new TestDispatchOwnership();
-    private final ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+    private final ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
             executionStore, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
 
     private ExecutionRecord executionRecord(String executionId, String functionName) {
@@ -43,7 +44,7 @@ class ExecutionCompletionHandlerOffloadTest {
                 new InvocationRequest("p", Map.of()), null, null, Instant.now(), 1,
                 InvocationKind.SYNC
             );
-        ExecutionRecord executionRecord = new ExecutionRecord(executionId, task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(executionId, task);
         executionStore.put(executionRecord);
         return executionRecord;
     }
