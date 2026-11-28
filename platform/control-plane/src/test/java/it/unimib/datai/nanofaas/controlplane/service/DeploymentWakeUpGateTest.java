@@ -78,11 +78,15 @@ class DeploymentWakeUpGateTest {
     private final ManagedDeploymentCoordinator coordinator = mock(ManagedDeploymentCoordinator.class);
     private final List<ScheduledThreadPoolExecutor> schedulers = new ArrayList<>();
 
+    /** The test's one capacity registry: the coordinator double reads generations from it, as the real one does. */
+    private final FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
+
     @BeforeEach
-    void captureFirstGenerationForIsolatedFixtures() {
+    void readGenerationsFromTheTestsCapacity() {
+        generations.register("echo", 1);
         when(coordinator.generationOf(any(RegisteredFunction.class)))
-                .thenAnswer(invocation -> new FunctionGeneration(
-                        invocation.getArgument(0, RegisteredFunction.class).name(), 1));
+                .thenAnswer(invocation -> generations.activeGeneration(
+                        invocation.getArgument(0, RegisteredFunction.class).name()));
     }
 
     @Test
@@ -93,7 +97,6 @@ class DeploymentWakeUpGateTest {
         RegisteredFunction oldRegistration = deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0);
         RegisteredFunction replacement = deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0);
         FunctionRegistry exactRegistry = mock(FunctionRegistry.class);
-        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
         ManagedDeploymentProvider provider = mock(ManagedDeploymentProvider.class);
         when(provider.backendId()).thenReturn("k8s");
@@ -154,7 +157,6 @@ class DeploymentWakeUpGateTest {
     void ownerPublicationIsAtomicWithRemovalAndClose(boolean close) throws Exception {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
-        FunctionCapacityRegistry generations = generations();
         when(registry.getRegistered("echo"))
                 .thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
         when(coordinator.observeReplicaStatus(target))
@@ -369,7 +371,6 @@ class DeploymentWakeUpGateTest {
     void synchronousSubmissionFailureAndContextCloseDrainOwnersBeforeLateWork() {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
-        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
         when(coordinator.generationOf(any(RegisteredFunction.class)))
                 .thenAnswer(invocation -> generations.activeGeneration("echo"));
@@ -442,7 +443,6 @@ class DeploymentWakeUpGateTest {
     void ensureReady_routesObservationStateAndAgeThroughTheDeclaredPolicy() {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
-        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
         AtomicReference<Instant> now = new AtomicReference<>(Instant.EPOCH.plusSeconds(4));
         InstantSource clock = now::get;
@@ -487,7 +487,6 @@ class DeploymentWakeUpGateTest {
     void freshReadyObservationCannotBypassAConcurrentFunctionDetach() {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
-        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
         RegisteredFunction function = deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0);
         when(registry.getRegistered("echo")).thenReturn(Optional.of(function), Optional.empty());
@@ -514,7 +513,6 @@ class DeploymentWakeUpGateTest {
     void removeAndReregisterFenceTheOldGenerationAndAllowOnlyTheReplacementToComplete() throws Exception {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
-        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
         when(coordinator.generationOf(any(RegisteredFunction.class)))
                 .thenAnswer(invocation -> generations.activeGeneration("echo"));
@@ -574,7 +572,6 @@ class DeploymentWakeUpGateTest {
     void absoluteTimeoutDrainsTheOwnerBeforeLateWorkCanPublish() {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
-        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
         AtomicReference<Runnable> submitted = new AtomicReference<>();
         when(registry.getRegistered("echo"))
@@ -608,7 +605,6 @@ class DeploymentWakeUpGateTest {
     void pollThatExecutesBeforeScheduleReturnsCannotCancelItsSuccessorPublication() {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
-        FunctionCapacityRegistry generations = generations();
         when(registry.getRegistered("echo"))
                 .thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
         when(coordinator.observeReplicaStatus(target))
@@ -692,8 +688,6 @@ class DeploymentWakeUpGateTest {
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
         when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
-
-        FunctionCapacityRegistry generations = generations();
         ScheduledThreadPoolExecutor scheduler = scheduler();
         DeploymentWakeUpCoordinator wakeUpCoordinator = new DeploymentWakeUpCoordinator(generations, scheduler);
         gate(Duration.ofSeconds(1), Duration.ofMillis(1), Runnable::run,
@@ -726,8 +720,6 @@ class DeploymentWakeUpGateTest {
         when(coordinator.getFreshReplicaStatus(target)).thenReturn(
                 new ReplicaStatus(0, 0), new ReplicaStatus(1, 1),
                 new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
-
-        FunctionCapacityRegistry generations = generations();
         ScheduledThreadPoolExecutor scheduler = scheduler();
         DeploymentWakeUpCoordinator wakeUpCoordinator = new DeploymentWakeUpCoordinator(generations, scheduler);
         DeploymentWakeUpGate gate = gate(Duration.ofSeconds(1), Duration.ofMillis(1), Runnable::run,
@@ -923,8 +915,6 @@ class DeploymentWakeUpGateTest {
         when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
         doThrow(new IllegalStateException("provider unavailable"))
                 .when(coordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
-
-        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
         ScheduledThreadPoolExecutor scheduler = scheduler();
         try { // NOSONAR (java:S2093): teardown is shutdownNow(), not a blocking close()
@@ -1092,7 +1082,6 @@ class DeploymentWakeUpGateTest {
                                       Duration pollInterval,
                                       java.util.concurrent.Executor executor,
                                       ScheduledThreadPoolExecutor scheduler) {
-        FunctionCapacityRegistry generations = generations();
         return gate(timeout, pollInterval, executor, scheduler, generations,
                 new DeploymentWakeUpCoordinator(generations, scheduler));
     }
@@ -1114,12 +1103,6 @@ class DeploymentWakeUpGateTest {
         scheduler.setRemoveOnCancelPolicy(true);
         schedulers.add(scheduler);
         return scheduler;
-    }
-
-    private static FunctionCapacityRegistry generations() {
-        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
-        generations.register("echo", 1);
-        return generations;
     }
 
     private static void replaceMap(Object owner, String fieldName, Object replacement) throws Exception {

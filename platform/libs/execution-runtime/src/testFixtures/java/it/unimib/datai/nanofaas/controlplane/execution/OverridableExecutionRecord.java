@@ -9,7 +9,8 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
  */
 public class OverridableExecutionRecord extends ExecutionRecord {
     public OverridableExecutionRecord(String executionId, InvocationTask task) {
-        this(executionId, task, new FunctionCapacityRegistry());
+        super(executionId, task, TimeSource.system(),
+                ExecutionFixtures.admit(executionId, task, ExecutionFixtures.ownCapacity(task)));
     }
 
     public OverridableExecutionRecord(String executionId, InvocationTask task, FunctionCapacityRegistry generations) {

@@ -354,7 +354,8 @@ class SyncQueueRuntimeLifecycleTest {
                 return null;
             }).when(context.getBean(InvocationDispatch.class)).dispatch(any(InvocationTask.class));
             InvocationTask admitted = task("retry-after-disable", spec);
-            ExecutionRecord executionRecord = ExecutionFixtures.record(admitted.executionId(), admitted);
+            ExecutionRecord executionRecord = ExecutionFixtures.record(admitted.executionId(), admitted,
+                    context.getBean(FunctionCapacityRegistry.class));
             store.put(executionRecord);
             assertThat(enqueuer.enqueue(admitted)).isTrue();
             // The production clock keeps the retry ineligible during its backoff.

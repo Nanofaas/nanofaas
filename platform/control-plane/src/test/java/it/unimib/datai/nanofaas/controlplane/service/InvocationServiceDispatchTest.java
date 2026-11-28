@@ -104,7 +104,7 @@ class InvocationServiceDispatchTest {
                 completionHandler,
                 generations,
                 "replay-success-fn", "replay-reactive-success-fn", "replay-sync-timeout-fn",
-                "replay-timeout-fn", "fn", "inline-fn", "queued-sync-fn", "sync-queued-fn",
+                "replay-timeout-fn", "fn", "local-fn", "pool-fn", "inline-fn", "queued-sync-fn", "sync-queued-fn",
                 "sync-queued-sync-fn", "idem-admission-race-fn", "sync-reject-fn",
                 "sync-reject-local-fn", "reactive-sync-reject-fn", "queue-reject-fn", "queue-timeout-fn",
                 "timeout-fn", "timeout-reactive-fn"

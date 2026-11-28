@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentReadiness;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
@@ -48,8 +49,10 @@ public class UnmanagedDeploymentDefaultsAutoConfiguration {
     @ConditionalOnMissingBean(ManagedDeploymentCoordinator.class)
     public ManagedDeploymentCoordinator unmanagedDeploymentCoordinator(DeploymentProviderResolver resolver,
                                                                        FunctionRegistry registry,
-                                                                       FunctionOperationLocks locks) {
-        return new ManagedDeploymentCoordinator(resolver, registry, locks,
+                                                                       FunctionOperationLocks locks,
+                                                                       FunctionCapacityRegistry generations) {
+        // The application's own capacity registry: generations have one authority.
+        return new ManagedDeploymentCoordinator(resolver, registry, locks, generations,
                 ReplicaStatusSnapshot.withoutRefreshCapacity(InstantSource.system()));
     }
 }

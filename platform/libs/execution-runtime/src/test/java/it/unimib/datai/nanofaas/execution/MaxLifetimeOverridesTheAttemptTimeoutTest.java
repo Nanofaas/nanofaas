@@ -51,6 +51,7 @@ class MaxLifetimeOverridesTheAttemptTimeoutTest {
         AttemptTransport transport = task -> new AttemptHandle(
                 answer, answer.thenApply(ignored -> null), new CompletableFuture<Void>());
         var capacity = new FunctionCapacityRegistry();
+        capacity.register("fn", 1);
         var coordinator = AttemptFixtures.coordinator(store, capacity,
                 RetryScheduler.unavailable(), transport, mock(AttemptObserver.class));
 

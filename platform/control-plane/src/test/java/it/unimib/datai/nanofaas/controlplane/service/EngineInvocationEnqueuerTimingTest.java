@@ -33,7 +33,7 @@ class EngineInvocationEnqueuerTimingTest {
         ObjectProvider<SchedulerEngine> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(engine);
         capacity.register("fn", 1);
-        executions.put(ExecutionFixtures.record("e1", task));
+        executions.put(ExecutionFixtures.record("e1", task, capacity));
         return new EngineInvocationEnqueuer(provider, capacity, () -> 1L,
                 profile, true,
                 mock(ObjectProvider.class), Clock.fixed(now, ZoneOffset.UTC), executions);

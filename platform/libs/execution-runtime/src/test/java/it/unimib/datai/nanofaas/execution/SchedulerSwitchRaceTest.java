@@ -188,7 +188,7 @@ class SchedulerSwitchRaceTest {
         InvocationTask lateTask = new InvocationTask("late", "echo", null, null, null, null, NOW, 1,
                 InvocationKind.ASYNC);
         SchedulingTicket lateTicket = new SchedulingTicket(new TicketId("late", 1),
-                new FunctionGeneration("echo", 1), 1, NOW, NOW, null);
+                capacity.activeGeneration("echo"), 1, NOW, NOW, null);
 
         Thread switcher = new Thread(() -> engine.switchTo(sharedQueue.id()));
         switcher.start();
@@ -303,7 +303,7 @@ class SchedulerSwitchRaceTest {
         InvocationTask retryTask = new InvocationTask("e1", "echo", null, null, null, null, NOW, 2,
                 InvocationKind.ASYNC);
         SchedulingTicket retryTicket = new SchedulingTicket(new TicketId("e1", 2),
-                new FunctionGeneration("echo", 1), 0, NOW, NOW, null);
+                capacity.activeGeneration("echo"), 0, NOW, NOW, null);
 
         Thread switcher = new Thread(() -> engine.switchTo(sharedQueue.id()));
         switcher.start();

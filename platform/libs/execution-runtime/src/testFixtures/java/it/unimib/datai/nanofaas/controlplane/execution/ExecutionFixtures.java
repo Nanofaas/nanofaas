@@ -213,14 +213,15 @@ public final class ExecutionFixtures {
 
     /**
      * An execution admitted on a capacity of its own, for a test where the record meets no other
-     * capacity: one that dispatches or fences on generations passes the coordinator's registry.
+     * capacity. Generations are unique in the process, so a record admitted here never passes a
+     * fence of another registry: a test that dispatches or fences passes that registry instead.
      */
     public static ExecutionRecord record(String executionId, InvocationTask task) {
         return record(executionId, task, TimeSource.system());
     }
 
     public static ExecutionRecord record(String executionId, InvocationTask task, TimeSource timeSource) {
-        return record(executionId, task, timeSource, new FunctionCapacityRegistry());
+        return record(executionId, task, timeSource, ownCapacity(task));
     }
 
     public static ExecutionRecord record(String executionId, InvocationTask task, FunctionCapacityRegistry generations) {
@@ -234,19 +235,24 @@ public final class ExecutionFixtures {
 
     /**
      * Admits the execution as the factory does, under the function's active generation in
-     * {@code generations} (registered there first if it has none), and publishes the admission.
-     * The quotas are unbounded: a test about a limit goes through the factory.
+     * {@code generations}, and publishes the admission. Like the factory it refuses a function with
+     * no active generation there: it never registers one behind the test's back. The quotas are
+     * unbounded: a test about a limit goes through the factory.
      */
     static ExecutionInputResources admit(String executionId, InvocationTask task, FunctionCapacityRegistry generations) {
-        if (generations.activeGeneration(task.functionName()) == null) {
-            Integer concurrency = task.functionSpec() == null ? null : task.functionSpec().concurrency();
-            generations.register(task.functionName(), concurrency == null ? 1 : concurrency);
-        }
         InvocationCapacity.Admission admission = new InvocationCapacity(generations,
                 Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Integer.MAX_VALUE)
                 .reserve(task.functionName(), executionId, 1);
         admission.publish();
         return new ExecutionInputResources(admission);
+    }
+
+    /** A registry nothing else sees, with the task's function registered on it. */
+    static FunctionCapacityRegistry ownCapacity(InvocationTask task) {
+        FunctionCapacityRegistry own = new FunctionCapacityRegistry();
+        Integer concurrency = task.functionSpec() == null ? null : task.functionSpec().concurrency();
+        own.register(task.functionName(), concurrency == null ? 1 : concurrency);
+        return own;
     }
 
     /** Times the record out, as a queue-wait deadline does, without settling it. */

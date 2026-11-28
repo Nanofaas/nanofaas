@@ -119,7 +119,7 @@ class RetryBackoffIntegrationTest {
             f.server.enqueue(ok());
             var metrics = new Metrics(f.meters);
             var keys = ExecutionFixtures.keysOf(f.store);
-            var runtime = TestWaiterCapacity.runtime(f.store, keys, metrics, "fn");
+            var runtime = TestWaiterCapacity.runtime(f.store, keys, metrics, f.capacity, "fn");
             var coordinator = new ReactiveInvocationCoordinator(InvocationEnqueuer.noOp(), metrics,
                     null, null, f.handler, new InvocationResponseMapper(), runtime.waiters());
             var spec = f.task.functionSpec();
@@ -298,7 +298,7 @@ class RetryBackoffIntegrationTest {
                     server.url("/invoke").toString(), ExecutionMode.EXTERNAL, null, null, null);
             task = new InvocationTask("e1", "fn", spec, new InvocationRequest("in", null),
                     null, null, NOW, 1, InvocationKind.SYNC);
-            record = ExecutionFixtures.record("e1", task, new TimeSource(now::get, ticker::get));
+            record = ExecutionFixtures.record("e1", task, new TimeSource(now::get, ticker::get), capacity);
             store.put(record);
         }
 

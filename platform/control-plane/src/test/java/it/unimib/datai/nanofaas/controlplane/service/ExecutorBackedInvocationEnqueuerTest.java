@@ -47,7 +47,7 @@ class ExecutorBackedInvocationEnqueuerTest {
                 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         var task = new InvocationTask(id, "fn", spec, new InvocationRequest("in", null),
                 null, null, now, 2, InvocationKind.SYNC);
-        executions.put(ExecutionFixtures.record(id, task));
+        executions.put(ExecutionFixtures.record(id, task, capacity));
         return task;
     }
 
