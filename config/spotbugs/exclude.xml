@@ -62,6 +62,25 @@
         <Bug pattern="EI_EXPOSE_REP2"/>
     </Match>
 
+    <!-- The coordinator, the catalog and the capacity registry are shared beans, injected once the
+         test-only fallbacks are gone: a copy would detach the holder from the authority every other
+         bean reads (the capacity registry is the one authority for generations). -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.registry.FunctionService"/>
+        <Field name="managedDeploymentCoordinator"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator"/>
+        <Or>
+            <Field name="registry"/>
+            <Field name="generations"/>
+        </Or>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
     <!-- ExecutionStore stays non-final so tests can wrap it in doubles; the only calls that can throw
          from its constructor are the Micrometer gauge registrations on the injected registry. The
          finding predates the single constructor, which only changed its hash. -->

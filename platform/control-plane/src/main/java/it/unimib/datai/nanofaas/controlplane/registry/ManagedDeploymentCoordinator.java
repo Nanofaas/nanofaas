@@ -10,7 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import java.time.InstantSource;
 
 /**
  * Single persistence point for a managed deployment's replica target: it durably commits the new
@@ -68,54 +67,29 @@ public final class ManagedDeploymentCoordinator implements ManagedReplicaControl
     private final FunctionOperationLocks locks;
     private final FunctionCapacityRegistry generations;
     private final ReplicaStatusSnapshot snapshot;
-    private final boolean ownsSnapshot;
     private java.util.function.LongSupplier nanoTime=System::nanoTime;
     private final java.util.Map<String,ReplicaControlLease> replicaOwners=new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * The generations are the application's capacity registry, their one authority; the snapshot is
+     * the context's, which closes it.
+     */
     @Autowired
     public ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
                                         FunctionRegistry registry,
                                         FunctionOperationLocks locks,
                                         FunctionCapacityRegistry generations,
                                         ReplicaStatusSnapshot snapshot) {
-        this(deploymentProviderResolver, registry, locks, generations, snapshot, false);
-    }
-
-    public ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
-                                        FunctionRegistry registry,
-                                        FunctionOperationLocks locks,
-                                        ReplicaStatusSnapshot snapshot) {
-        this(deploymentProviderResolver, registry, locks, new FunctionCapacityRegistry(), snapshot, false);
-    }
-
-    /**
-     * Standalone wiring (tests, and the fallback in {@code FunctionService} when no coordinator bean
-     * exists): the coordinator creates the snapshot and therefore owns its executors.
-     */
-    public ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
-                                        FunctionRegistry registry,
-                                        FunctionOperationLocks locks) {
-        this(deploymentProviderResolver, registry, locks,
-                new FunctionCapacityRegistry(), ReplicaStatusSnapshot.withDefaults(InstantSource.system()), true);
-    }
-
-    private ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
-                                         FunctionRegistry registry,
-                                         FunctionOperationLocks locks,
-                                         FunctionCapacityRegistry generations,
-                                         ReplicaStatusSnapshot snapshot,
-                                         boolean ownsSnapshot) {
         this.deploymentProviderResolver = deploymentProviderResolver;
         this.registry = registry;
         this.locks = locks;
         this.generations = generations;
         this.snapshot = snapshot;
-        this.ownsSnapshot = ownsSnapshot;
     }
 
     public ManagedDeploymentCoordinator(DeploymentProviderResolver resolver,FunctionRegistry registry,FunctionOperationLocks locks,
             FunctionCapacityRegistry generations,ReplicaStatusSnapshot snapshot,java.util.function.LongSupplier nanoTime) {
-        this(resolver,registry,locks,generations,snapshot,false); this.nanoTime=java.util.Objects.requireNonNull(nanoTime);
+        this(resolver,registry,locks,generations,snapshot); this.nanoTime=java.util.Objects.requireNonNull(nanoTime);
     }
     private ReplicaControlLease ownerOf(String function) {
         var lease=replicaOwners.get(function);
@@ -394,12 +368,9 @@ public final class ManagedDeploymentCoordinator implements ManagedReplicaControl
         return deploymentProviderResolver.requireBackend(target.backendId());
     }
 
-    /** Closes the snapshot only when this coordinator created it; an injected bean is the context's. */
+    /** The snapshot is not closed here: it is the context's. */
     @Override
     public void close() {
         registry.applicationState().clearScaleApplications();
-        if (ownsSnapshot) {
-            snapshot.close();
-        }
     }
 }

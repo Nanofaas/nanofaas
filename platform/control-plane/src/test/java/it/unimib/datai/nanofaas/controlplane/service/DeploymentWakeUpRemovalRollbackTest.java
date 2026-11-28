@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.registry.RegistryFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -96,7 +97,7 @@ class DeploymentWakeUpRemovalRollbackTest {
                 generations.remove(functionName);
             }
         };
-        FunctionService service = new FunctionService(
+        FunctionService service = RegistryFixtures.functionService(
                 registry,
                 new FunctionDefaults(30_000, 4, 100, 3),
                 ImageValidator.noOp(),

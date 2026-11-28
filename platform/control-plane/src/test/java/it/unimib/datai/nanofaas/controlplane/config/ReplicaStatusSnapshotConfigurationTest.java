@@ -39,7 +39,7 @@ class ReplicaStatusSnapshotConfigurationTest {
         });
         context.register(ReplicaStatusSnapshotConfiguration.class);
         context.registerBean(ManagedDeploymentCoordinator.class, () -> new ManagedDeploymentCoordinator(
-                null, null, null, context.getBean(ReplicaStatusSnapshot.class)));
+                null, null, null, new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry(), context.getBean(ReplicaStatusSnapshot.class)));
         context.refresh();
         ReplicaStatusSnapshot snapshot = context.getBean(ReplicaStatusSnapshot.class);
         try (var callers = Executors.newSingleThreadExecutor()) {

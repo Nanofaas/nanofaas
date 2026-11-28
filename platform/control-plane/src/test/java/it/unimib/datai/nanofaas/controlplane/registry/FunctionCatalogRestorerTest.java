@@ -44,7 +44,7 @@ class FunctionCatalogRestorerTest {
         DeploymentProviderResolver resolver = mock(DeploymentProviderResolver.class);
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
 
         verifyNoInteractions(resolver);
@@ -74,7 +74,7 @@ class FunctionCatalogRestorerTest {
         when(provider.reconcile(any(), eq(1), anyMap())).thenReturn(reconciledResult("container-local"));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
 
         InOrder order = inOrder(provider, listener);
@@ -91,7 +91,7 @@ class FunctionCatalogRestorerTest {
         DeploymentProviderResolver resolver = mock(DeploymentProviderResolver.class);
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
 
         verify(listener).onRegister(argThat(spec -> spec.name().equals("external-fn")));
@@ -107,7 +107,7 @@ class FunctionCatalogRestorerTest {
         when(provider.reconcile(any(), eq(0), anyMap())).thenReturn(reconciledResult("container-local"));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
 
         InOrder order = inOrder(provider, registry, listener);
@@ -129,7 +129,7 @@ class FunctionCatalogRestorerTest {
                 new DeploymentProviderResolver(List.of(), new DeploymentProperties(null));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
 
         assertThat(registry.listRegistered()).isEmpty();
@@ -149,7 +149,7 @@ class FunctionCatalogRestorerTest {
                 .thenThrow(new IllegalStateException("reconcile failure"));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
 
         assertThat(registry.listRegistered()).isEmpty();
@@ -169,7 +169,7 @@ class FunctionCatalogRestorerTest {
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
         doThrow(new IllegalStateException("listener failure")).when(listener).onRegister(any());
 
-        FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver, List.of(listener));
+        FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate());
         DefaultApplicationArguments arguments = new DefaultApplicationArguments();
         assertThatThrownBy(() -> restorer.run(arguments))
                 .isInstanceOf(IllegalStateException.class)
@@ -186,7 +186,7 @@ class FunctionCatalogRestorerTest {
                 .thenReturn(new ProvisionResult("http://other/invoke", "k8s"));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
 
         assertThat(registry.listRegistered()).isEmpty();
@@ -208,7 +208,7 @@ class FunctionCatalogRestorerTest {
                         ExecutionMode.EXTERNAL, "degraded", Map.of()));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
 
         assertThat(registry.listRegistered()).isEmpty();
@@ -232,7 +232,7 @@ class FunctionCatalogRestorerTest {
 
         catalog.failSaves(true);
 
-        FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver, List.of(listener));
+        FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver, List.of(listener), RegistryFixtures.openGate());
         DefaultApplicationArguments arguments = new DefaultApplicationArguments();
         assertThatThrownBy(() -> restorer.run(arguments))
                 .isInstanceOf(IllegalStateException.class)

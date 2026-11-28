@@ -20,11 +20,4 @@ public final class FunctionRestoreGate {
     public void markReady() {
         ready.set(true);
     }
-
-    /** A gate that is already open, for contexts without an {@code ApplicationRunner} and for tests. */
-    public static FunctionRestoreGate open() {
-        FunctionRestoreGate gate = new FunctionRestoreGate();
-        gate.markReady();
-        return gate;
-    }
 }

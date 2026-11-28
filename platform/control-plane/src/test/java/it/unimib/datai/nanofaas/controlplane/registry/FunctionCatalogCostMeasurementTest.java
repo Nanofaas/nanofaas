@@ -46,7 +46,7 @@ class FunctionCatalogCostMeasurementTest {
             assertMeasurement(measure("desired-replicas", size, true, registry -> {
                 ManagedDeploymentProvider provider = mock(ManagedDeploymentProvider.class);
                 when(provider.backendId()).thenReturn("k8s");
-                ManagedDeploymentCoordinator coordinator = new ManagedDeploymentCoordinator(
+                ManagedDeploymentCoordinator coordinator = RegistryFixtures.coordinator(
                         new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)),
                         registry,
                         new FunctionOperationLocks());
@@ -65,7 +65,7 @@ class FunctionCatalogCostMeasurementTest {
         measure("warm-desired", 10, true, registry -> {
             ManagedDeploymentProvider provider = mock(ManagedDeploymentProvider.class);
             when(provider.backendId()).thenReturn("k8s");
-            ManagedDeploymentCoordinator coordinator = new ManagedDeploymentCoordinator(
+            ManagedDeploymentCoordinator coordinator = RegistryFixtures.coordinator(
                     new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)),
                     registry,
                     new FunctionOperationLocks());

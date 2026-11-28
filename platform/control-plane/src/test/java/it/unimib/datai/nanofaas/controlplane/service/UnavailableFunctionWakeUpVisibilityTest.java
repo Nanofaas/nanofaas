@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.registry.RegistryFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -57,7 +58,7 @@ class UnavailableFunctionWakeUpVisibilityTest {
         when(provider.isAvailable()).thenReturn(true);
         when(provider.supports(any())).thenReturn(true);
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn/invoke", "k8s"));
-        FunctionService service = new FunctionService(
+        FunctionService service = RegistryFixtures.functionService(
                 registry, new FunctionDefaults(1_000, 1, 10, 0), ImageValidator.noOp(), List.of(),
                 new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)));
         FunctionSpec function = function();

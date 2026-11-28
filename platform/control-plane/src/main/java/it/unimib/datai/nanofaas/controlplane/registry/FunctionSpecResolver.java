@@ -17,13 +17,9 @@ public class FunctionSpecResolver {
     private static final String QUEUE_DEPTH_METRIC = "queue_depth";
 
     private final FunctionDefaults defaults;
-    /** The execution store's max-lifetime, or null when nothing bounds an execution (direct construction). */
+    /** The execution store's max-lifetime, which bounds every execution. */
     private final Duration maxLifetime;
     private static final Set<String> SUPPORTED_INTERNAL_SCALING_METRICS = Set.of(QUEUE_DEPTH_METRIC, "in_flight", "rps");
-
-    public FunctionSpecResolver(FunctionDefaults defaults) {
-        this(defaults, null);
-    }
 
     public FunctionSpecResolver(FunctionDefaults defaults, Duration maxLifetime) {
         this.defaults = defaults;
@@ -64,9 +60,6 @@ public class FunctionSpecResolver {
      * near the limit can still lose its last attempt to them.
      */
     private void requireAttemptsFitTheExecutionLifetime(FunctionSpec spec) {
-        if (maxLifetime == null) {
-            return;
-        }
         long attempts = spec.maxRetries() + 1L;
         long budgetMs = attempts * spec.timeoutMs();
         if (budgetMs >= maxLifetime.toMillis()) {

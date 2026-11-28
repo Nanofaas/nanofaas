@@ -172,7 +172,7 @@ class FunctionServicePartialDeprovisionTest {
 
     private FunctionService service(ManagedDeploymentProvider provider,
                                     FunctionRegistrationListener... listeners) {
-        return new FunctionService(
+        return RegistryFixtures.functionService(
                 new FunctionRegistry(),
                 defaults,
                 ImageValidator.noOp(),

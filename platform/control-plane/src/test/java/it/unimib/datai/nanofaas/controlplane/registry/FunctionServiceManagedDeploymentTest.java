@@ -80,7 +80,7 @@ class FunctionServiceManagedDeploymentTest {
                      .withDefaults(java.time.InstantSource.system());
              var coordinator = new ManagedDeploymentCoordinator(resolver, registry, locks,
                      new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry(), snapshot)) {
-            FunctionService service = new FunctionService(registry, defaults, ImageValidator.noOp(), List.of(),
+            FunctionService service = RegistryFixtures.functionService(registry, defaults, ImageValidator.noOp(), List.of(),
                     resolver, locks, coordinator);
             service.register(deploymentSpec("fn", null));
 
@@ -148,7 +148,7 @@ class FunctionServiceManagedDeploymentTest {
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
         doThrow(new IllegalStateException("listener failure")).when(listener).onRegister(any());
 
-        FunctionService service = new FunctionService(
+        FunctionService service = RegistryFixtures.functionService(
                 new FunctionRegistry(),
                 defaults,
                 ImageValidator.noOp(),
@@ -176,7 +176,7 @@ class FunctionServiceManagedDeploymentTest {
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080/invoke", "k8s", deploymentObjects));
         when(provider.reconcile(any(), eq(5), eq(deploymentObjects)))
                 .thenReturn(new ProvisionResult("http://fn-svc:8080/invoke", "k8s", deploymentObjects));
-        FunctionService service = new FunctionService(
+        FunctionService service = RegistryFixtures.functionService(
                 registry,
                 defaults,
                 ImageValidator.noOp(),
@@ -230,7 +230,7 @@ class FunctionServiceManagedDeploymentTest {
     }
 
     private FunctionService serviceWithProviders(ManagedDeploymentProvider... providers) {
-        return new FunctionService(
+        return RegistryFixtures.functionService(
                 new FunctionRegistry(),
                 defaults,
                 ImageValidator.noOp(),

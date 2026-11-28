@@ -42,12 +42,6 @@ final class FunctionCatalogRestorer implements ApplicationRunner {
         this.gate = gate;
     }
 
-    FunctionCatalogRestorer(FunctionRegistry registry,
-                            DeploymentProviderResolver resolver,
-                            List<FunctionRegistrationListener> listeners) {
-        this(registry, resolver, listeners, FunctionRestoreGate.open());
-    }
-
     @Override
     public void run(ApplicationArguments arguments) {
         FunctionApplicationState applicationState = registry.applicationState();
