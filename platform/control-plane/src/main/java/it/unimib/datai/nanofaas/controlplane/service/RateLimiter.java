@@ -56,8 +56,8 @@ public class RateLimiter {
     }
 
     /**
-     * Package-private for tests: allows a controllable time reference so window-boundary
-     * behaviour can be verified without sleeping on the real clock.
+     * The limiter on the given clock (epoch seconds): the same admission logic, whatever the
+     * clock, so a window boundary is a clock value rather than a wait for the real second.
      */
     RateLimiter(LongSupplier epochSecondSource) {
         this.epochSecondSource = epochSecondSource;

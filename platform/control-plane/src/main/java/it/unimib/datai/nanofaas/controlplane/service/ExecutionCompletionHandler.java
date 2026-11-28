@@ -92,7 +92,8 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
     }
 
     /**
-     * Overload for backward compatibility (e.g., callback completions without cold start info).
+     * A completion that carries only the result, as the runtime callback does: no cold-start
+     * information, so it counts as a warm answer.
      */
     public void completeExecution(String executionId, InvocationResult result) {
         completeExecution(executionId, DispatchResult.warm(result));
