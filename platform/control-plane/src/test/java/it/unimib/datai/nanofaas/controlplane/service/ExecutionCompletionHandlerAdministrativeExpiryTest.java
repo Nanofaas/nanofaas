@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -43,10 +44,10 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
     void aRecordThatNeverDispatchesExpiresWithoutReleasingAnySlot() {
         ExecutionStore store = shortLivedStore();
         CountingEnqueuer enqueuer = new CountingEnqueuer();
-        new ExecutionCompletionHandler(store, enqueuer, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
+        ServiceFixtures.completionHandler(store, enqueuer, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
         // Never dispatched: task expired while still sitting in a queue, or served
         // by offload - both never call dispatch(), so no slot was ever acquired.
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-queued", task("exec-queued", "fn"));
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-queued", task("exec-queued", "fn"));
         store.put(executionRecord);
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
@@ -58,7 +59,6 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         // record never dispatched, so no capacity lease was ever attached and the release
         // path has nothing to take. The former name-based counter cannot move for this
         // fixture, so the assertions below (and the ones above) carry the behaviour.
-        assertThat(executionRecord.holdsDispatchLease()).isFalse();
         InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo(ExecutionCompletionHandler.EXECUTION_EXPIRED_CODE);
@@ -70,13 +70,13 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         ExecutionStore store = shortLivedStore();
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-stuck", "fn");
         // A dispatch that never calls back - the crashed-runtime / dropped-response case.
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
         when(dispatcherRouter.dispatchExternal(any(InvocationTask.class))).thenReturn(neverCompletes);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
 
         handler.dispatch(ownership.acquire(task));
@@ -103,12 +103,12 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         ExecutionStore store = shortLivedStore();
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-timeout-then-expired", "fn");
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
         when(dispatcherRouter.dispatchExternal(any(InvocationTask.class))).thenReturn(neverCompletes);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
         handler.dispatch(ownership.acquire(task));
 
@@ -116,7 +116,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         // TIMEOUT while the dispatch (and its slot) is still in flight. The administrative
         // expiry must still conclude the shared future and give the slot back, but never
         // overwrite the already-recorded terminal state.
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
         assertThat(store.getOrNull("exec-timeout-then-expired")).isNotNull();
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
@@ -133,20 +133,20 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
     @Test
     void administrativeExpiryWinsOverDuplicateLateRetryRefusal() throws Exception {
         var ticker = new java.util.concurrent.atomic.AtomicLong();
-        var store = new ExecutionStore(ExecutionStoreProperties.of(Duration.ofMinutes(5),
+        var store = ExecutionFixtures.store(ExecutionFixtures.properties(Duration.ofMinutes(5),
                 SHORT_MAX_LIFETIME, Duration.ofSeconds(30), 100), ticker::get);
         var refusal = new java.util.concurrent.atomic.AtomicReference<Runnable>();
-        var handler = new ExecutionCompletionHandler(store, (next, due, rejected) -> {
+        var handler = ServiceFixtures.completionHandler(store, (next, due, rejected) -> {
             refusal.set(rejected);
             return true;
         }, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
         var task = task("expiry-retry", "fn");
-        var record = new ExecutionRecord(task.executionId(), task);
+        var record = ExecutionFixtures.record(task.executionId(), task);
         store.put(record);
         handler.completeExecution(task.executionId(), new DispatchResult(
                 InvocationResult.error("ORIGINAL", "busy"), false, null, Instant.MAX), 1);
         ticker.set(Duration.ofSeconds(1).toNanos());
-        store.inFlightCount();
+        ExecutionFixtures.inFlight(store);
         var expired = record.completion().get(5, java.util.concurrent.TimeUnit.SECONDS);
         refusal.get().run();
         refusal.get().run();
@@ -155,8 +155,8 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
     }
 
     private static ExecutionStore shortLivedStore() {
-        return new ExecutionStore(
-                ExecutionStoreProperties.of(Duration.ofMinutes(5), SHORT_MAX_LIFETIME, Duration.ofSeconds(30), 100_000),
+        return ExecutionFixtures.store(
+                ExecutionFixtures.properties(Duration.ofMinutes(5), SHORT_MAX_LIFETIME, Duration.ofSeconds(30), 100_000),
                 new SimpleMeterRegistry());
     }
 

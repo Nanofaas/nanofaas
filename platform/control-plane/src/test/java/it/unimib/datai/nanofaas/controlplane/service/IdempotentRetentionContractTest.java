@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -52,16 +53,16 @@ class IdempotentRetentionContractTest {
     @BeforeEach
     void setUp() {
         clock.set(0);
-        rebuild(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL), 100_000);
+        rebuild(ExecutionFixtures.properties(TTL, MAX_LIFETIME, SYNC_TTL), 100_000);
     }
 
     private void rebuild(ExecutionStoreProperties props, long maxKeys) {
         ExecutionStoreProperties keyProps = new ExecutionStoreProperties(
                 props.ttl(), props.maxLifetime(), props.syncTtl(), props.maxOutcomes(), maxKeys,
                 props.maxOutcomeBytes());
-        this.executions = new ExecutionStore(props, ticker);
-        this.keys = new IdempotencyStore(keyProps, ticker);
-        this.factory = new InvocationExecutionFactory(executions, keys, new Metrics(new SimpleMeterRegistry()));
+        this.keys = ExecutionFixtures.keys(keyProps, ticker);
+        this.executions = ExecutionFixtures.store(props, ticker, keys);
+        this.factory = ServiceFixtures.factory(executions, keys, new Metrics(new SimpleMeterRegistry()), "fn");
     }
 
     private void advance(Duration duration) {
@@ -95,9 +96,10 @@ class IdempotentRetentionContractTest {
         InvocationExecutionFactory.ExecutionLookup replay =
                 factory.createOrReuseExecution("fn", spec(), request(), "k", "trace-2", InvocationKind.SYNC);
         assertThat(replay.isNew()).isFalse();
-        assertThat(replay.gone()).isFalse();
-        assertThat(replay.settledExecutionId()).isEqualTo(executionId);
-        assertThat(replay.settledOutcome().output()).isEqualTo("done");
+        assertThat(replay).isInstanceOfSatisfying(InvocationExecutionFactory.ExecutionLookup.Settled.class, settled -> {
+            assertThat(settled.executionId()).isEqualTo(executionId);
+            assertThat(settled.outcome().output()).isEqualTo("done");
+        });
 
         // t=34m+1s: after the documented expiry, the same key starts a new execution.
         advance(Duration.ofMinutes(3).plusSeconds(1));
@@ -126,9 +128,10 @@ class IdempotentRetentionContractTest {
         InvocationExecutionFactory.ExecutionLookup replay =
                 factory.createOrReuseExecution("fn", spec(), request(), "k", "trace-2", InvocationKind.SYNC);
         assertThat(replay.isNew()).isFalse();
-        assertThat(replay.gone()).isFalse();
-        assertThat(replay.settledExecutionId()).isEqualTo(executionId);
-        assertThat(replay.settledOutcome().output()).isEqualTo("done");
+        assertThat(replay).isInstanceOfSatisfying(InvocationExecutionFactory.ExecutionLookup.Settled.class, settled -> {
+            assertThat(settled.executionId()).isEqualTo(executionId);
+            assertThat(settled.outcome().output()).isEqualTo("done");
+        });
     }
 
     @Test
@@ -147,14 +150,13 @@ class IdempotentRetentionContractTest {
         first.executionRecord().markSuccess("gone-soon");
         executions.settle(first.executionRecord());
 
-        assertThat(executions.size()).isZero();
+        assertThat(ExecutionFixtures.outcomesHeld(executions)).isZero();
         assertThat(executions.outcomeOf(firstId)).isNull();
 
         InvocationExecutionFactory.ExecutionLookup replay =
                 factory.createOrReuseExecution("fn", spec(), request(), "k1", "trace-3", InvocationKind.SYNC);
         assertThat(replay.isNew()).isFalse();
-        assertThat(replay.gone()).isTrue();
-        assertThat(replay.settledExecutionId()).isEqualTo(firstId);
+        assertThat(replay).isEqualTo(new InvocationExecutionFactory.ExecutionLookup.Gone(firstId));
     }
 
     @Test
@@ -174,7 +176,7 @@ class IdempotentRetentionContractTest {
         executions.settle(first.executionRecord());
         first.publishAdmission();
 
-        assertThat(executions.size()).isZero();
+        assertThat(ExecutionFixtures.outcomesHeld(executions)).isZero();
         assertThat(executions.outcomeOf(firstId)).isNull();
 
         InvocationExecutionFactory.ExecutionLookup replay =
@@ -182,8 +184,7 @@ class IdempotentRetentionContractTest {
         assertThat(replay.isNew())
                 .as("a replay past capacity eviction must never re-invoke the function")
                 .isFalse();
-        assertThat(replay.gone()).isTrue();
-        assertThat(replay.settledExecutionId()).isEqualTo(firstId);
+        assertThat(replay).isEqualTo(new InvocationExecutionFactory.ExecutionLookup.Gone(firstId));
     }
 
     @Test
@@ -215,7 +216,7 @@ class IdempotentRetentionContractTest {
 
     @Test
     void anExhaustedKeyBudgetRejectsNewKeyedAdmissionsBeforeDispatchAndKeepsReplaysServiceable() {
-        rebuild(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL), 1);
+        rebuild(ExecutionFixtures.properties(TTL, MAX_LIFETIME, SYNC_TTL), 1);
 
         InvocationExecutionFactory.ExecutionLookup first =
                 factory.createOrReuseExecution("fn", spec(), request(), "k1", "trace-1", InvocationKind.SYNC);
@@ -254,8 +255,10 @@ class IdempotentRetentionContractTest {
             for (Future<InvocationExecutionFactory.ExecutionLookup> future : futures) {
                 InvocationExecutionFactory.ExecutionLookup replay = future.get(5, TimeUnit.SECONDS);
                 assertThat(replay.isNew()).isFalse();
-                assertThat(replay.settledExecutionId()).isEqualTo(executionId);
-                assertThat(replay.settledOutcome().output()).isEqualTo("done");
+                assertThat(replay).isInstanceOfSatisfying(InvocationExecutionFactory.ExecutionLookup.Settled.class, settled -> {
+                    assertThat(settled.executionId()).isEqualTo(executionId);
+                    assertThat(settled.outcome().output()).isEqualTo("done");
+                });
             }
         } finally {
             pool.shutdownNow();

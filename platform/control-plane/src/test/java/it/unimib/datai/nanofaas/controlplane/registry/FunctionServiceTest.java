@@ -51,7 +51,7 @@ class FunctionServiceTest {
         provider = provider();
         listener = mock(FunctionRegistrationListener.class);
         imageValidator = mock(ImageValidator.class);
-        service = new FunctionService(registry, defaults, imageValidator, List.of(listener), resolver(provider));
+        service = RegistryFixtures.functionService(registry, defaults, imageValidator, List.of(listener), resolver(provider));
     }
 
     @Test
@@ -141,7 +141,7 @@ class FunctionServiceTest {
     void register_multiListenerFailure_compensatesPreviouslyNotifiedListeners() {
         FunctionRegistrationListener firstListener = mock(FunctionRegistrationListener.class);
         FunctionRegistrationListener secondListener = mock(FunctionRegistrationListener.class);
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 registry,
                 defaults,
                 imageValidator,
@@ -236,7 +236,7 @@ class FunctionServiceTest {
     void remove_multiListenerFailure_compensatesPreviouslyNotifiedListeners() {
         FunctionRegistrationListener firstListener = mock(FunctionRegistrationListener.class);
         FunctionRegistrationListener secondListener = mock(FunctionRegistrationListener.class);
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 registry,
                 defaults,
                 imageValidator,
@@ -314,7 +314,7 @@ class FunctionServiceTest {
         ManagedDeploymentProvider managedProvider = provider();
         when(managedProvider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
         ManagedDeploymentCoordinator coordinator = mock(ManagedDeploymentCoordinator.class);
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 registry,
                 defaults,
                 imageValidator,
@@ -445,7 +445,7 @@ class FunctionServiceTest {
     void registrationCommitsDurablyOnlyAfterProvisionAndListeners() {
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
         FunctionRegistry spiedRegistry = spy(registry);
-        FunctionService ordered = new FunctionService(
+        FunctionService ordered = RegistryFixtures.functionService(
                 spiedRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
 
         ordered.register(new FunctionSpec("fn", "img:latest", null, null, null,
@@ -463,7 +463,7 @@ class FunctionServiceTest {
         catalog.failSaves(true);
         FunctionRegistry realRegistry = new FunctionRegistry(catalog);
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 realRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
 
         FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
@@ -484,7 +484,7 @@ class FunctionServiceTest {
         ControllableCatalog catalog = new ControllableCatalog(tempDir.resolve("functions.json"));
         FunctionRegistry realRegistry = new FunctionRegistry(catalog);
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 realRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
         localService.register(new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
@@ -508,7 +508,7 @@ class FunctionServiceTest {
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s", deploymentObjects));
         when(provider.reconcile(any(), eq(1), eq(deploymentObjects)))
                 .thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s", deploymentObjects));
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 realRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
         localService.register(new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
@@ -532,7 +532,7 @@ class FunctionServiceTest {
         ControllableCatalog catalog = new ControllableCatalog(tempDir.resolve("functions.json"));
         FunctionRegistry realRegistry = new FunctionRegistry(catalog);
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 realRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
 
         catalog.failSaves(true);

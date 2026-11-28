@@ -72,8 +72,7 @@ final class ExecutorBackedInvocationEnqueuer implements RetryScheduler, Function
         if (record == null) return false;
         synchronized (record) {
             return !record.isTerminal() && record.task().attempt() == task.attempt()
-                    // Legacy test records have no captured admission generation.
-                    && (record.currentGeneration() == null || generation.equals(record.currentGeneration()));
+                    && generation.equals(record.currentGeneration());
         }
     }
 

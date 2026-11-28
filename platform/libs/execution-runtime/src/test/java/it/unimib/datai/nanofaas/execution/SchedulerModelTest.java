@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.execution;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
@@ -109,7 +110,7 @@ class SchedulerModelTest {
     private final StringBuilder opLog = new StringBuilder();
 
     private final FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
-    private final ExecutionStore executions = new ExecutionStore();
+    private final ExecutionStore executions = ExecutionFixtures.store();
     private final PendingWorkStore store = new PendingWorkStore(100_000);
     private final AtomicReference<SchedulerEngine> engineRef = new AtomicReference<>();
 
@@ -148,7 +149,7 @@ class SchedulerModelTest {
                 new SchedulingTicket(new TicketId(task.executionId(), task.attempt()),
                         generations.get(task.functionName()), sequenceCursor++, clock.instant(),
                         clock.instant(), null), task));
-        AttemptCoordinator coordinator = new AttemptCoordinator(executions, capacity, retry,
+        AttemptCoordinator coordinator = AttemptFixtures.coordinator(executions, capacity, retry,
                 transport, mock(AttemptObserver.class));
 
         EngineDispatch dispatch = mock(EngineDispatch.class);
@@ -248,7 +249,7 @@ class SchedulerModelTest {
         log("enqueue(" + id + ", fn=" + function + ", notBefore=+" + (notBefore.getEpochSecond()
                 - now.getEpochSecond()) + "s, deadline=" + deadline + ") -> " + admitted);
         if (admitted) {
-            executions.put(new ExecutionRecord(id, task));
+            executions.put(ExecutionFixtures.record(id, task));
             liveByFunction.put(id, function);
             liveIdsOrder.addLast(id);
             attemptById.put(id, 1);

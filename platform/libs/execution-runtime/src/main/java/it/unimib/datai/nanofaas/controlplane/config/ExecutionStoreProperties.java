@@ -51,19 +51,6 @@ public record ExecutionStoreProperties(
     /** A compact outcome's weight, the constant the default byte budget is derived from. */
     public static final long COMPACT_OUTCOME_BYTES = 116;
 
-    /**
-     * A factory, not a constructor: with two constructors Spring stops binding the
-     * record by constructor and looks for a no-argument one, which a record does not have.
-     */
-    public static ExecutionStoreProperties of(Duration ttl, Duration maxLifetime, Duration syncTtl) {
-        return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, DEFAULT_MAX_OUTCOMES, DEFAULT_MAX_KEYS, 0);
-    }
-
-    /** A factory, not a constructor: for tests that build the store with the outcome cap alone. */
-    public static ExecutionStoreProperties of(Duration ttl, Duration maxLifetime, Duration syncTtl, long maxOutcomes) {
-        return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, maxOutcomes, DEFAULT_MAX_KEYS, 0);
-    }
-
     public ExecutionStoreProperties {
         if (ttl == null || ttl.isNegative() || ttl.isZero()) {
             ttl = Duration.ofMinutes(5);

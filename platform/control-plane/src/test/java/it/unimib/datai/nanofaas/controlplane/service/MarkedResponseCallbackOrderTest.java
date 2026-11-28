@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.dispatch.*;
@@ -28,14 +29,14 @@ class MarkedResponseCallbackOrderTest {
                             .addHeader("Content-Type","text/plain").addHeader("X-NanoFaaS-Function-Status","true");
                 }
             });server.start();
-            var store=new ExecutionStore();var metrics=new Metrics(new SimpleMeterRegistry());
-            var runtime=TestWaiterCapacity.runtime(store,new IdempotencyStore(),metrics,"fn");
+            var store=ExecutionFixtures.store();var metrics=new Metrics(new SimpleMeterRegistry());
+            var runtime=TestWaiterCapacity.runtime(store,ExecutionFixtures.keysOf(store),metrics,"fn");
             var external=new ExternalDispatcher(WebClient.create()) {
                 @Override public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
                     return super.dispatch(task).whenComplete((result,error)->httpFinished.countDown());
                 }
             };
-            var handler=new ExecutionCompletionHandler(store,null,new DispatcherRouter(new LocalDispatcher(),external),metrics);
+            var handler=ServiceFixtures.completionHandler(store,null,new DispatcherRouter(new LocalDispatcher(),external),metrics);
             var coordinator=new ReactiveInvocationCoordinator(null,metrics,null,null,handler,new InvocationResponseMapper(),runtime.waiters());
             var spec=new FunctionSpec("fn","img",List.of(),Map.of(),null,5000,1,10,0,server.url("/invoke").toString(),ExecutionMode.EXTERNAL,null,null,null);
             var request=new InvocationRequest("p",Map.of());
@@ -56,7 +57,7 @@ class MarkedResponseCallbackOrderTest {
                 assertThat(replay.response().output()).isEqualTo("hello");
                 assertThat(replay.response().statusCode()).isEqualTo(answer.statusCode());
                 // The shared answer is published before the terminal record is removed.
-                await().atMost(2,TimeUnit.SECONDS).untilAsserted(() -> assertThat(store.inFlightCount()).isZero());
+                await().atMost(2,TimeUnit.SECONDS).untilAsserted(() -> assertThat(ExecutionFixtures.inFlight(store)).isZero());
             } finally { releaseResponse.countDown();waiting.cancel(true); }
         }
     }

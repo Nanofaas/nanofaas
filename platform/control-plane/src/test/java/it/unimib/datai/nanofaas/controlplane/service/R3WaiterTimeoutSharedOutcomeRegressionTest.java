@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -58,13 +59,13 @@ class R3WaiterTimeoutSharedOutcomeRegressionTest {
 
     @Test
     void shortWaiterTimeoutDoesNotTurnTheSharedSuccessIntoATimeoutForReplays() throws Exception {
-        ExecutionStore store = new ExecutionStore();
-        IdempotencyStore keys = new IdempotencyStore();
+        IdempotencyStore keys = ExecutionFixtures.keys();
+        ExecutionStore store = ExecutionFixtures.store(keys);
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
         InvocationExecutionFactory factory = runtime.factory();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, null,
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
                     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {

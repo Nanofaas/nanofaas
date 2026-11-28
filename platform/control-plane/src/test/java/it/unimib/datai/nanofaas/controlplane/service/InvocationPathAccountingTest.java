@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.search.MeterNotFoundException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -56,14 +57,14 @@ class InvocationPathAccountingTest {
     void setUp() {
         registry = new SimpleMeterRegistry();
         metrics = new Metrics(registry);
-        ExecutionStore executionStore = new ExecutionStore();
+        ExecutionStore executionStore = ExecutionFixtures.store();
         when(enqueuer.supportsAsync()).thenReturn(true);
         org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(syncQueueGateway.enabled()).thenReturn(false);
         invocationService = TestWaiterCapacity.service(
-                functionService, enqueuer, executionStore, new IdempotencyStore(),
+                functionService, enqueuer, executionStore, ExecutionFixtures.keysOf(executionStore),
                 metrics, syncQueueGateway,
-                new ExecutionCompletionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
+                ServiceFixtures.completionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
                 "full-fn", "keyed-fn", "mixed-fn");
     }
 

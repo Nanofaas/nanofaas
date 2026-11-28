@@ -133,7 +133,7 @@ class FunctionCatalogMutationContractTest {
         ManagedDeploymentCoordinator coordinator = new ManagedDeploymentCoordinator(
                 new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)),
                 registry,
-                new FunctionOperationLocks(),
+                new FunctionOperationLocks(), new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry(),
                 observations);
 
         assertThatThrownBy(() -> coordinator.setReplicas(new ManagedDeploymentTarget("fn", "k8s"), 3))
@@ -216,7 +216,7 @@ class FunctionCatalogMutationContractTest {
 
     private static ManagedDeploymentCoordinator coordinator(FunctionRegistry registry,
                                                              ManagedDeploymentProvider provider) {
-        return new ManagedDeploymentCoordinator(
+        return RegistryFixtures.coordinator(
                 new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)),
                 registry,
                 new FunctionOperationLocks());
@@ -225,7 +225,7 @@ class FunctionCatalogMutationContractTest {
     private static FunctionService service(FunctionRegistry registry,
                                            ManagedDeploymentProvider provider,
                                            List<FunctionRegistrationListener> listeners) {
-        return new FunctionService(
+        return RegistryFixtures.functionService(
                 registry,
                 new FunctionDefaults(1_000, 1, 1, 0),
                 ImageValidator.noOp(),

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -37,7 +38,7 @@ import static org.mockito.Mockito.never;
 /**
  * Regression coverage for A1: {@code invokeAsync} must handle a settled/archived
  * outcome the same way {@link ReactiveInvocationCoordinator#invoke} already does
- * for the sync path - by consulting {@code lookup.settledOutcome()} before ever
+ * for the sync path - by consulting the {@code ExecutionLookup.Settled} variant before ever
  * touching {@code lookup.executionRecord()}, which the factory returns as
  * {@code null} once the key points at an archived execution.
  *
@@ -78,11 +79,11 @@ class InvocationServiceAsyncReplayTest {
 
     @BeforeEach
     void setUp() {
-        executionStore = new ExecutionStore();
-        idempotencyStore = new IdempotencyStore();
+        idempotencyStore = ExecutionFixtures.keys();
+        executionStore = ExecutionFixtures.store(idempotencyStore);
         metrics = spy(new Metrics(new SimpleMeterRegistry()));
 
-        ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler completionHandler = ServiceFixtures.completionHandler(
                 executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
@@ -124,7 +125,7 @@ class InvocationServiceAsyncReplayTest {
     private ExecutionRecord queueAndSettleSuccess(String idempotencyKey, Object output) {
         InvocationResponse queued = invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), idempotencyKey, null);
-        ExecutionRecord executionRecord = executionStore.get(queued.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(queued.executionId())).orElseThrow();
         executionRecord.markSuccess(output, 200, null, null);
         executionStore.settle(executionRecord);
         return executionRecord;
@@ -133,7 +134,7 @@ class InvocationServiceAsyncReplayTest {
     private ExecutionRecord queueAndSettleError(String idempotencyKey, ErrorInfo error) {
         InvocationResponse queued = invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), idempotencyKey, null);
-        ExecutionRecord executionRecord = executionStore.get(queued.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(queued.executionId())).orElseThrow();
         executionRecord.markError(error);
         executionStore.settle(executionRecord);
         return executionRecord;
@@ -142,8 +143,8 @@ class InvocationServiceAsyncReplayTest {
     private ExecutionRecord queueAndSettleTimeout(String idempotencyKey) {
         InvocationResponse queued = invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), idempotencyKey, null);
-        ExecutionRecord executionRecord = executionStore.get(queued.executionId()).orElseThrow();
-        executionRecord.markTimeout();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(queued.executionId())).orElseThrow();
+        ExecutionFixtures.timeOut(executionRecord);
         executionStore.settle(executionRecord);
         return executionRecord;
     }
@@ -212,7 +213,7 @@ class InvocationServiceAsyncReplayTest {
         // First arrival: claims the key and queues a live execution.
         InvocationResponse first = invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), "idem-race", null);
-        ExecutionRecord executionRecord = executionStore.get(first.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = java.util.Optional.ofNullable(executionStore.getOrNull(first.executionId())).orElseThrow();
 
         // A second arrival while the record is still live (not yet settled) must
         // find the same live record and must not enqueue again.
@@ -245,19 +246,19 @@ class InvocationServiceAsyncReplayTest {
         // replay must NOT re-run the function.
         // A byte budget too small for any payload: the binding outlives the outcome, which
         // is the scenario. "One slot" made this depend on which entry Caffeine evicts.
-        executionStore = new ExecutionStore(
+        idempotencyStore = ExecutionFixtures.keys();
+        executionStore = ExecutionFixtures.store(
                 new ExecutionStoreProperties(Duration.ofMinutes(5), Duration.ofMinutes(30),
                         Duration.ofSeconds(30), 1, 100_000, 1),
-                new SimpleMeterRegistry());
-        idempotencyStore = new IdempotencyStore();
-        ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
+                new SimpleMeterRegistry(), com.github.benmanes.caffeine.cache.Ticker.systemTicker(), idempotencyStore);
+        ExecutionCompletionHandler completionHandler = ServiceFixtures.completionHandler(
                 executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
         invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, idempotencyStore, metrics, syncQueueGateway,
                 completionHandler, "testFunc");
 
         ExecutionRecord first = queueAndSettleSuccess("idem-gone", "first");
-        assertThat(executionStore.size()).isZero();
+        assertThat(ExecutionFixtures.outcomesHeld(executionStore)).isZero();
         assertThat(executionStore.outcomeOf(first.executionId())).isNull();
 
         var request = new InvocationRequest("payload", null);

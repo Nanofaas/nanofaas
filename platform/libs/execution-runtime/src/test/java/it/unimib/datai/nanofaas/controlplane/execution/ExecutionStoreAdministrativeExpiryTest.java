@@ -36,10 +36,8 @@ class ExecutionStoreAdministrativeExpiryTest {
     private final Ticker ticker = clock::get;
 
     private ExecutionStore store() {
-        ExecutionStoreProperties props = ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL);
-        ExecutionStore store = new ExecutionStore(props, ticker);
-        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
-        new ExecutionLifecycle(store, new IdempotencyStore(props, ticker));
+        ExecutionStoreProperties props = ExecutionFixtures.properties(TTL, MAX_LIFETIME, SYNC_TTL);
+        ExecutionStore store = ExecutionFixtures.store(props, ticker);
         return store;
     }
 
@@ -56,7 +54,7 @@ class ExecutionStoreAdministrativeExpiryTest {
         store.put(execution);
 
         advance(MAX_LIFETIME.plusSeconds(1));
-        store.cleanUp();
+        ExecutionFixtures.fire(store);
 
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> assertThat(notified).hasSize(1));
@@ -75,7 +73,7 @@ class ExecutionStoreAdministrativeExpiryTest {
 
         store.settle(execution);
         advance(MAX_LIFETIME.multipliedBy(2));
-        store.cleanUp();
+        ExecutionFixtures.fire(store);
 
         // Give the (async) listener executor a fair chance to run, then assert it never did:
         // an EXPLICIT removal (settle's own invalidate) must never be mistaken for an expiry.
@@ -93,7 +91,7 @@ class ExecutionStoreAdministrativeExpiryTest {
 
         store.remove("removed");
         advance(MAX_LIFETIME.multipliedBy(2));
-        store.cleanUp();
+        ExecutionFixtures.fire(store);
 
         await().pollDelay(Duration.ofMillis(200)).atMost(Duration.ofSeconds(3))
                 .untilAsserted(() -> assertThat(notified).isEmpty());
@@ -106,8 +104,8 @@ class ExecutionStoreAdministrativeExpiryTest {
      */
     @Test
     void expiryFiresOnItsOwnWithoutAnyFurtherCacheActivity() {
-        ExecutionStore store = new ExecutionStore(
-                ExecutionStoreProperties.of(TTL, Duration.ofMillis(80), SYNC_TTL, 100_000),
+        ExecutionStore store = ExecutionFixtures.store(
+                ExecutionFixtures.properties(TTL, Duration.ofMillis(80), SYNC_TTL, 100_000),
                 new SimpleMeterRegistry());
         ConcurrentLinkedQueue<ExecutionRecord> notified = new ConcurrentLinkedQueue<>();
         store.onAdministrativeExpiry(notified::add);
@@ -123,6 +121,6 @@ class ExecutionStoreAdministrativeExpiryTest {
         InvocationTask task = new InvocationTask(id, "fn", spec,
                 new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
                 InvocationKind.SYNC);
-        return new ExecutionRecord(id, task);
+        return ExecutionFixtures.record(id, task);
     }
 }

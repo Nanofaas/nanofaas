@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.PhysicalInput;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
@@ -76,14 +77,17 @@ public final class ReactiveInvocationCoordinator {
     private WaiterCapacity.Waiter reserveWaiter(
             InvocationExecutionFactory.ExecutionLookup lookup, FunctionSpec spec) {
         try {
-            ExecutionRecord executionRecord = lookup.executionRecord();
-            if (executionRecord != null) {
-                if (executionRecord.currentGeneration() != null) {
-                    return waiterCapacity.reserve(executionRecord.currentGeneration(), executionRecord.executionId());
+            return switch (lookup) {
+                case InvocationExecutionFactory.ExecutionLookup.Settled settled ->
+                        waiterCapacity.reserve(spec.name(), settled.executionId());
+                case InvocationExecutionFactory.ExecutionLookup.Gone(String executionId) ->
+                        waiterCapacity.reserve(spec.name(), executionId);
+                case InvocationExecutionFactory.ExecutionLookup.Live _,
+                     InvocationExecutionFactory.ExecutionLookup.Fresh _ -> {
+                    ExecutionRecord executionRecord = lookup.executionRecord();
+                    yield waiterCapacity.reserve(executionRecord.currentGeneration(), executionRecord.executionId());
                 }
-                return waiterCapacity.reserve(spec.name(), executionRecord.executionId());
-            }
-            return waiterCapacity.reserve(spec.name(), lookup.settledExecutionId());
+            };
         } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             if (lookup.isNew()) {
                 lookup.abandonAdmission();
@@ -97,19 +101,23 @@ public final class ReactiveInvocationCoordinator {
             FunctionSpec spec,
             Integer timeoutOverrideMs,
             OffloadContext offloadContext) {
-        // The key found an execution that is already over: the mutable record is gone,
-        // but the outcome the replay needs is not. Retaining it is why
-        // ExecutionRecord.toOutcome() keeps the payload for keyed executions.
-        Outcome settled = lookup.settledOutcome();
-        if (settled != null) {
-            return Mono.just(new SyncInvocation(responseMapper.terminalResponse(lookup.settledExecutionId(),settled),null,settled.executionNode()));
-        }
-
-        // The execution concluded but its outcome payload was evicted: the replay does
-        // not re-run the function, it returns 410 Gone. This must be checked before
-        // dereferencing executionRecord, which the factory leaves null on this branch.
-        if (lookup.gone()) {
-            return Mono.error(new OutcomeGoneException(lookup.settledExecutionId()));
+        switch (lookup) {
+            // The key found an execution that is already over: the mutable record is gone, but
+            // the outcome the replay needs is not. Retaining it is why ExecutionRecord.toOutcome()
+            // keeps the payload for keyed executions.
+            case InvocationExecutionFactory.ExecutionLookup.Settled(String executionId, Outcome outcome) -> {
+                return Mono.just(new SyncInvocation(responseMapper.terminalResponse(executionId, outcome),
+                        null, outcome.executionNode()));
+            }
+            // Concluded, but the outcome payload was evicted: the replay does not re-run the
+            // function, it returns 410 Gone.
+            case InvocationExecutionFactory.ExecutionLookup.Gone(String executionId) -> {
+                return Mono.error(new OutcomeGoneException(executionId));
+            }
+            case InvocationExecutionFactory.ExecutionLookup.Live _,
+                 InvocationExecutionFactory.ExecutionLookup.Fresh _ -> {
+                // Still running, or new: served from the live record below.
+            }
         }
 
         ExecutionRecord executionRecord = lookup.executionRecord();
@@ -261,7 +269,7 @@ public final class ReactiveInvocationCoordinator {
         offloadedTarget.set(target);
         // Bypasses the local queue entirely: no local concurrency slots are consumed,
         // so completion goes through the offload-specific path (no slot release, no retry).
-        ExecutionRecord.PhysicalInput physicalInput;
+        PhysicalInput physicalInput;
         synchronized (executionRecord) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (executionRecord.isTerminal()) return;
             // Not try-with-resources (java:S2095): the remote call owns the input until its

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.config;
 
+import it.unimib.datai.nanofaas.controlplane.registry.RegistryFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.netty.buffer.ByteBufAllocatorMetric;
 import io.netty.buffer.UnpooledByteBufAllocator;
@@ -445,7 +446,7 @@ class DispatchConnectionPoolTest {
             replacement.start();
             ExternalDispatcher dispatcher = new ExternalDispatcher(new HttpClientConfig().webClient(
                     WebClient.builder(), properties, pool.provider()));
-            FunctionService functions = new FunctionService(
+            FunctionService functions = RegistryFixtures.functionService(
                     new FunctionRegistry(),
                     new FunctionDefaults(30_000, 1, 10, 0),
                     mock(ImageValidator.class),

@@ -258,7 +258,7 @@ class FunctionApplicationPendingRecoveryTest {
 
         FunctionRegistry failedRestartRegistry = new FunctionRegistry(catalog);
         FunctionRegistrationListener failedRestartListener = mock(FunctionRegistrationListener.class);
-        new FunctionCatalogRestorer(failedRestartRegistry, resolver(provider), List.of(failedRestartListener))
+        new FunctionCatalogRestorer(failedRestartRegistry, resolver(provider), List.of(failedRestartListener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
         FunctionService failedRestartService = service(failedRestartRegistry, provider, failedRestartListener);
 
@@ -269,7 +269,7 @@ class FunctionApplicationPendingRecoveryTest {
         FunctionRegistrationListener healthyRestartListener = mock(FunctionRegistrationListener.class);
         doReturn(new ProvisionResult("http://fn-restored/invoke", "k8s"))
                 .when(provider).reconcile(any(), anyInt(), anyMap());
-        new FunctionCatalogRestorer(healthyRestartRegistry, resolver(provider), List.of(healthyRestartListener))
+        new FunctionCatalogRestorer(healthyRestartRegistry, resolver(provider), List.of(healthyRestartListener), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
         FunctionService healthyRestartService = service(healthyRestartRegistry, provider, healthyRestartListener);
 
@@ -347,7 +347,7 @@ class FunctionApplicationPendingRecoveryTest {
             assertThat(releaseReconcile.await(5, TimeUnit.SECONDS)).isTrue();
             return new ProvisionResult("http://managed-restored/invoke", "k8s");
         }).when(provider).reconcile(any(), anyInt(), anyMap());
-        FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver(provider), List.of());
+        FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver(provider), List.of(), RegistryFixtures.openGate());
 
         try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
             Future<?> restore = executor.submit(() -> restorer.run(new DefaultApplicationArguments()));
@@ -373,7 +373,7 @@ class FunctionApplicationPendingRecoveryTest {
         FunctionRegistry registry = new FunctionRegistry();
         ManagedDeploymentProvider provider = provider();
         FunctionOperationLocks locks = spy(new FunctionOperationLocks());
-        FunctionService service = new FunctionService(
+        FunctionService service = RegistryFixtures.functionService(
                 registry, DEFAULTS, ImageValidator.noOp(), List.of(), resolver(provider), locks,
                 coordinator(registry, provider, locks));
         service.register(spec("fn"));
@@ -471,7 +471,7 @@ class FunctionApplicationPendingRecoveryTest {
         FunctionRegistry reloaded = new FunctionRegistry(catalog);
         assertThat(reloaded.applicationState().retainedFunctionCount()).isZero();
 
-        new FunctionCatalogRestorer(registry, resolver(provider), List.of())
+        new FunctionCatalogRestorer(registry, resolver(provider), List.of(), RegistryFixtures.openGate())
                 .run(new DefaultApplicationArguments());
 
         assertThat(registry.applicationState().retainedFunctionCount()).isZero();
@@ -497,13 +497,13 @@ class FunctionApplicationPendingRecoveryTest {
     private static FunctionService service(FunctionRegistry registry,
                                            ManagedDeploymentProvider provider,
                                            FunctionRegistrationListener... listeners) {
-        return new FunctionService(registry, DEFAULTS, ImageValidator.noOp(), List.of(listeners), resolver(provider));
+        return RegistryFixtures.functionService(registry, DEFAULTS, ImageValidator.noOp(), List.of(listeners), resolver(provider));
     }
 
     private static ManagedDeploymentCoordinator coordinator(FunctionRegistry registry,
                                                              ManagedDeploymentProvider provider,
                                                              FunctionOperationLocks locks) {
-        return new ManagedDeploymentCoordinator(resolver(provider), registry, locks);
+        return RegistryFixtures.coordinator(resolver(provider), registry, locks);
     }
 
     private static DeploymentProviderResolver resolver(ManagedDeploymentProvider provider) {

@@ -2,9 +2,9 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 
 import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
+import it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.slf4j.Logger;
@@ -14,16 +14,17 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Mutable execution record with thread-safe state transitions.
  *
- * State transitions are synchronized to ensure consistency between related fields.
- * Use {@link #snapshot()} to get a consistent view of all fields.
+ * <p>The record is its own monitor: every mutable field, and the {@link AttemptOwnership} it
+ * delegates the current attempt's transport to, is read and written under it. Use
+ * {@link #snapshot()} to get a consistent view of all fields.
  */
 public class ExecutionRecord {
     private static final Logger log = LoggerFactory.getLogger(ExecutionRecord.class);
+    private static final TerminalAnswer NO_ANSWER = new TerminalAnswer(null, null, null, null, null, null);
 
     private final String executionId;
     private final ExecutionInputResources inputResources;
@@ -54,58 +55,6 @@ public class ExecutionRecord {
      */
     private final String idempotencyKey;
 
-    // Guarded by 'this' - all mutable state is accessed under synchronization
-    private InvocationTask task;
-    private ExecutionState state;
-    private Instant startedAt;
-    private Instant finishedAt;
-    private Instant dispatchedAt;
-    private ErrorInfo lastError;
-    private Object output;
-    private boolean coldStart;
-    private Long initDurationMs;
-    private Integer statusCode;
-    private Map<String, String> headers;
-    private String encoding;
-    private it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute plannedRoute;
-    private String executionNode;
-    public synchronized void pinPlannedRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute route) {
-        if(plannedRoute!=null && !plannedRoute.equals(route)) throw new IllegalStateException("execution route already pinned");plannedRoute=route;
-    }
-    public synchronized it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute plannedRoute() { return plannedRoute; }
-    public synchronized String executionNode() { return executionNode; }
-    public synchronized void attributeExecutionNode(String node) {
-        if(node!=null && !node.isBlank() && node.length()<=256 && !isTerminal()) executionNode=node;
-    }
-
-
-    /**
-     * The capacity lease the current attempt owns, set at dispatch and released exactly once
-     * by the attempt's completion (invariant I4). Null for a path that never acquired local
-     * capacity (offload). Physical dispatch, once started, owns the release.
-     */
-    private DispatchOwnership dispatchLease;
-    /**
-     * The generation the current attempt was admitted under, captured alongside the lease but
-     * kept even after {@link #takeDispatchLease()} detaches it (unlike a plain peek at
-     * {@code dispatchLease}, which would go stale the moment that happens). A real
-     * dispatch marks {@link #transportOwnsCapacity()}, which makes {@code releaseAttemptCapacity}
-     * skip it entirely — but a caller of {@link #currentGeneration()} should not have to know
-     * that to trust the answer (I7). Logical admission identity remains stable across retries.
-     */
-    private FunctionGeneration admittedGeneration;
-
-    /**
-     * The real cancellable transport handle of the current attempt (the raw dispatch future,
-     * not a composed one). Administrative expiry requests local cancellation on it so the
-     * work (and its payload) does not outlive the released capacity.
-     */
-    private Future<?> dispatchHandle;
-    private boolean dispatchCancellationRequested;
-    private boolean transportOwnsCapacity;
-    private Throwable terminalFailure;
-    private boolean settlementStarted;
-
     private final TimeSource timeSource;
 
     /**
@@ -117,22 +66,30 @@ public class ExecutionRecord {
     private final Instant admittedAt;
     private final long admittedAtNanos;
 
+    private final AttemptOwnership ownership;
+
+    // Guarded by 'this'.
+    private InvocationTask task;
+    private ExecutionState state;
+    /** Set by the terminal transition, cleared by a retry; null while the execution is live. */
+    private TerminalAnswer answer;
+    private Instant startedAt;
+    private Instant finishedAt;
+    private Instant dispatchedAt;
     /** Monotonic enqueue instant of the current attempt (the first attempt is the admission itself). */
     private long attemptEnqueuedAtNanos;
     /** Monotonic dispatch/completion instants of the current attempt. */
     private Long startedAtNanos;
     private Long finishedAtNanos;
-
+    private boolean coldStart;
+    private Long initDurationMs;
+    /** The offload plan's admission decision, one for the whole execution including its retries. */
+    private PlannedInvocationRoute plannedRoute;
+    /** The node that actually ran the handler, when the platform could attribute it. */
+    private String executionNode;
+    private boolean settlementStarted;
     /** Whether the end-to-end conclusion has already been recorded for this invocation. */
     private boolean metricsRecorded;
-
-    public ExecutionRecord(String executionId, InvocationTask task) {
-        this(executionId, task, TimeSource.system(), null);
-    }
-
-    public ExecutionRecord(String executionId, InvocationTask task, TimeSource timeSource) {
-        this(executionId, task, timeSource, null);
-    }
 
     public static ExecutionRecord withInputResources(
             String executionId,
@@ -148,12 +105,10 @@ public class ExecutionRecord {
         this.task = task;
         this.timeSource = timeSource;
         this.inputResources = inputResources;
-        this.admittedGeneration = inputResources == null ? null : inputResources.generation();
-        this.readableAfterFinishing = task.kind() == InvocationKind.ASYNC
-                || (task.idempotencyKey() != null && !task.idempotencyKey().isBlank());
-        this.idempotencyKey = (task.idempotencyKey() != null && !task.idempotencyKey().isBlank())
-                ? task.idempotencyKey()
-                : null;
+        this.ownership = new AttemptOwnership(inputResources.generation());
+        boolean keyed = task.idempotencyKey() != null && !task.idempotencyKey().isBlank();
+        this.readableAfterFinishing = task.kind() == InvocationKind.ASYNC || keyed;
+        this.idempotencyKey = keyed ? task.idempotencyKey() : null;
         this.completion = new CompletableFuture<>();
         this.state = ExecutionState.QUEUED;
         this.admittedAt = task.enqueuedAt();
@@ -174,27 +129,41 @@ public class ExecutionRecord {
         return completion;
     }
 
+    // ---- Offload routing
+
+    public synchronized void pinPlannedRoute(PlannedInvocationRoute route) {
+        if (plannedRoute != null && !plannedRoute.equals(route)) {
+            throw new IllegalStateException("execution route already pinned");
+        }
+        plannedRoute = route;
+    }
+
+    public synchronized PlannedInvocationRoute plannedRoute() {
+        return plannedRoute;
+    }
+
+    public synchronized String executionNode() {
+        return executionNode;
+    }
+
+    /** Attributes the execution to {@code node} while it is still live; a bounded, non-blank name only. */
+    public synchronized void attributeExecutionNode(String node) {
+        if (node != null && !node.isBlank() && node.length() <= 256 && !isTerminal()) {
+            executionNode = node;
+        }
+    }
+
+    // ---- Reads
+
     /**
      * Returns a consistent snapshot of the current execution state.
      * All fields are read atomically.
      */
     public synchronized Snapshot snapshot() {
-        return new Snapshot(
-                executionId,
-                task,
-                state,
-                admittedAt,
-                startedAt,
-                finishedAt,
-                dispatchedAt,
-                output,
-                lastError,
-                coldStart,
-                initDurationMs,
-                statusCode,
-                headers,
-                encoding
-        );
+        TerminalAnswer settled = answerOrNone();
+        return new Snapshot(executionId, task, state, admittedAt, startedAt, finishedAt, dispatchedAt,
+                settled.output(), settled.error(), coldStart, initDurationMs,
+                settled.statusCode(), settled.headers(), settled.encoding());
     }
 
     /**
@@ -213,19 +182,19 @@ public class ExecutionRecord {
      * worth re-reading if the connection dropped before the body.
      *
      * <p>Reads the fields directly instead of going through {@link #snapshot()}: the
-     * completion path allocates no Snapshot, and there is no reason to start now only to
-     * throw it away immediately afterwards.
+     * completion path allocates no Snapshot.
      */
     public synchronized Outcome toOutcome() {
+        TerminalAnswer settled = answerOrNone();
         return new Outcome(
                 state,
                 Outcome.epochMilli(admittedAt),
                 Outcome.epochMilli(finishedAt),
-                readableAfterFinishing ? output : null,
-                lastError,
-                readableAfterFinishing ? headers : terminalExecutionHeaders(),
-                readableAfterFinishing ? encoding : null,
-                statusCode == null ? Outcome.NO_STATUS : statusCode,
+                readableAfterFinishing ? settled.output() : null,
+                settled.error(),
+                readableAfterFinishing ? settled.headers() : terminalExecutionHeaders(settled.headers()),
+                readableAfterFinishing ? settled.encoding() : null,
+                settled.statusCode() == null ? Outcome.NO_STATUS : settled.statusCode(),
                 initDurationMs == null ? Outcome.NO_INIT : initDurationMs,
                 coldStart,
                 readableAfterFinishing,
@@ -233,10 +202,16 @@ public class ExecutionRecord {
         );
     }
 
-    private Map<String, String> terminalExecutionHeaders() {
+    private static Map<String, String> terminalExecutionHeaders(Map<String, String> headers) {
         String id = headers == null ? null : headers.get("X-NanoFaaS-Terminal-Execution-Id");
         return id == null ? null : Map.of("X-NanoFaaS-Terminal-Execution-Id", id);
     }
+
+    private TerminalAnswer answerOrNone() {
+        return answer == null ? NO_ANSWER : answer;
+    }
+
+    // ---- State transitions
 
     /**
      * Terminal states (SUCCESS, ERROR, TIMEOUT) are final; every transition between
@@ -256,9 +231,17 @@ public class ExecutionRecord {
                 || state == ExecutionState.TIMEOUT;
     }
 
-    /**
-     * Marks the execution as running.
-     */
+    /** The one terminal transition: the state, the instant it ended, and the answer it settled on. */
+    private void terminate(ExecutionState target, TerminalAnswer settled) {
+        if (!canTransition(target)) {
+            return;
+        }
+        this.state = target;
+        this.finishedAt = timeSource.instant();
+        this.finishedAtNanos = timeSource.nanoTime();
+        this.answer = settled;
+    }
+
     public synchronized void markRunning() {
         if (!canTransition(ExecutionState.RUNNING)) {
             return;
@@ -268,9 +251,6 @@ public class ExecutionRecord {
         this.startedAtNanos = timeSource.nanoTime();
     }
 
-    /**
-     * Marks the execution as completed with success.
-     */
     public synchronized void markSuccess(Object output) {
         markSuccess(output, null, null, null);
     }
@@ -281,24 +261,9 @@ public class ExecutionRecord {
      */
     public synchronized void markSuccess(Object output, Integer statusCode,
                                           Map<String, String> headers, String encoding) {
-        if (!canTransition(ExecutionState.SUCCESS)) {
-            return;
-        }
-        if(plannedRoute!=null && (plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL
-                || plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL_THEN_CLOUD && transportOwnsCapacity)) executionNode=plannedRoute.executionNode();
-        this.state = ExecutionState.SUCCESS;
-        this.finishedAt = timeSource.instant();
-        this.finishedAtNanos = timeSource.nanoTime();
-        this.output = output;
-        this.lastError = null;
-        this.statusCode = statusCode;
-        this.headers = headers;
-        this.encoding = encoding;
+        terminate(ExecutionState.SUCCESS, TerminalAnswer.success(output, statusCode, headers, encoding));
     }
 
-    /**
-     * Marks the execution as completed with error.
-     */
     public synchronized void markError(ErrorInfo error) {
         markError(error, null);
     }
@@ -309,159 +274,11 @@ public class ExecutionRecord {
     }
 
     public synchronized void markError(ErrorInfo error, Integer statusCode, Map<String, String> terminalHeaders) {
-        if (!canTransition(ExecutionState.ERROR)) {
-            return;
-        }
-        this.state = ExecutionState.ERROR;
-        this.finishedAt = timeSource.instant();
-        this.finishedAtNanos = timeSource.nanoTime();
-        this.lastError = error;
-        this.output = null;
-        this.headers = terminalHeaders == null ? null : Map.copyOf(terminalHeaders);
-        this.statusCode = statusCode;
-    }
-
-    /**
-     * Marks the execution as timed out.
-     */
-    public synchronized void markTimeout() {
-        markTimeout(null);
+        terminate(ExecutionState.ERROR, TerminalAnswer.error(error, statusCode, terminalHeaders, null));
     }
 
     synchronized void markTimeout(ErrorInfo error) {
-        if (!canTransition(ExecutionState.TIMEOUT)) {
-            return;
-        }
-        this.state = ExecutionState.TIMEOUT;
-        this.lastError = error;
-        this.finishedAt = timeSource.instant();
-        this.finishedAtNanos = timeSource.nanoTime();
-    }
-
-    /**
-     * Marks the dispatch time for queue wait calculation.
-     */
-    public synchronized void markDispatchedAt() {
-        this.dispatchedAt = timeSource.instant();
-    }
-
-    /**
-     * Records cold start information from runtime headers.
-     */
-    public synchronized void markColdStart(long initDurationMs) {
-        this.coldStart = true;
-        this.initDurationMs = initDurationMs;
-    }
-
-    /**
-     * Resets the execution for a retry attempt.
-     */
-    public synchronized void resetForRetry(InvocationTask retryTask) {
-        if (!canTransition(ExecutionState.QUEUED)) {
-            return;
-        }
-        this.task = retryTask;
-        this.state = ExecutionState.QUEUED;
-        this.startedAt = null;
-        this.finishedAt = null;
-        this.dispatchedAt = null;
-        this.startedAtNanos = null;
-        this.finishedAtNanos = null;
-        // The retry is a fresh enqueue: its wait starts now, not at the original admission.
-        this.attemptEnqueuedAtNanos = timeSource.nanoTime();
-        this.lastError = null;
-        this.output = null;
-        this.coldStart = false;
-        this.initDurationMs = null;
-        // Response metadata is set only by terminal markSuccess()/markError(),
-        // which makes the state terminal, and canTransition() above already refuses
-        // this method on a terminal record — so today, these three are always still
-        // null here. Kept as defensive insurance against a future change that lets
-        // the envelope be set before a terminal transition; no test can exercise them
-        // going from non-null to null without breaking that invariant.
-        this.statusCode = null;
-        this.headers = null;
-        this.encoding = null;
-        // The failed attempt's lease and handle were released by its completion; a retry is a
-        // fresh attempt that re-acquires at its own dispatch. Cleared here so a stale handle
-        // from the previous attempt can never be cancelled on the next attempt's behalf.
-        this.dispatchLease = null;
-        this.dispatchHandle = null;
-        this.dispatchCancellationRequested = false;
-        this.transportOwnsCapacity = false;
-    }
-
-    /**
-     * Records the lease the current attempt acquired at dispatch. Called under the record
-     * monitor, before the dispatch future is kicked off.
-     */
-    public synchronized void attachDispatchLease(DispatchOwnership lease) {
-        this.dispatchLease = lease;
-        if (this.admittedGeneration == null) {
-            this.admittedGeneration = lease.generation();
-        }
-    }
-
-    /**
-     * Detaches and returns the current attempt's lease, or {@code null} when this attempt
-     * never acquired one. The caller releases the returned lease (idempotently) outside the
-     * monitor where possible.
-     */
-    public synchronized DispatchOwnership takeDispatchLease() {
-        DispatchOwnership lease = dispatchLease;
-        dispatchLease = null;
-        return lease;
-    }
-
-    /** Whether the current attempt holds a lease it has not yet released. */
-    public synchronized boolean holdsDispatchLease() {
-        return dispatchLease != null;
-    }
-
-    /**
-     * The generation this logical execution was admitted under, or {@code null} only for
-     * compatibility records built without aggregate input resources. A dispatch lease may
-     * reaffirm the same identity for a local attempt; offload retains the admission identity.
-     * Stable across
-     * {@link #takeDispatchLease()}: a listener that fires after release accounting has already
-     * detached the lease (e.g. the administrative-expiry path's terminal-conclusion timer) still
-     * needs to fence against the SAME generation the attempt was admitted under, not "whatever
-     * happens to still be on the lease field". Used to fence a late completion's metrics against
-     * a function that has since been removed and re-registered under a new identity (I7).
-     */
-    public synchronized FunctionGeneration currentGeneration() {
-        return admittedGeneration;
-    }
-
-    /**
-     * Registers the raw cancellable transport handle of the current attempt. Called as soon
-     * as the dispatcher hands the future back, so an administrative expiry that wins the race
-     * against publication can still cancel it.
-     */
-    public void attachDispatchHandle(Future<?> handle) {
-        boolean cancel;
-        synchronized (this) {
-            cancel = dispatchCancellationRequested;
-            if (!cancel) dispatchHandle = handle;
-        }
-        if (cancel) handle.cancel(true);
-    }
-
-    /** Remember the request even when the dispatcher has not returned its handle yet. */
-    // The wildcard is deliberate (java:S1452): handles have unrelated result types, callers only cancel.
-    public synchronized Future<?> takeDispatchHandle() { // NOSONAR
-        dispatchCancellationRequested = true;
-        Future<?> handle = dispatchHandle;
-        dispatchHandle = null;
-        return handle;
-    }
-
-    public synchronized void transportOwnsCapacity() {
-        transportOwnsCapacity = true;
-    }
-
-    public synchronized boolean capacityOwnedByTransport() {
-        return transportOwnsCapacity;
+        terminate(ExecutionState.TIMEOUT, TerminalAnswer.error(error, null, null, null));
     }
 
     /** Choose the exceptional offload answer atomically with its terminal state. */
@@ -470,71 +287,108 @@ public class ExecutionRecord {
     }
 
     public synchronized void markFailure(ErrorInfo error, Throwable failure, Integer statusCode, Map<String, String> headers) {
-        if (isTerminal()) return;
-        markError(error, statusCode, headers);
-        terminalFailure = failure;
+        terminate(ExecutionState.ERROR, TerminalAnswer.error(error, statusCode, headers, failure));
     }
+
+    /** Marks the dispatch time for queue wait calculation. */
+    public synchronized void markDispatchedAt() {
+        this.dispatchedAt = timeSource.instant();
+    }
+
+    /** Records cold start information from runtime headers. */
+    public synchronized void markColdStart(long initDurationMs) {
+        this.coldStart = true;
+        this.initDurationMs = initDurationMs;
+    }
+
+    /** Resets the execution for a retry attempt. */
+    public synchronized void resetForRetry(InvocationTask retryTask) {
+        if (!canTransition(ExecutionState.QUEUED)) {
+            return;
+        }
+        this.task = retryTask;
+        this.state = ExecutionState.QUEUED;
+        this.answer = null;
+        this.startedAt = null;
+        this.finishedAt = null;
+        this.dispatchedAt = null;
+        this.startedAtNanos = null;
+        this.finishedAtNanos = null;
+        // The retry is a fresh enqueue: its wait starts now, not at the original admission.
+        this.attemptEnqueuedAtNanos = timeSource.nanoTime();
+        this.coldStart = false;
+        this.initDurationMs = null;
+        ownership.resetForRetry();
+    }
+
+    // ---- The current attempt's transport (see AttemptOwnership)
+
+    /**
+     * The generation this logical execution was admitted under. Stable across retries and across the
+     * lease's release: it fences a late completion's metrics against a function that has since been
+     * removed and re-registered under a new identity (I7).
+     */
+    public synchronized FunctionGeneration currentGeneration() {
+        return ownership.admittedGeneration();
+    }
+
+    /**
+     * Registers the raw cancellable transport handle of the current attempt, as soon as the
+     * dispatcher hands it back, so an administrative expiry that won the race against publication
+     * still cancels it.
+     */
+    public void attachDispatchHandle(Future<?> handle) {
+        boolean cancel;
+        synchronized (this) {
+            cancel = ownership.attachHandle(handle);
+        }
+        if (cancel) {
+            handle.cancel(true);
+        }
+    }
+
+    /** Requests cancellation of the current attempt, remembered even before its handle is attached. */
+    // The wildcard is deliberate (java:S1452): handles have unrelated result types, callers only cancel.
+    public synchronized Future<?> takeDispatchHandle() { // NOSONAR
+        return ownership.requestCancellation();
+    }
+
+    public synchronized void transportOwnsCapacity() {
+        ownership.transportOwnsCapacity();
+    }
+
+    public synchronized boolean capacityOwnedByTransport() {
+        return ownership.capacityOwnedByTransport();
+    }
+
+    // ---- Settlement and input resources
 
     public boolean beginSettlement() {
         synchronized (this) {
             if (!isTerminal() || settlementStarted) return false;
             settlementStarted = true;
         }
-        if (inputResources != null) inputResources.settleLogicalExecution();
+        inputResources.settleLogicalExecution();
         return true;
     }
 
     /** Acquires one more same-generation reader of the retained input, for an attempt's transport. */
     public PhysicalInput openPhysicalInput(InvocationTask source) {
-        if (inputResources == null) return new PhysicalInput(source, null);
         return inputResources.open(source);
     }
 
     /** Adds a queue-entry input owner before the task is published to any queue. */
     public synchronized InvocationTask prepareForQueue() {
-        if (inputResources == null) return task;
         task = task.withQueuedInputLease(inputResources.retainForQueue(task));
         return task;
     }
 
     public void publishAdmissionResources() {
-        if (inputResources != null) inputResources.publish();
+        inputResources.publish();
     }
 
     public void rollbackAdmissionResources() {
-        if (inputResources != null) inputResources.rollback();
-    }
-
-    public static final class PhysicalInput implements AutoCloseable {
-        private final InvocationTask task;
-        private final AutoCloseable sharedReference;
-        private final AtomicBoolean closed = new AtomicBoolean();
-
-        PhysicalInput(InvocationTask task, AutoCloseable sharedReference) {
-            this.task = task;
-            this.sharedReference = sharedReference;
-        }
-
-        public InvocationTask task() {
-            return task;
-        }
-
-        @Override
-        public void close() {
-            if (!closed.compareAndSet(false, true)) return;
-            closeUnchecked(sharedReference);
-        }
-
-        private static void closeUnchecked(AutoCloseable closeable) {
-            if (closeable == null) return;
-            try {
-                closeable.close();
-            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
-                throw failure;
-            } catch (Exception impossible) {
-                throw new IllegalStateException(impossible);
-            }
-        }
+        inputResources.rollback();
     }
 
     /** Publish only the selected terminal answer; callbacks run outside the monitor. */
@@ -543,20 +397,14 @@ public class ExecutionRecord {
         Throwable failure;
         synchronized (this) {
             if (!isTerminal()) return;
-            failure = terminalFailure;
-            if (state == ExecutionState.SUCCESS) {
-                result = InvocationResult.successWithEnvelope(output, statusCode, headers, encoding);
-            } else {
-                ErrorInfo error = lastError != null ? lastError : new ErrorInfo("TIMEOUT", "Execution timed out");
-                result = new InvocationResult(false, null, error, statusCode,
-                        headers, null);
-            }
+            failure = answer.failure();
+            result = answer.toResult(state);
         }
         if (failure != null) completion.completeExceptionally(failure);
         else completion.complete(result);
     }
 
-    // Legacy accessors - kept for backward compatibility but prefer snapshot() for reads
+    // ---- Field reads, each under the monitor; prefer snapshot() for several at once
 
     public synchronized InvocationTask task() {
         return task;
@@ -564,22 +412,6 @@ public class ExecutionRecord {
 
     public synchronized ExecutionState state() {
         return state;
-    }
-
-    public synchronized Instant startedAt() {
-        return startedAt;
-    }
-
-    public synchronized Instant finishedAt() {
-        return finishedAt;
-    }
-
-    /**
-     * The instant the caller was admitted. Survives retries: {@link #startedAt()} is the current
-     * attempt's dispatch instant, while this is the invocation's true start.
-     */
-    public synchronized Instant admittedAt() {
-        return admittedAt;
     }
 
     /** Monotonic admission instant, for end-to-end duration computation. */
@@ -622,11 +454,7 @@ public class ExecutionRecord {
     }
 
     public synchronized ErrorInfo lastError() {
-        return lastError;
-    }
-
-    public synchronized Object output() {
-        return output;
+        return answerOrNone().error();
     }
 
     /**

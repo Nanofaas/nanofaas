@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.OverridableExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -29,63 +31,58 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
     @Test
     void completeExecution_duplicateTerminalCallback_releasesDispatchSlotOnlyOnce() {
-        ExecutionStore store = new ExecutionStore();
-        CountingEnqueuer enqueuer = new CountingEnqueuer();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store,
-                enqueuer,
-                mock(DispatcherRouter.class),
-                new Metrics(new SimpleMeterRegistry())
-        );
+        ExecutionStore store = ExecutionFixtures.store();
+        DispatcherRouter router = mock(DispatcherRouter.class);
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
+                store, new CountingEnqueuer(), router, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-duplicate", "fn");
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
-        store.put(executionRecord);
-        ownership.attach(executionRecord);
-        executionRecord.markRunning();
+        store.put(ExecutionFixtures.record(task.executionId(), task));
+        CompletableFuture<DispatchResult> transport = ownership.dispatch(handler, router, task);
 
+        // The runtime's callback concludes the attempt, twice. The slot is the transport's.
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("ok")));
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("late-duplicate")));
+        assertThat(ownership.releases()).isZero();
 
+        // The transport's own answer arrives and it drains: that, once, gives the slot back.
+        transport.complete(DispatchResult.warm(InvocationResult.success("ok")));
         assertThat(ownership.releases()).isEqualTo(1);
     }
 
     @Test
     void completeExecution_retryResetsSlotReleaseForNextAttempt() {
-        ExecutionStore store = new ExecutionStore();
-        CountingEnqueuer enqueuer = new CountingEnqueuer();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store,
-                enqueuer,
-                mock(DispatcherRouter.class),
-                new Metrics(new SimpleMeterRegistry())
-        );
+        ExecutionStore store = ExecutionFixtures.store();
+        DispatcherRouter router = mock(DispatcherRouter.class);
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
+                store, new CountingEnqueuer(), router, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-retry", "fn");
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
-        ownership.attach(executionRecord);
-        executionRecord.markRunning();
 
-        handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.error("ERR", "first")));
-        ownership.attach(executionRecord);
-        executionRecord.markRunning();
-        handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("ok")));
+        ownership.dispatch(handler, router, task)
+                .complete(DispatchResult.warm(InvocationResult.error("ERR", "first")));
+        assertThat(ownership.releases()).isEqualTo(1);
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
+        ownership.dispatch(handler, router, executionRecord.task())
+                .complete(DispatchResult.warm(InvocationResult.success("ok")));
         assertThat(ownership.releases()).isEqualTo(2);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
     }
 
     @Test
     void dispatch_staleCallbackAfterRetryReset_doesNotConsumeNextAttemptRelease() {
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 store,
                 enqueuer,
                 dispatcherRouter,
                 new Metrics(new SimpleMeterRegistry())
         );
         InvocationTask attempt1Task = task("exec-stale-callback", "fn");
-        ExecutionRecord executionRecord = new ExecutionRecord(attempt1Task.executionId(), attempt1Task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(attempt1Task.executionId(), attempt1Task);
         store.put(executionRecord);
 
         CompletableFuture<DispatchResult> failedAttempt1 = new CompletableFuture<>();
@@ -116,27 +113,22 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
     @Test
     void completeExecution_publicCallbackWithStaleAttempt_doesNotMutateNextAttempt() throws Exception {
-        ExecutionStore store = new ExecutionStore();
-        CountingEnqueuer enqueuer = new CountingEnqueuer();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store,
-                enqueuer,
-                mock(DispatcherRouter.class),
-                new Metrics(new SimpleMeterRegistry())
-        );
+        ExecutionStore store = ExecutionFixtures.store();
+        DispatcherRouter router = mock(DispatcherRouter.class);
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
+                store, new CountingEnqueuer(), router, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-public-stale", "fn");
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
-        ownership.attach(executionRecord);
-        executionRecord.markRunning();
+        CompletableFuture<DispatchResult> first = ownership.dispatch(handler, router, task);
 
         completeExecution(handler, task.executionId(), InvocationResult.error("ERR", "first"), 1);
-        assertThat(ownership.releases()).isEqualTo(1);
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
+        first.complete(DispatchResult.warm(InvocationResult.error("ERR", "first")));
+        assertThat(ownership.releases()).isEqualTo(1);
 
-        ownership.attach(executionRecord);
-        executionRecord.markRunning();
+        CompletableFuture<DispatchResult> second = ownership.dispatch(handler, router, executionRecord.task());
         completeExecution(handler, task.executionId(), InvocationResult.success("late-duplicate"), 1);
         assertThat(ownership.releases()).isEqualTo(1);
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
@@ -144,16 +136,17 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         assertThat(executionRecord.completion()).isNotDone();
 
         completeExecution(handler, task.executionId(), InvocationResult.success("ok"), 2);
-        assertThat(ownership.releases()).isEqualTo(2);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(executionRecord.completion()).isDone();
+        second.complete(DispatchResult.warm(InvocationResult.success("ok")));
+        assertThat(ownership.releases()).isEqualTo(2);
     }
 
     @Test
     void completeExecution_withoutAttemptUsesCurrentAttemptInsideCompletionLock() {
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         CountingEnqueuer enqueuer = new CountingEnqueuer();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 store,
                 enqueuer,
                 mock(DispatcherRouter.class),
@@ -167,7 +160,6 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("ok")));
 
-        assertThat(ownership.releases()).isEqualTo(1);
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(executionRecord.completion()).isDone();
@@ -219,24 +211,23 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
     @Test
     void completeExecution_afterASyncTimeout_releasesTheSlotAndOnlyThenSettles() {
-        ExecutionStore store = new ExecutionStore();
-        CountingEnqueuer enqueuer = new CountingEnqueuer();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store, enqueuer, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
+        ExecutionStore store = ExecutionFixtures.store();
+        DispatcherRouter router = mock(DispatcherRouter.class);
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
+                store, new CountingEnqueuer(), router, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-timeout", "fn");
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
-        ownership.attach(executionRecord);
-        executionRecord.markRunning();
+        CompletableFuture<DispatchResult> transport = ownership.dispatch(handler, router, task);
 
         // An execution-level timeout marks the record terminal while the dispatch is still
-        // in flight (and still holding its slot). The completion arriving later must give
-        // that slot back before settling: archiving first would take the record out of the
-        // living, and the completion would no longer find it to release the slot.
-        executionRecord.markTimeout();
+        // in flight (and still holding its slot): the record stays among the living.
+        ExecutionFixtures.timeOut(executionRecord);
         assertThat(store.getOrNull("exec-timeout")).isNotNull();
 
-        handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("tardi")));
+        // The transport answers late and drains: it gives the slot back, and its conclusion
+        // then settles the record.
+        transport.complete(DispatchResult.warm(InvocationResult.success("tardi")));
 
         assertThat(ownership.releases()).isEqualTo(1);
         // And only now, with the slot given back, does the outcome take the record's place.
@@ -246,20 +237,19 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
     @Test
     void completeExecution_afterAnExecutionTimeout_doesNotOverwriteTheAlreadyConcludedFuture() {
-        ExecutionStore store = new ExecutionStore();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionStore store = ExecutionFixtures.store();
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 store, new CountingEnqueuer(), mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-shared", "fn");
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
 
         // An execution-level timeout (not a single waiter's budget) concludes the shared
         // future with the timeout result before the dispatch outcome arrives. A late
         // success must not overwrite either the future or the recorded terminal state:
         // the already-definitive result prevails over late responses (invariant I1).
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
         executionRecord.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
 
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("the real answer")));
@@ -273,13 +263,12 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
     @Test
     void completeExecution_whileRetryingDoesNotCompleteTheFutureEarly() {
-        ExecutionStore store = new ExecutionStore();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionStore store = ExecutionFixtures.store();
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 store, new CountingEnqueuer(), mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-retry", "fn");  // maxRetries = 2 in the fixture
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
-        ownership.attach(executionRecord);
         executionRecord.markRunning();
 
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.error("ERR", "primo tentativo")));
@@ -297,7 +286,7 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
     }
 
-    private final class MutatingExecutionRecord extends ExecutionRecord {
+    private static final class MutatingExecutionRecord extends OverridableExecutionRecord {
         private boolean mutateToNextAttemptOnNextTaskRead;
 
         private MutatingExecutionRecord(String executionId, InvocationTask task) {
@@ -325,7 +314,6 @@ class ExecutionCompletionHandlerSlotReleaseTest {
                 ,
         InvocationKind.SYNC
     ));
-                ownership.attach(this);
                 markRunning();
             }
             return current;

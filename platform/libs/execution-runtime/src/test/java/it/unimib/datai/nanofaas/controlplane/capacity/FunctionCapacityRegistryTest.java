@@ -18,6 +18,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FunctionCapacityRegistryTest {
+    /**
+     * A generation is an identity only within its authority: one minted by another registry must
+     * never pass for it, or a fence comparing the two would hold by coincidence of numbering.
+     */
+    @Test
+    void twoRegistriesNeverMintEqualGenerations() {
+        FunctionCapacityRegistry one = new FunctionCapacityRegistry();
+        FunctionCapacityRegistry other = new FunctionCapacityRegistry();
+        one.register("fn", 1);
+        other.register("fn", 1);
+
+        assertThat(one.activeGeneration("fn")).isNotEqualTo(other.activeGeneration("fn"));
+    }
+
     @Test
     void idleOperationPausesBothAcquisitionPathsWithoutHoldingCapacityLocks() throws Exception {
         var registry = new FunctionCapacityRegistry();

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -59,15 +60,15 @@ class R2ArchiveEvictionReplayRegressionTest {
     void replayDuringOutcomeEvictionAndArchiveDoesNotBecomeANewExecution() throws Exception {
         // An outcome budget so small that the 1000-byte payload is evicted immediately.
         ExecutionStoreProperties props = new ExecutionStoreProperties(null, null, null, 100, 100, 100);
-        ExecutionStore store = new ExecutionStore(props, Ticker.systemTicker());
-        IdempotencyStore keys = new IdempotencyStore(props, Ticker.systemTicker());
+        IdempotencyStore keys = ExecutionFixtures.keys(props, Ticker.systemTicker());
+        ExecutionStore store = ExecutionFixtures.store(props, Ticker.systemTicker(), keys);
 
         CountDownLatch archived = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         // Pause at the actual boundary: after outcome publication and live-record
         // invalidation, but before the factory's key-terminal listener runs.
         store.onTerminal(executionRecord -> {
-            store.size();
+            ExecutionFixtures.outcomesHeld(store);
             archived.countDown();
             try {
                 if (!release.await(5, TimeUnit.SECONDS)) {
@@ -80,7 +81,7 @@ class R2ArchiveEvictionReplayRegressionTest {
         });
 
         InvocationExecutionFactory factory =
-                new InvocationExecutionFactory(store, keys, new Metrics(new SimpleMeterRegistry()));
+                ServiceFixtures.factory(store, keys, new Metrics(new SimpleMeterRegistry()), "fn");
         InvocationExecutionFactory.ExecutionLookup first = lookup(factory, "race");
         first.publishAdmission(); // The first dispatch is still pending; the key is published.
 

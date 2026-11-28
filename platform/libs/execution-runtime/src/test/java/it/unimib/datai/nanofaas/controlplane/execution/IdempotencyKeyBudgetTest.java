@@ -48,7 +48,7 @@ class IdempotencyKeyBudgetTest {
      */
     private static void drainExpired(IdempotencyStore store) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (store.size() != 0 && System.nanoTime() < deadline) {
+        while (ExecutionFixtures.keyCount(store) != 0 && System.nanoTime() < deadline) {
             // size() runs cleanUp(); repeat until the expired entries have left.
         }
     }
@@ -57,7 +57,7 @@ class IdempotencyKeyBudgetTest {
     void concurrentClaimsOfTheSameKeyProduceASingleOwner() throws Exception {
         int threads = 16;
         CyclicBarrier barrier = new CyclicBarrier(threads);
-        IdempotencyStore store = new IdempotencyStore(props(1), ticker);
+        IdempotencyStore store = ExecutionFixtures.keys(props(1), ticker);
 
         List<Future<IdempotencyStore.AcquireResult>> futures = new ArrayList<>();
         ExecutorService pool = Executors.newFixedThreadPool(threads);
@@ -76,7 +76,7 @@ class IdempotencyKeyBudgetTest {
                 }
             }
             assertThat(claimed).as("one key has one owner").isEqualTo(1);
-            assertThat(store.occupied()).as("a single owner holds a single slot").isEqualTo(1);
+            assertThat(ExecutionFixtures.keysHeld(store)).as("a single owner holds a single slot").isEqualTo(1);
         } finally {
             pool.shutdownNow();
         }
@@ -85,14 +85,14 @@ class IdempotencyKeyBudgetTest {
     @Test
     void concurrentAbandonAndExpiryReleaseEachSlotExactlyOnceAndPermitNewClaims() throws Exception {
         int n = 32;
-        IdempotencyStore store = new IdempotencyStore(props(n), ticker);
+        IdempotencyStore store = ExecutionFixtures.keys(props(n), ticker);
         List<String> tokens = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             IdempotencyStore.AcquireResult result = store.acquireOrGet("fn", "k" + i);
             assertThat(result.state()).isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
             tokens.add(result.executionIdOrToken());
         }
-        assertThat(store.occupied()).isEqualTo(n);
+        assertThat(ExecutionFixtures.keysHeld(store)).isEqualTo(n);
 
         // Half the keys are abandoned (explicit remove), the other half expire (ticker
         // advance + maintenance). A sampler races the releasers and records the lowest
@@ -113,7 +113,7 @@ class IdempotencyKeyBudgetTest {
                     } else {
                         // Expire everything; the odd keys leave via maintenance, not abandon.
                         clock.addAndGet(Duration.ofMinutes(31).toNanos());
-                        store.size();
+                        ExecutionFixtures.keyCount(store);
                     }
                     return null;
                 }));
@@ -121,7 +121,7 @@ class IdempotencyKeyBudgetTest {
             futures.add(pool.submit(() -> {
                 barrier.await(5, TimeUnit.SECONDS);
                 for (int i = 0; i < 100_000; i++) {
-                    long observed = store.occupied();
+                    long observed = ExecutionFixtures.keysHeld(store);
                     if (observed < minObserved.get()) {
                         minObserved.set(observed);
                     }
@@ -137,7 +137,7 @@ class IdempotencyKeyBudgetTest {
 
         assertThat(minObserved.get()).as("the quota never goes negative").isGreaterThanOrEqualTo(0);
         drainExpired(store);
-        assertThat(store.occupied()).as("every slot is released after abandon and expiry").isZero();
+        assertThat(ExecutionFixtures.keysHeld(store)).as("every slot is released after abandon and expiry").isZero();
         IdempotencyStore.AcquireResult fresh = store.acquireOrGet("fn", "fresh");
         assertThat(fresh.state())
                 .as("a released slot admits a new claim")
@@ -146,7 +146,7 @@ class IdempotencyKeyBudgetTest {
 
     @Test
     void replayOfAPresentKeyWorksAtSaturation() {
-        IdempotencyStore store = new IdempotencyStore(props(1), ticker);
+        IdempotencyStore store = ExecutionFixtures.keys(props(1), ticker);
         IdempotencyStore.AcquireResult first = store.acquireOrGet("fn", "k1");
         assertThat(first.state()).isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
         store.publishClaim("fn", "k1", first.executionIdOrToken(), "exec-1");
@@ -171,10 +171,10 @@ class IdempotencyKeyBudgetTest {
 
     @Test
     void replacingAndReclaimingTheSameAssociationNeverConsumesASecondSlot() {
-        IdempotencyStore store = new IdempotencyStore(props(1), ticker);
+        IdempotencyStore store = ExecutionFixtures.keys(props(1), ticker);
         // Direct insertion reserves the single slot.
-        store.put("fn", "k1", "exec-1");
-        assertThat(store.occupied()).isEqualTo(1);
+        ExecutionFixtures.bind(store, "fn", "k1", "exec-1");
+        assertThat(ExecutionFixtures.keysHeld(store)).isEqualTo(1);
 
         // Re-claiming a published binding (a stale claim) is the same association, but it
         // is only allowed once the binding is explicitly abandoned after publication: the
@@ -182,57 +182,57 @@ class IdempotencyKeyBudgetTest {
         store.markReclaimable("fn", "k1", "exec-1");
         IdempotencyStore.AcquireResult reclaimed = store.claimIfMatches("fn", "k1", "exec-1");
         assertThat(reclaimed.state()).isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
-        assertThat(store.occupied()).isEqualTo(1);
+        assertThat(ExecutionFixtures.keysHeld(store)).isEqualTo(1);
 
         // Publishing and archiving the re-claimed binding keep the same slot.
         store.publishClaim("fn", "k1", reclaimed.executionIdOrToken(), "exec-2");
-        assertThat(store.occupied()).isEqualTo(1);
+        assertThat(ExecutionFixtures.keysHeld(store)).isEqualTo(1);
         store.markTerminal("fn", "k1", "exec-2");
-        assertThat(store.occupied()).isEqualTo(1);
+        assertThat(ExecutionFixtures.keysHeld(store)).isEqualTo(1);
 
         // A single expiry releases the one slot exactly once - not zero, not twice.
         clock.addAndGet(Duration.ofMinutes(6).toNanos());
         drainExpired(store);
-        assertThat(store.occupied()).isZero();
-        assertThat(store.size()).isZero();
+        assertThat(ExecutionFixtures.keysHeld(store)).isZero();
+        assertThat(ExecutionFixtures.keyCount(store)).isZero();
     }
 
     @Test
     void abandoningAClaimReleasesItsSlotOnceAndTheSlotIsReusable() {
-        IdempotencyStore store = new IdempotencyStore(props(1), ticker);
+        IdempotencyStore store = ExecutionFixtures.keys(props(1), ticker);
         IdempotencyStore.AcquireResult claim = store.acquireOrGet("fn", "k1");
-        assertThat(store.occupied()).isEqualTo(1);
+        assertThat(ExecutionFixtures.keysHeld(store)).isEqualTo(1);
 
         store.abandonClaim("fn", "k1", claim.executionIdOrToken());
-        assertThat(store.occupied()).as("abandon releases the slot exactly once").isZero();
+        assertThat(ExecutionFixtures.keysHeld(store)).as("abandon releases the slot exactly once").isZero();
 
         // The released slot admits a new claim for a different key.
         IdempotencyStore.AcquireResult next = store.acquireOrGet("fn", "k2");
         assertThat(next.state()).isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
-        assertThat(store.occupied()).isEqualTo(1);
+        assertThat(ExecutionFixtures.keysHeld(store)).isEqualTo(1);
     }
 
     @Test
     void shutdownReleasesEverySlotAndReopensTheBudget() {
-        IdempotencyStore store = new IdempotencyStore(props(5), ticker);
+        IdempotencyStore store = ExecutionFixtures.keys(props(5), ticker);
         for (int i = 0; i < 5; i++) {
-            store.put("fn", "k" + i, "exec-" + i);
+            ExecutionFixtures.bind(store, "fn", "k" + i, "exec-" + i);
         }
-        assertThat(store.occupied()).isEqualTo(5);
+        assertThat(ExecutionFixtures.keysHeld(store)).isEqualTo(5);
 
         store.clear();
 
-        assertThat(store.occupied()).as("shutdown releases every slot").isZero();
-        assertThat(store.size()).isZero();
+        assertThat(ExecutionFixtures.keysHeld(store)).as("shutdown releases every slot").isZero();
+        assertThat(ExecutionFixtures.keyCount(store)).isZero();
         IdempotencyStore.AcquireResult fresh = store.acquireOrGet("fn", "fresh");
         assertThat(fresh.state()).isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
-        assertThat(store.occupied()).isEqualTo(1);
+        assertThat(ExecutionFixtures.keysHeld(store)).isEqualTo(1);
     }
 
     @Test
     void refusalsAreCountedWithoutLabels() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        IdempotencyStore store = new IdempotencyStore(props(1), registry);
+        IdempotencyStore store = ExecutionFixtures.keys(props(1), registry);
         assertThat(store.acquireOrGet("fn", "k1").state())
                 .isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
         assertThat(store.acquireOrGet("fn", "k2").state())
@@ -240,7 +240,7 @@ class IdempotencyKeyBudgetTest {
         assertThat(store.acquireOrGet("fn", "k3").state())
                 .isEqualTo(IdempotencyStore.AcquireResult.State.BUDGET_EXHAUSTED);
 
-        assertThat(store.rejections()).isEqualTo(2);
+        assertThat(ExecutionFixtures.keyRejections(store)).isEqualTo(2);
         // Exposed as an unlabeled counter: no execution-id or user-key tag.
         var counter = registry.get("idempotency_key_budget_rejections").functionCounter();
         assertThat(counter).isNotNull();

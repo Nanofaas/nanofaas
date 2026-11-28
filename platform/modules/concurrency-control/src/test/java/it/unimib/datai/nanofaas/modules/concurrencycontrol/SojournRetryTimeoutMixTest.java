@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
+import it.unimib.datai.nanofaas.controlplane.service.ServiceFixtures;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -58,10 +60,10 @@ class SojournRetryTimeoutMixTest {
 
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         metrics.registerFunction("mix");
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         RetryScheduler enqueuer = mock(RetryScheduler.class);
         when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(
                 store, enqueuer, mock(DispatcherRouter.class), metrics);
         SteppedClock clock = new SteppedClock();
 
@@ -134,7 +136,7 @@ class SojournRetryTimeoutMixTest {
             ExecutionRecord executionRecord = newRecord(store, fn, clock);
             executionRecord.markRunning();
             clock.advanceMillis(totalMs);
-            executionRecord.markTimeout();
+            ExecutionFixtures.timeOut(executionRecord);
             // The real dispatch shows up late; the total is recorded once, the service never.
             handler.completeExecution(executionRecord.executionId(), InvocationResult.success("late"));
         }
@@ -148,7 +150,7 @@ class SojournRetryTimeoutMixTest {
                 id, fn.name(), fn,
                 new InvocationRequest("payload", null),
                 null, null, clock.instant(), 1, InvocationKind.SYNC);
-        ExecutionRecord executionRecord = new ExecutionRecord(id, task, clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record(id, task, clock.source());
         store.put(executionRecord);
         return executionRecord;
     }

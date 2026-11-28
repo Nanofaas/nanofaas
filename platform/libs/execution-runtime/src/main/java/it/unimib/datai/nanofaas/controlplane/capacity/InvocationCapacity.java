@@ -65,13 +65,6 @@ public final class InvocationCapacity {
         }
     }
 
-    /** Compatibility-only registration for factories constructed outside the application context. */
-    public void ensureStandaloneGeneration(String functionName, int concurrency) {
-        if (generations.activeGeneration(functionName) == null) {
-            generations.register(functionName, concurrency);
-        }
-    }
-
     public long executionReservedGlobally() {
         return executions.reservedGlobally();
     }

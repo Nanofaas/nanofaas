@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -48,16 +49,15 @@ class P12CrossHostAdmissionTest {
              DispatchConnectionPool pool = new DispatchConnectionPool(properties(), new SimpleMeterRegistry())) {
             secondHost.enqueue(new MockResponse().setBody("{}"));
             secondHost.start();
-            ExecutionStore store = new ExecutionStore();
+            ExecutionStore store = ExecutionFixtures.store();
             Metrics metrics = new Metrics(new SimpleMeterRegistry());
             InvocationCapacity capacity = new InvocationCapacity(
                     generations, 1, 1, 1_000_000, 1_000_000, 16);
-            InvocationExecutionFactory factory = new InvocationExecutionFactory(
-                    store, new IdempotencyStore(), metrics, capacity,
+            InvocationExecutionFactory factory = ServiceFixtures.factory(store, metrics, capacity,
                     new RetainedInputEstimator.Limits(12, 128, 1_024, 64 * 1_024));
             ExternalDispatcher external = new ExternalDispatcher(new HttpClientConfig().webClient(
                     WebClient.builder(), properties(), pool.provider()));
-            ExecutionCompletionHandler completion = new ExecutionCompletionHandler(
+            ExecutionCompletionHandler completion = ServiceFixtures.completionHandler(
                     store, null, new DispatcherRouter(new LocalDispatcher(), external),
                     metrics, null, generations);
 

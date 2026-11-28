@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -43,6 +44,9 @@ class InvocationServiceCoreRetryTest {
     private it.unimib.datai.nanofaas.controlplane.config.RetryProperties retryProperties =
             new it.unimib.datai.nanofaas.controlplane.config.RetryProperties(null, null);
     private final java.util.List<ExecutorBackedInvocationEnqueuer> enqueuers = new java.util.ArrayList<>();
+    /** The one capacity of the test: records are admitted on it and the handler dispatches on it. */
+    private final it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry capacity =
+            new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry();
 
     @AfterEach
     void tearDown() {
@@ -59,7 +63,7 @@ class InvocationServiceCoreRetryTest {
      * creation for, so the handler reference is simply patched in right after construction.
      */
     private ExecutionCompletionHandler newHandlerWithRealRetryEnqueuer(DispatcherRouter dispatcherRouter) {
-        store = new ExecutionStore();
+        store = ExecutionFixtures.store();
         retryExecutor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
                 .newBoundedExecutor("test-core-retry", 2, 4, 32);
         return handlerBackedBy(store, dispatcherRouter, retryExecutor);
@@ -69,13 +73,12 @@ class InvocationServiceCoreRetryTest {
                                                                DispatcherRouter dispatcherRouter,
                                                                ExecutorService executor) {
         ExecutionCompletionHandler[] handlerHolder = new ExecutionCompletionHandler[1];
-        var capacity = new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry();
         capacity.register("fn", 4);
         var timer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
         ExecutorBackedInvocationEnqueuer enqueuer =
                 new ExecutorBackedInvocationEnqueuer(t -> handlerHolder[0].dispatch(t), capacity, executor, timer, 264, java.time.Clock.systemUTC(), store); // NOSONAR (java:S1612): handlerHolder[0]::dispatch would capture null
         ExecutionCompletionHandler handler =
-                new ExecutionCompletionHandler(store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()),
+                ServiceFixtures.completionHandler(store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()),
                         null, capacity, retryProperties);
         enqueuers.add(enqueuer);
         handlerHolder[0] = handler;
@@ -94,7 +97,7 @@ class InvocationServiceCoreRetryTest {
 
     private ExecutionRecord seedRecord(FunctionSpec spec, String executionId) {
         InvocationTask task = task(executionId, spec);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task, capacity);
         store.put(executionRecord);
         return executionRecord;
     }
@@ -130,7 +133,7 @@ class InvocationServiceCoreRetryTest {
         FunctionSpec spec = spec(0);
         ExecutionRecord executionRecord = seedRecord(spec, "exec-0-retry-success");
 
-        handler.dispatch(executionRecord.task());
+        handler.dispatchDirect(executionRecord.task());
 
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
         assertThat(executionRecord.completion().join().success()).isTrue();
@@ -145,7 +148,7 @@ class InvocationServiceCoreRetryTest {
         FunctionSpec spec = spec(0);
         ExecutionRecord executionRecord = seedRecord(spec, "exec-0-retry-failure");
 
-        handler.dispatch(executionRecord.task());
+        handler.dispatchDirect(executionRecord.task());
 
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
         assertThat(executionRecord.completion().join().success()).isFalse();
@@ -160,7 +163,7 @@ class InvocationServiceCoreRetryTest {
         FunctionSpec spec = spec(1);
         ExecutionRecord executionRecord = seedRecord(spec, "exec-1-retry-success");
 
-        handler.dispatch(executionRecord.task());
+        handler.dispatchDirect(executionRecord.task());
 
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
         assertThat(executionRecord.completion().join().success()).isTrue();
@@ -175,7 +178,7 @@ class InvocationServiceCoreRetryTest {
         FunctionSpec spec = spec(1);
         ExecutionRecord executionRecord = seedRecord(spec, "exec-1-retry-failure");
 
-        handler.dispatch(executionRecord.task());
+        handler.dispatchDirect(executionRecord.task());
 
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
         assertThat(executionRecord.completion().join().success()).isFalse();
@@ -190,7 +193,7 @@ class InvocationServiceCoreRetryTest {
         FunctionSpec spec = spec(3);
         ExecutionRecord executionRecord = seedRecord(spec, "exec-3-retry-success");
 
-        handler.dispatch(executionRecord.task());
+        handler.dispatchDirect(executionRecord.task());
 
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
         assertThat(executionRecord.completion().join().success()).isTrue();
@@ -205,7 +208,7 @@ class InvocationServiceCoreRetryTest {
         FunctionSpec spec = spec(3);
         ExecutionRecord executionRecord = seedRecord(spec, "exec-3-retry-failure");
 
-        handler.dispatch(executionRecord.task());
+        handler.dispatchDirect(executionRecord.task());
 
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
         assertThat(executionRecord.completion().join().success()).isFalse();
@@ -224,7 +227,7 @@ class InvocationServiceCoreRetryTest {
 
         retryExecutor.shutdown(); // simulate the pool being unavailable before the first failure
 
-        handler.dispatch(executionRecord.task());
+        handler.dispatchDirect(executionRecord.task());
 
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
         assertThat(executionRecord.completion().join().success()).isFalse();
@@ -235,7 +238,7 @@ class InvocationServiceCoreRetryTest {
 
     @Test
     void poolSaturation_terminatesTheRequestWithoutOrphanedQueuedState() throws InterruptedException {
-        store = new ExecutionStore();
+        store = ExecutionFixtures.store();
         // core=1, max=1, queue capacity=1: pin the worker and fill the queue before the
         // execution's own retry attempt is scheduled, forcing enqueue() to reject it.
         retryExecutor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
@@ -260,7 +263,7 @@ class InvocationServiceCoreRetryTest {
         FunctionSpec spec = spec(3);
         ExecutionRecord executionRecord = seedRecord(spec, "exec-pool-saturated");
 
-        handler.dispatch(executionRecord.task());
+        handler.dispatchDirect(executionRecord.task());
 
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
                 assertThat(executionRecord.completion().isDone()).isTrue());
@@ -286,7 +289,7 @@ class InvocationServiceCoreRetryTest {
         FunctionSpec spec = spec(maxRetries);
         ExecutionRecord executionRecord = seedRecord(spec, "exec-many-retries");
 
-        handler.dispatch(executionRecord.task());
+        handler.dispatchDirect(executionRecord.task());
 
         await().atMost(30, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -56,18 +57,22 @@ class InvocationServiceEarlyRefusalTest {
     private IdempotencyStore idempotencyStore;
     private InvocationService invocationService;
 
+    /** The service's capacity, on which seeded records are admitted as the factory would. */
+    private final it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry generations =
+            new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry();
+
     @BeforeEach
     void setUp() {
-        executionStore = new ExecutionStore();
-        idempotencyStore = new IdempotencyStore();
+        idempotencyStore = ExecutionFixtures.keys();
+        executionStore = ExecutionFixtures.store(idempotencyStore);
         when(enqueuer.supportsAsync()).thenReturn(true);
         org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(syncQueueGateway.enabled()).thenReturn(false);
         invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, idempotencyStore,
                 metrics, syncQueueGateway,
-                new ExecutionCompletionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
-                "full-fn", "hot-fn", "replay-fn", "sync-fn");
+                ServiceFixtures.completionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
+                generations, "full-fn", "hot-fn", "replay-fn", "sync-fn");
     }
 
     @Test
@@ -85,7 +90,7 @@ class InvocationServiceEarlyRefusalTest {
         // The old path reached enqueue, which refused; nothing calls it now.
         verify(enqueuer, never()).enqueue(any());
         verify(metrics).queueRejected("full-fn");
-        assertThat(executionStore.size()).isZero();
+        assertThat(ExecutionFixtures.outcomesHeld(executionStore)).isZero();
     }
 
     @ParameterizedTest
@@ -103,7 +108,7 @@ class InvocationServiceEarlyRefusalTest {
                 .isInstanceOf(QueueFullException.class);
 
         verify(enqueuer, never()).enqueue(any());
-        assertThat(executionStore.size()).isZero();
+        assertThat(ExecutionFixtures.outcomesHeld(executionStore)).isZero();
     }
 
     @Test
@@ -116,10 +121,10 @@ class InvocationServiceEarlyRefusalTest {
                 null, null, Instant.now(), 1,
                 InvocationKind.SYNC
             );
-        ExecutionRecord execution = new ExecutionRecord("exec-1", task);
+        ExecutionRecord execution = ExecutionFixtures.record("exec-1", task, generations);
         execution.markSuccess("stored-ok");
         executionStore.put(execution);
-        idempotencyStore.put("replay-fn", "idem-1", "exec-1");
+        ExecutionFixtures.bind(idempotencyStore, "replay-fn", "idem-1", "exec-1");
 
         // A replay's answer is already computed: refusing it because the queue is full
         // would deny a caller a result the platform is holding.
@@ -181,10 +186,10 @@ class InvocationServiceEarlyRefusalTest {
                 null, null, Instant.now(), 1,
                 InvocationKind.SYNC
             );
-        ExecutionRecord execution = new ExecutionRecord("exec-1", task);
+        ExecutionRecord execution = ExecutionFixtures.record("exec-1", task, generations);
         execution.markSuccess("stored-ok");
         executionStore.put(execution);
-        idempotencyStore.put("replay-fn", "idem-1", "exec-1");
+        ExecutionFixtures.bind(idempotencyStore, "replay-fn", "idem-1", "exec-1");
         String caller = Thread.currentThread().getName();
 
         invocationService.invokeSyncReactive(

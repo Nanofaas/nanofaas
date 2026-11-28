@@ -10,8 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityProperti
 import it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacity;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.LocalDispatcher;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
@@ -70,8 +68,7 @@ class P07ConfiguredHttpCalibrationTest {
     @Autowired private InvocationCapacity invocations;
     @Autowired private InvocationCapacityProperties properties;
     @Autowired private WaiterCapacity waiters;
-    @Autowired private ExecutionStore executions;
-    @Autowired private IdempotencyStore keys;
+    @Autowired private io.micrometer.core.instrument.MeterRegistry meters;
     @MockitoBean private LocalDispatcher dispatcher;
 
     @AfterEach
@@ -121,10 +118,10 @@ class P07ConfiguredHttpCalibrationTest {
                 T1_OFFERED, admitted, elapsed / 1_000_000d,
                 T1_OFFERED * 1_000_000_000d / elapsed,
                 percentile(latencyNanos, 0.50) / 1_000d, percentile(latencyNanos, 0.95) / 1_000d,
-                allocated, perAdmission(allocated, admitted), populations.summary(), executions.size(), keys.size(),
+                allocated, perAdmission(allocated, admitted), populations.summary(), gauge("execution_store_size"), gauge("idempotency_keys_held"),
                 invocations.executionReservedGlobally(), invocations.inputReservedGlobally(),
                 waiters.reservedGlobally(),
-                executions.inFlightCount());
+                gauge("execution_in_flight_records"));
     }
 
     @Test
@@ -196,11 +193,11 @@ class P07ConfiguredHttpCalibrationTest {
                             + "drainLive=%d%n",
                     shape.getKey(), T2_OFFERED_PER_SHAPE, admitted, quotaRefused, refusalResources,
                     percentile(latencyNanos, 0.50) / 1_000d, percentile(latencyNanos, 0.95) / 1_000d,
-                    allocated, perAdmission(allocated, admitted), populations.summary(), executions.size(), keys.size(),
+                    allocated, perAdmission(allocated, admitted), populations.summary(), gauge("execution_store_size"), gauge("idempotency_keys_held"),
                     replay.getStatus().value(), dispatches.get() - beforeReplay,
                     invocations.executionReservedGlobally(), invocations.inputReservedGlobally(),
                     waiters.reservedGlobally(),
-                    executions.inFlightCount());
+                    gauge("execution_in_flight_records"));
             functions.remove(function);
         }
     }
@@ -246,7 +243,7 @@ class P07ConfiguredHttpCalibrationTest {
             assertThat(invocations.executionReservedGlobally()).isZero();
             assertThat(invocations.inputReservedGlobally()).isZero();
             assertThat(waiters.reservedGlobally()).isZero();
-            assertThat(executions.inFlightCount()).isZero();
+            assertThat(gauge("execution_in_flight_records")).isZero();
         });
     }
 
@@ -299,9 +296,9 @@ class P07ConfiguredHttpCalibrationTest {
                     sample("peakExecutions", invocations.executionReservedGlobally());
                     sample("peakInputBytes", invocations.inputReservedGlobally());
                     sample("peakWaiters", waiters.reservedGlobally());
-                    sample("peakLive", executions.inFlightCount());
-                    sample("peakOutcomes", executions.size());
-                    sample("peakKeys", keys.size());
+                    sample("peakLive", gauge("execution_in_flight_records"));
+                    sample("peakOutcomes", gauge("execution_store_size"));
+                    sample("peakKeys", gauge("idempotency_keys_held"));
                     LockSupport.parkNanos(100_000);
                 }
             });
@@ -336,5 +333,10 @@ class P07ConfiguredHttpCalibrationTest {
                 throw new AssertionError(interrupted);
             }
         }
+    }
+
+    /** The application's stores publish their sizes as gauges; read them as an operator would. */
+    private long gauge(String name) {
+        return (long) meters.get(name).gauge().value();
     }
 }

@@ -34,7 +34,12 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
     private static final Logger log = LoggerFactory.getLogger(FunctionCapacityRegistry.class);
 
     private final LongSupplier nanoTime;
-    private final AtomicLong nextGeneration = new AtomicLong(1);
+    /**
+     * Process-wide, not per registry: a generation is compared by value, so one minted by another
+     * registry must never equal one of this registry's, or a fence comparing them would hold by
+     * coincidence of numbering.
+     */
+    private static final AtomicLong NEXT_GENERATION = new AtomicLong(1);
     private final ConcurrentHashMap<String, Entry> entries = new ConcurrentHashMap<>();
     private final Set<Consumer<String>> capacityListeners = ConcurrentHashMap.newKeySet();
 
@@ -84,7 +89,7 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
                         entry.draining.put(entry.generation, current);
                     }
                     FunctionGeneration newGeneration =
-                            new FunctionGeneration(functionName, nextGeneration.getAndIncrement());
+                            new FunctionGeneration(functionName, NEXT_GENERATION.getAndIncrement());
                     registered = new FunctionCapacityState(newGeneration, configuredConcurrency, nanoTime,
                             () -> onStateDrained(functionName, entry, newGeneration));
                     entry.state = registered;

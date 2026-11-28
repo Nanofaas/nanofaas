@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.service.IdempotencyBudgetExhaustedException;
+import it.unimib.datai.nanofaas.controlplane.service.IdempotencyKeyBusyException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.service.OutcomeGoneException;
 import it.unimib.datai.nanofaas.controlplane.service.SyncInvocation;
@@ -692,6 +693,38 @@ class InvocationControllerTest {
                 .bodyValue(request)
                 .exchange()
                 .expectStatus().isEqualTo(429);
+    }
+
+    @Test
+    void invokeSync_keyStillClaimedByAnotherRequest_mapsTo409() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq("k"), eq(null), eq(null), any()))
+                .thenReturn(Mono.error(new IdempotencyKeyBusyException()));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", "k")
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(409)
+                .expectBody().jsonPath("$.error").isEqualTo("IDEMPOTENCY_KEY_IN_USE");
+    }
+
+    @Test
+    void invokeAsync_keyStillClaimedByAnotherRequest_mapsTo409() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeAsync(eq("echo"), any(), eq("k"), eq(null)))
+                .thenThrow(new IdempotencyKeyBusyException());
+
+        webClient.post()
+                .uri("/v1/functions/echo:enqueue")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", "k")
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(409)
+                .expectBody().jsonPath("$.error").isEqualTo("IDEMPOTENCY_KEY_IN_USE");
     }
 
     @Test

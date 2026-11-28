@@ -15,14 +15,19 @@ final class TestWaiterCapacity {
 
     static Runtime runtime(ExecutionStore store, IdempotencyStore keys, Metrics metrics,
                            String... functionNames) {
-        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
+        return runtime(store, keys, metrics, new FunctionCapacityRegistry(), functionNames);
+    }
+
+    /** On {@code generations}, the registry a test also admits its seeded records on. */
+    static Runtime runtime(ExecutionStore store, IdempotencyStore keys, Metrics metrics,
+                           FunctionCapacityRegistry generations, String... functionNames) {
         for (String functionName : functionNames) {
             generations.register(functionName, 1);
         }
         WaiterCapacity waiters = new WaiterCapacity(generations, 10_000, 1_000);
         InvocationCapacity capacity = new InvocationCapacity(
                 generations, 10_000, 1_000, 64L << 20, 16L << 20, 64);
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(
+        InvocationExecutionFactory factory = ServiceFixtures.factory(
                 store, keys, metrics, capacity,
                 new RetainedInputEstimator.Limits(32, 16_384, 65_536, 64L << 20));
         return new Runtime(factory, waiters);
@@ -37,7 +42,21 @@ final class TestWaiterCapacity {
             SyncQueueGateway syncQueue,
             ExecutionCompletionHandler completion,
             String... functionNames) {
-        Runtime runtime = runtime(store, keys, metrics, functionNames);
+        return service(functions, enqueuer, store, keys, metrics, syncQueue, completion,
+                new FunctionCapacityRegistry(), functionNames);
+    }
+
+    static InvocationService service(
+            FunctionService functions,
+            InvocationEnqueuer enqueuer,
+            ExecutionStore store,
+            IdempotencyStore keys,
+            Metrics metrics,
+            SyncQueueGateway syncQueue,
+            ExecutionCompletionHandler completion,
+            FunctionCapacityRegistry generations,
+            String... functionNames) {
+        Runtime runtime = runtime(store, keys, metrics, generations, functionNames);
         InvocationResponseMapper responses = new InvocationResponseMapper();
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
                 enqueuer, metrics, syncQueue, null, completion, responses, runtime.waiters());

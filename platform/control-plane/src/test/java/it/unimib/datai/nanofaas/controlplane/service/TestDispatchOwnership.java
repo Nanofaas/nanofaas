@@ -2,10 +2,15 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
+import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /** Real generation-bound ownership for fixtures which drive completion without a scheduler. */
 final class TestDispatchOwnership {
@@ -23,7 +28,19 @@ final class TestDispatchOwnership {
         }));
     }
 
-    void attach(ExecutionRecord executionRecord) { executionRecord.attachDispatchLease(acquire(executionRecord.task()).dispatchLease()); }
+    /**
+     * Dispatches {@code task}'s attempt through {@code handler} with a lease acquired here, as a
+     * scheduler would, on a LOCAL transport the test answers: completing the returned future is the
+     * transport answering and draining, which is what gives the slot back.
+     */
+    CompletableFuture<DispatchResult> dispatch(ExecutionCompletionHandler handler, DispatcherRouter router,
+                                               InvocationTask task) {
+        CompletableFuture<DispatchResult> transport = new CompletableFuture<>();
+        when(router.dispatchLocal(any(InvocationTask.class))).thenReturn(transport);
+        handler.dispatch(acquire(task));
+        return transport;
+    }
+
     int releases(String name) { return releases.getOrDefault(name, new AtomicInteger()).get(); }
     int releases() { return releases.values().stream().mapToInt(AtomicInteger::get).sum(); }
 }

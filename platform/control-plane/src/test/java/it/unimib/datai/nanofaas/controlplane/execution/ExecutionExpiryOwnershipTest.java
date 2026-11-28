@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -26,13 +27,16 @@ import static org.awaitility.Awaitility.await;
 
 class ExecutionExpiryOwnershipTest {
     private AnnotationConfigApplicationContext context() {
+        return context("nanofaas.execution-store.ttl=80ms",
+                "nanofaas.execution-store.max-lifetime=80ms",
+                "nanofaas.execution-store.sync-ttl=80ms");
+    }
+
+    private AnnotationConfigApplicationContext context(String... properties) {
         var context = new AnnotationConfigApplicationContext();
         // ExecutionStore/IdempotencyStore carry no @Component: ExecutionExpiryConfiguration's
         // @Bean methods construct them from the record it binds out of the environment.
-        TestPropertySourceUtils.addInlinedPropertiesToEnvironment(context,
-                "nanofaas.execution-store.ttl=80ms",
-                "nanofaas.execution-store.max-lifetime=80ms",
-                "nanofaas.execution-store.sync-ttl=80ms");
+        TestPropertySourceUtils.addInlinedPropertiesToEnvironment(context, properties);
         context.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
         context.register(ExecutionExpiryConfiguration.class);
         context.refresh();
@@ -84,11 +88,63 @@ class ExecutionExpiryOwnershipTest {
         }
     }
 
+    /**
+     * A keyed admission refused under overload claims its key and abandons it at once. Caffeine
+     * then reschedules the key cache's expiry timer, and on the JDK's system scheduler a
+     * cancelled timer stays queued, with its CancellationException, until its original deadline
+     * (max-lifetime, 30 minutes by default): the P24 retention, which only ExecutionStore was
+     * moved off. The key cache must run on the owned scheduler too.
+     */
+    @Test
+    void abandonedKeyClaimsLeaveNoCancelledTimersInTheCommonPool() throws InterruptedException {
+        try (var context = context("nanofaas.execution-store.ttl=5m")) {
+            var keys = context.getBean(IdempotencyStore.class);
+            long before = ForkJoinPool.commonPool().getDelayedTaskCount();
+            for (int i = 0; i < 2_000; i++) {
+                var claim = keys.acquireOrGet("fn", "refused-" + i);
+                keys.abandonClaim("fn", "refused-" + i, claim.executionIdOrToken());
+                // Refusals spread over time, as under real overload, give the cache's
+                // maintenance the chance to reschedule its timer between them.
+                if (i % 100 == 0) Thread.sleep(5);
+            }
+
+            await().pollDelay(Duration.ofMillis(500)).atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                    assertThat(ForkJoinPool.commonPool().getDelayedTaskCount() - before).isLessThan(20));
+        }
+    }
+
+    /**
+     * The terminal transition of a keyed execution must tombstone its key with the beans this
+     * configuration builds, not only after some other bean's constructor happened to attach the
+     * lifecycle to the store as a side effect.
+     */
+    @Test
+    void theConfiguredStoreTombstonesAKeyWhenItsExecutionSettles() {
+        try (var context = context("nanofaas.execution-store.ttl=5m")) {
+            var store = context.getBean(ExecutionStore.class);
+            var keys = context.getBean(IdempotencyStore.class);
+            var claim = keys.acquireOrGet("fn", "key");
+            var executionRecord = newRecord("keyed", "key");
+            store.put(executionRecord);
+            keys.publishClaim("fn", "key", claim.executionIdOrToken(), "keyed");
+            executionRecord.markSuccess("ok");
+
+            store.settle(executionRecord);
+
+            assertThat(keys.acquireOrGet("fn", "key")).isEqualTo(new IdempotencyStore.AcquireResult(
+                    IdempotencyStore.AcquireResult.State.EXISTING, "keyed", true));
+        }
+    }
+
     private ExecutionRecord newRecord(String id) {
+        return newRecord(id, null);
+    }
+
+    private ExecutionRecord newRecord(String id, String idempotencyKey) {
         var spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null, 1000, 1, 10, 0,
                 null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
         var task = new InvocationTask(id, "fn", spec, new InvocationRequest("payload", Map.of()),
-                null, null, Instant.now(), 1, InvocationKind.SYNC);
-        return new ExecutionRecord(id, task);
+                idempotencyKey, null, Instant.now(), 1, InvocationKind.SYNC);
+        return ExecutionFixtures.record(id, task);
     }
 }

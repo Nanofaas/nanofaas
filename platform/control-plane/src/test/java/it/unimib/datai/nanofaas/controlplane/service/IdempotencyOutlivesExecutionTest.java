@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 
@@ -40,11 +41,11 @@ class IdempotencyOutlivesExecutionTest {
     void aKeyShorterThanTheRecordDuplicatesTheExecution() {
         // Records held for thirty minutes; the key, built the way production no
         // longer can, for a tenth of a second.
-        ExecutionStore executions = new ExecutionStore(ExecutionStoreProperties.of(
-                Duration.ofMinutes(30), Duration.ofHours(1), null),
-                new SimpleMeterRegistry());
-        IdempotencyStore keys = new IdempotencyStore(Duration.ofMillis(100));
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(executions, keys, new Metrics(new SimpleMeterRegistry()));
+        IdempotencyStore keys = ExecutionFixtures.keys(Duration.ofMillis(100));
+        ExecutionStore executions = ExecutionFixtures.store(ExecutionFixtures.properties(
+                Duration.ofMinutes(30), Duration.ofHours(1), null), keys);
+        InvocationExecutionFactory factory = ServiceFixtures.factory(executions, keys,
+                new Metrics(new SimpleMeterRegistry()), "charge-card");
         InvocationRequest request = new InvocationRequest("payload", Map.of());
 
         var first = factory.createOrReuseExecution("charge-card", spec(), request, "order-42", null, InvocationKind.SYNC);
@@ -55,7 +56,7 @@ class IdempotencyOutlivesExecutionTest {
         // Wait for the key's own expiry rather than for a fixed nap: the point is the
         // moment the key is gone, and a sleep either guesses it long or races it short.
         await().atMost(Duration.ofSeconds(5))
-                .until(() -> keys.getExecutionId("charge-card", "order-42").isEmpty());
+                .until(() -> ExecutionFixtures.boundExecutionId(keys, "charge-card", "order-42").isEmpty());
 
         assertThat(executions.getOrNull(firstId))
                 .describedAs("the answer is still held, which is the premise")

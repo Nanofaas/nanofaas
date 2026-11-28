@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class FunctionSpecResolverTest {
 
     private final FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
-    private final FunctionSpecResolver resolver = new FunctionSpecResolver(defaults);
+    private final FunctionSpecResolver resolver = new FunctionSpecResolver(defaults, RegistryFixtures.MAX_LIFETIME);
 
     @Test
     void resolve_fillsDefaultsForNullFields() {

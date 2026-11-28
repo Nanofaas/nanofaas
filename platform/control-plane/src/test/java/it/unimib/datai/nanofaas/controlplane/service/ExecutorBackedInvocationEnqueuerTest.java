@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.controlplane.capacity.*;
 import it.unimib.datai.nanofaas.controlplane.execution.*;
@@ -21,7 +22,7 @@ class ExecutorBackedInvocationEnqueuerTest {
     private final ExecutorService executor = mock(ExecutorService.class);
     private final InvocationDispatch dispatch = mock(InvocationDispatch.class);
     private final FunctionCapacityRegistry capacity = spy(new FunctionCapacityRegistry());
-    private final ExecutionStore executions = spy(new ExecutionStore());
+    private final ExecutionStore executions = spy(ExecutionFixtures.store());
     private final List<Runnable> timers = new ArrayList<>();
     private final List<Runnable> workers = new ArrayList<>();
     private final List<Long> delays = new ArrayList<>();
@@ -46,7 +47,7 @@ class ExecutorBackedInvocationEnqueuerTest {
                 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         var task = new InvocationTask(id, "fn", spec, new InvocationRequest("in", null),
                 null, null, now, 2, InvocationKind.SYNC);
-        executions.put(new ExecutionRecord(id, task));
+        executions.put(ExecutionFixtures.record(id, task, capacity));
         return task;
     }
 

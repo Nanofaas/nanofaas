@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -52,7 +53,7 @@ class SyncQueueRuntimeActivationRegressionTest {
     static class TestSupport {
         @Bean
         ExecutionStore executionStore() {
-            return new ExecutionStore();
+            return ExecutionFixtures.store();
         }
 
         @Bean
@@ -115,7 +116,7 @@ class SyncQueueRuntimeActivationRegressionTest {
                     1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
             InvocationTask task = new InvocationTask("e1", "fn", spec,
                     new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
-            context.getBean(ExecutionStore.class).put(new ExecutionRecord(task.executionId(), task));
+            context.getBean(ExecutionStore.class).put(ExecutionFixtures.record(task.executionId(), task));
             context.getBean("schedulerCapacityGenerationListener", FunctionRegistrationListener.class).onRegister(spec);
 
             assertThat(context.getBean(EngineSyncQueueGateway.class).enqueue(task)).isTrue();

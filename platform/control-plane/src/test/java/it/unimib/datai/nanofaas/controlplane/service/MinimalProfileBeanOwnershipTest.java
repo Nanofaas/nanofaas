@@ -70,6 +70,28 @@ class MinimalProfileBeanOwnershipTest {
      * owns none, so shutdown has nothing to drain and every replica reading is honestly
      * UNAVAILABLE rather than a fabricated zero.
      */
+    /**
+     * Generations have one authority, the application's capacity registry. A coordinator on a
+     * registry of its own sees no function ever registered there, so every reader of
+     * {@code generationOf} (forecasting, the scaler, offload) would find none.
+     */
+    @Test
+    void withoutAProviderTheCoordinatorReadsGenerationsFromTheApplicationsCapacity() {
+        runner.run(context -> {
+            FunctionRegistry functions = context.getBean(FunctionRegistry.class);
+            FunctionCapacityRegistry capacity = context.getBean(FunctionCapacityRegistry.class);
+            functions.put(new FunctionSpec("fn", "image", null, null, null, 1000, 1, 10, 0,
+                    "http://function", it.unimib.datai.nanofaas.common.model.ExecutionMode.EXTERNAL,
+                    null, null, null));
+            capacity.register("fn", 1);
+
+            assertThat(context.getBean(ManagedDeploymentCoordinator.class)
+                    .generationOf(functions.getRegistered("fn").orElseThrow()))
+                    .isNotNull()
+                    .isEqualTo(capacity.activeGeneration("fn"));
+        });
+    }
+
     @Test
     void withoutAProviderTheCoordinatorIsStillPresentAndOwnsNoRefreshPool() {
         runner.run(context -> {

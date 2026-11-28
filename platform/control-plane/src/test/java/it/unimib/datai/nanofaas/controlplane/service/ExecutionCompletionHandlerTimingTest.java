@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -7,7 +8,6 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionLifecycle;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
@@ -42,14 +42,12 @@ class ExecutionCompletionHandlerTimingTest {
 
     @BeforeEach
     void setUp() {
-        executionStore = new ExecutionStore();
-        // The owner is mandatory for settle(); attach a minimal one.
-        new ExecutionLifecycle(executionStore, new IdempotencyStore());
+        executionStore = ExecutionFixtures.store();
         enqueuer = mock(RetryScheduler.class);
         meterRegistry = new SimpleMeterRegistry();
         metrics = new Metrics(meterRegistry);
         metrics.registerFunction("fn");
-        completionHandler = new ExecutionCompletionHandler(
+        completionHandler = ServiceFixtures.completionHandler(
                 executionStore, enqueuer, mock(DispatcherRouter.class), metrics);
     }
 
@@ -58,7 +56,7 @@ class ExecutionCompletionHandlerTimingTest {
         when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
         FunctionSpec spec = spec("fn", 3);
         MutableClock clock = new MutableClock(1_000_000L, 0L);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec", task("exec", spec, clock), clock.source());
         executionStore.put(executionRecord);
 
         // Attempt 1: wait 5ms, service 10ms, fails -> retried (enqueued at 15ms).
@@ -91,7 +89,7 @@ class ExecutionCompletionHandlerTimingTest {
     void aTimeoutRecordsOneTotalConclusion_andNoCensoredServiceEvenOnLateCallbacks() {
         FunctionSpec spec = spec("fn", 3);
         MutableClock clock = new MutableClock(1_000_000L, 0L);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec", task("exec", spec, clock), clock.source());
         executionStore.put(executionRecord);
 
         // An execution-level deadline concludes the record 30ms after admission, before the
@@ -99,7 +97,7 @@ class ExecutionCompletionHandlerTimingTest {
         clock.advanceMillis(5);
         executionRecord.markRunning();
         clock.advanceMillis(25);
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
 
         // The real dispatch outcome arrives late — and then a duplicate. The total (admission ->
         // timeout) is real and recorded once; the service time is censored and never recorded.
@@ -122,7 +120,7 @@ class ExecutionCompletionHandlerTimingTest {
         when(enqueuer.enqueue(any(), any(), any())).thenReturn(false); // queue full
         FunctionSpec spec = spec("fn", 3);
         MutableClock clock = new MutableClock(1_000_000L, 0L);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec", task("exec", spec, clock), clock.source());
         executionStore.put(executionRecord);
 
         clock.advanceMillis(5);
@@ -147,7 +145,7 @@ class ExecutionCompletionHandlerTimingTest {
         MutableClock clock = new MutableClock(1_000_000L, 0L);
         FunctionSpec spec = spec("fn", 3);
         var admission = clock.instant();
-        ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec", task("exec", spec, clock), clock.source());
         executionStore.put(executionRecord);
 
         clock.advanceMillis(7);
@@ -158,7 +156,7 @@ class ExecutionCompletionHandlerTimingTest {
 
         // The retry replaced the task (and its enqueuedAt), but not the invocation's admission.
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
-        assertThat(executionRecord.admittedAt()).isEqualTo(admission);
+        assertThat(executionRecord.snapshot().admittedAt()).isEqualTo(admission);
         assertThat(executionRecord.snapshot().admittedAt()).isEqualTo(admission);
     }
 
@@ -166,7 +164,7 @@ class ExecutionCompletionHandlerTimingTest {
     void anOffloadedSuccessRecordsItsEndToEndConclusion() {
         FunctionSpec spec = spec("fn", 0);
         MutableClock clock = new MutableClock(1_000_000L, 0L);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec", task("exec", spec, clock), clock.source());
         executionStore.put(executionRecord);
 
         clock.advanceMillis(40);
@@ -182,7 +180,7 @@ class ExecutionCompletionHandlerTimingTest {
     void anOffloadedFailureRecordsItsEndToEndConclusion() {
         FunctionSpec spec = spec("fn", 0);
         MutableClock clock = new MutableClock(1_000_000L, 0L);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec", task("exec", spec, clock), clock.source());
         executionStore.put(executionRecord);
 
         clock.advanceMillis(25);
@@ -203,11 +201,11 @@ class ExecutionCompletionHandlerTimingTest {
         // so censoring it biases the sojourn the concurrency governor steers on.
         FunctionSpec spec = spec("fn", 0);
         MutableClock clock = new MutableClock(1_000_000L, 0L);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec", task("exec", spec, clock), clock.source());
         executionStore.put(executionRecord);
 
         clock.advanceMillis(60);
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
         executionStore.settle(executionRecord);
 
         assertThat(metrics.e2eLatency("fn").count()).isEqualTo(1);
@@ -225,7 +223,7 @@ class ExecutionCompletionHandlerTimingTest {
         // guard is already consumed when the normal completion path publishes.
         FunctionSpec spec = spec("fn", 0);
         MutableClock clock = new MutableClock(1_000_000L, 0L);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec", task("exec", spec, clock), clock.source());
         executionStore.put(executionRecord);
         clock.advanceMillis(5);
         executionRecord.markRunning();

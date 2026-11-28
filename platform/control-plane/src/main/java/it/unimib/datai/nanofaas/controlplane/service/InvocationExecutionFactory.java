@@ -2,13 +2,11 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionLifecycle;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore.AcquireResult;
 import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
-import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.input.InvocationInputRejectedException;
 import it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimator;
@@ -29,36 +27,15 @@ public final class InvocationExecutionFactory {
     private final Metrics metrics;
     private final InvocationCapacity invocationCapacity;
     private final RetainedInputEstimator.Limits inputLimits;
-    private final boolean standaloneCapacity;
 
-    public InvocationExecutionFactory(ExecutionStore executionStore, IdempotencyStore idempotencyStore,
-                                      Metrics metrics) {
-        this(executionStore, idempotencyStore, metrics, standaloneCapacity(),
-                new RetainedInputEstimator.Limits(32, 16_384, 65_536, 64L << 20), true);
-    }
-
-    @org.springframework.beans.factory.annotation.Autowired
     public InvocationExecutionFactory(ExecutionStore executionStore, IdempotencyStore idempotencyStore,
                                       Metrics metrics, InvocationCapacity invocationCapacity,
                                       RetainedInputEstimator.Limits inputLimits) {
-        this(executionStore, idempotencyStore, metrics, invocationCapacity, inputLimits, false);
-    }
-
-    private InvocationExecutionFactory(ExecutionStore executionStore, IdempotencyStore idempotencyStore,
-                                       Metrics metrics, InvocationCapacity invocationCapacity,
-                                       RetainedInputEstimator.Limits inputLimits, boolean standaloneCapacity) {
         this.metrics = metrics;
         this.executionStore = executionStore;
         this.idempotencyStore = idempotencyStore;
         this.invocationCapacity = invocationCapacity;
         this.inputLimits = inputLimits;
-        this.standaloneCapacity = standaloneCapacity;
-        // The single owner of the terminal transition, attached to the store here: from
-        // now on the key's move to its terminal binding is a first-class, ordered step of
-        // the owner's settle(), not a best-effort listener that a concurrent eviction can
-        // slip past (finding R2). The record still carries the original key across retries,
-        // so the owner finds it here.
-        new ExecutionLifecycle(executionStore, idempotencyStore);
     }
 
     public ExecutionLookup createOrReuseExecution(String functionName,
@@ -70,9 +47,13 @@ public final class InvocationExecutionFactory {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             ExecutionRecord executionRecord = newExecutionRecord(functionName, spec, request, null, traceId, kind);
             publishRecord(executionRecord);
-            return ExecutionLookup.newUnclaimed(executionRecord, executionStore);
+            return new ExecutionLookup.Fresh(executionRecord, executionStore, null, null, null, null);
         }
 
+        // A duplicate waits on another claimant for at most the function's own timeout: past it the
+        // caller could not use the answer anyway, and a claim leaked by some admission path would
+        // otherwise park this (boundedElastic) thread until the pending key expires at max-lifetime.
+        long waitDeadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(spec.timeoutMs());
         while (true) {
             AcquireResult acquire = idempotencyStore.acquireOrGet(functionName, idempotencyKey);
             if (acquire.state() == AcquireResult.State.CLAIMED) {
@@ -87,7 +68,7 @@ public final class InvocationExecutionFactory {
                 );
             }
             if (acquire.state() == AcquireResult.State.PENDING) {
-                parkPendingClaim();
+                parkPendingClaim(waitDeadline);
                 continue;
             }
             if (acquire.state() == AcquireResult.State.BUDGET_EXHAUSTED) {
@@ -117,7 +98,7 @@ public final class InvocationExecutionFactory {
             // published and not explicitly abandoned - the terminal transition is in flight and
             // will surface the tombstone): park briefly and re-read rather than authorising a
             // second execution on the strength of an absent record/outcome.
-            parkPendingClaim();
+            parkPendingClaim(waitDeadline);
         }
     }
 
@@ -129,7 +110,7 @@ public final class InvocationExecutionFactory {
             // The key did its job: a second arrival found the first execution and will
             // wait on its result instead of running the function again.
             metrics.replayed(functionName, kind);
-            return ExecutionLookup.existing(existing);
+            return new ExecutionLookup.Live(existing);
         }
 
         // Finished and archived. Looking only among the living would make this pass
@@ -138,7 +119,7 @@ public final class InvocationExecutionFactory {
         Outcome settledOutcome = executionStore.outcomeOf(existingExecutionId);
         if (settledOutcome != null) {
             metrics.replayed(functionName, kind);
-            return ExecutionLookup.settled(existingExecutionId, settledOutcome);
+            return new ExecutionLookup.Settled(existingExecutionId, settledOutcome);
         }
 
         // A TERMINAL binding pointing at an execution that is neither alive nor
@@ -148,7 +129,7 @@ public final class InvocationExecutionFactory {
         // function: it gets an explicit "no longer available" outcome (HTTP 410).
         if (terminal) {
             metrics.replayed(functionName, kind);
-            return ExecutionLookup.gone(existingExecutionId);
+            return new ExecutionLookup.Gone(existingExecutionId);
         }
         return null;
     }
@@ -164,14 +145,8 @@ public final class InvocationExecutionFactory {
         try {
             executionRecord = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId, kind);
             publishRecord(executionRecord);
-            return ExecutionLookup.newClaimed(
-                    executionRecord,
-                    executionStore,
-                    idempotencyStore,
-                    functionName,
-                    idempotencyKey,
-                    claimToken
-            );
+            return new ExecutionLookup.Fresh(executionRecord, executionStore, idempotencyStore,
+                    functionName, idempotencyKey, claimToken);
         } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             if (executionRecord != null) {
                 executionStore.remove(executionRecord.executionId());
@@ -194,9 +169,6 @@ public final class InvocationExecutionFactory {
             throw new InvocationInputRejectedException(reason);
         }
         long retainedBytes = ((RetainedInputEstimator.Measured) estimate).retainedBytes();
-        if (standaloneCapacity) {
-            invocationCapacity.ensureStandaloneGeneration(functionName, spec.concurrency());
-        }
         InvocationCapacity.Admission admission = invocationCapacity.reserve(
                 functionName, executionId, retainedBytes);
         InvocationTask task = new InvocationTask(
@@ -229,14 +201,6 @@ public final class InvocationExecutionFactory {
         }
     }
 
-    private static InvocationCapacity standaloneCapacity() {
-        return new InvocationCapacity(
-                new FunctionCapacityRegistry(),
-                100_000, 10_000,
-                1L << 30, 256L << 20,
-                64);
-    }
-
     /**
      * UUIDv4-shaped id from ThreadLocalRandom. Execution ids need uniqueness, not
      * unpredictability; this avoids the SecureRandom contention of UUID.randomUUID()
@@ -249,7 +213,10 @@ public final class InvocationExecutionFactory {
         return new UUID(msb, lsb).toString();
     }
 
-    private static void parkPendingClaim() {
+    private static void parkPendingClaim(long waitDeadline) {
+        if (System.nanoTime() - waitDeadline >= 0) {
+            throw new IdempotencyKeyBusyException();
+        }
         java.util.concurrent.locks.LockSupport.parkNanos(java.time.Duration.ofMillis(1).toNanos());
         if (Thread.currentThread().isInterrupted()) {
             Thread.currentThread().interrupt();
@@ -257,138 +224,114 @@ public final class InvocationExecutionFactory {
         }
     }
 
-    public static final class ExecutionLookup {
-        private final ExecutionRecord executionRecord;
-        private final boolean isNew;
-        private final ExecutionStore executionStore;
-        private final IdempotencyStore idempotencyStore;
-        private final String functionName;
-        private final String idempotencyKey;
-        private final String claimToken;
-        private final Outcome settledOutcome;
-        private final String settledExecutionId;
-        private final boolean gone;
-        private boolean claimPublished;
+    /**
+     * What an admission found, one variant per case: a caller switches on the type instead of
+     * probing nullable fields in the right order.
+     */
+    public sealed interface ExecutionLookup {
+        /** The live record behind {@link Fresh} and {@link Live}; null once the execution is over. */
+        ExecutionRecord executionRecord();
 
-        private ExecutionLookup(ExecutionRecord executionRecord,
-                                boolean isNew,
-                                ExecutionStore executionStore,
-                                IdempotencyStore idempotencyStore,
-                                String functionName,
-                                String idempotencyKey,
-                                String claimToken) {
-            this(executionRecord, isNew, executionStore, idempotencyStore, functionName,
-                    idempotencyKey, claimToken, null, null, false);
+        /** Whether this is a new admission, which the caller must publish or abandon. */
+        default boolean isNew() {
+            return false;
         }
 
-        // Ten fields of one immutable lookup result, set once and read as a whole;
-        // a parameter object here would be this class under another name.
-        @SuppressWarnings("java:S107")
-        private ExecutionLookup(ExecutionRecord executionRecord,
-                                boolean isNew,
-                                ExecutionStore executionStore,
-                                IdempotencyStore idempotencyStore,
-                                String functionName,
-                                String idempotencyKey,
-                                String claimToken,
-                                Outcome settledOutcome,
-                                String settledExecutionId,
-                                boolean gone) {
-            this.executionRecord = executionRecord;
-            this.isNew = isNew;
-            this.executionStore = executionStore;
-            this.idempotencyStore = idempotencyStore;
-            this.functionName = functionName;
-            this.idempotencyKey = idempotencyKey;
-            this.claimToken = claimToken;
-            this.settledOutcome = settledOutcome;
-            this.settledExecutionId = settledExecutionId;
-            this.gone = gone;
+        /** Publishes a new admission's key claim; a replay has nothing to publish. */
+        default void publishAdmission() {
         }
 
-        private static ExecutionLookup existing(ExecutionRecord executionRecord) {
-            return new ExecutionLookup(executionRecord, false, null, null, null, null, null);
+        /** Undoes a new admission; a replay has nothing to undo. */
+        default void abandonAdmission() {
         }
 
-        /** A keyed execution that is already over: there is only the outcome to hand back. */
-        private static ExecutionLookup settled(String executionId, Outcome outcome) {
-            return new ExecutionLookup(null, false, null, null, null, null, null, outcome, executionId, false);
+        /** A replay that found its execution still running: it waits on the same result. */
+        record Live(ExecutionRecord executionRecord) implements ExecutionLookup {
+        }
+
+        /** A replay of a finished execution: only its archived outcome is left to hand back. */
+        record Settled(String executionId, Outcome outcome) implements ExecutionLookup {
+            @Override
+            public ExecutionRecord executionRecord() {
+                return null;
+            }
         }
 
         /**
-         * The key is still bound to a concluded execution, but its outcome payload was
-         * evicted for capacity. The replay does not re-run the function.
+         * A replay of a finished execution whose outcome was evicted for capacity. The key still
+         * protects it: the function is not re-run, and the caller answers 410.
          */
-        private static ExecutionLookup gone(String executionId) {
-            return new ExecutionLookup(null, false, null, null, null, null, null, null, executionId, true);
-        }
-
-        private static ExecutionLookup newUnclaimed(ExecutionRecord executionRecord, ExecutionStore executionStore) {
-            return new ExecutionLookup(executionRecord, true, executionStore, null, null, null, null);
-        }
-
-        private static ExecutionLookup newClaimed(ExecutionRecord executionRecord,
-                                                  ExecutionStore executionStore,
-                                                  IdempotencyStore idempotencyStore,
-                                                  String functionName,
-                                                  String idempotencyKey,
-                                                  String claimToken) {
-            return new ExecutionLookup(executionRecord, true, executionStore, idempotencyStore, functionName, idempotencyKey, claimToken);
-        }
-
-        public ExecutionRecord executionRecord() {
-            return executionRecord;
-        }
-
-        /** Non-null only when the key found an execution that is already archived. */
-        public Outcome settledOutcome() {
-            return settledOutcome;
-        }
-
-        public String settledExecutionId() {
-            return settledExecutionId;
-        }
-
-        /** Non-null only when the key found a concluded execution whose payload was evicted. */
-        public boolean gone() {
-            return gone;
-        }
-
-        public boolean isNew() {
-            return isNew;
-        }
-
-        public void publishAdmission() {
-            if (idempotencyStore == null) {
-                return;
+        record Gone(String executionId) implements ExecutionLookup {
+            @Override
+            public ExecutionRecord executionRecord() {
+                return null;
             }
-            // Serialized against the lifecycle's key protection on the record monitor: a
-            // terminal record published here can never expose a reclaimable published key.
-            synchronized (executionRecord) {
-                if (claimPublished) {
+        }
+
+        /** A new execution, with the key claim (when keyed) the caller still has to publish or abandon. */
+        final class Fresh implements ExecutionLookup {
+            private final ExecutionRecord executionRecord;
+            private final ExecutionStore executionStore;
+            /** Null for an unkeyed admission, together with the three fields below. */
+            private final IdempotencyStore idempotencyStore;
+            private final String functionName;
+            private final String idempotencyKey;
+            private final String claimToken;
+            private boolean claimPublished;
+
+            private Fresh(ExecutionRecord executionRecord, ExecutionStore executionStore,
+                          IdempotencyStore idempotencyStore, String functionName,
+                          String idempotencyKey, String claimToken) {
+                this.executionRecord = executionRecord;
+                this.executionStore = executionStore;
+                this.idempotencyStore = idempotencyStore;
+                this.functionName = functionName;
+                this.idempotencyKey = idempotencyKey;
+                this.claimToken = claimToken;
+            }
+
+            @Override
+            public ExecutionRecord executionRecord() {
+                return executionRecord;
+            }
+
+            @Override
+            public boolean isNew() {
+                return true;
+            }
+
+            @Override
+            public void publishAdmission() {
+                if (idempotencyStore == null) {
                     return;
                 }
-                idempotencyStore.publishClaim(functionName, idempotencyKey, claimToken, executionRecord.executionId());
-                claimPublished = true;
-                // Admission dispatches BEFORE publishing (InvocationEnqueueSupport.admitIfNew),
-                // and with no queue module the dispatch is inline: the record may already be
-                // settled by the time we get here, and the owner's settle found the key still
-                // pending (no-op by design). Both orderings converge on the same terminal
-                // binding this way - under this monitor, so no intermediate published key is
-                // ever observable alongside a vanished execution.
-                if (executionRecord.isTerminal()) {
-                    idempotencyStore.markTerminal(functionName, idempotencyKey, executionRecord.executionId());
+                // Serialized against the lifecycle's key protection on the record monitor: a
+                // terminal record published here can never expose a reclaimable published key.
+                synchronized (executionRecord) {
+                    if (claimPublished) {
+                        return;
+                    }
+                    idempotencyStore.publishClaim(functionName, idempotencyKey, claimToken, executionRecord.executionId());
+                    claimPublished = true;
+                    // Admission dispatches BEFORE publishing (InvocationEnqueueSupport.admitIfNew),
+                    // and with no queue module the dispatch is inline: the record may already be
+                    // settled by the time we get here, and the owner's settle found the key still
+                    // pending (no-op by design). Both orderings converge on the same terminal
+                    // binding this way - under this monitor, so no intermediate published key is
+                    // ever observable alongside a vanished execution.
+                    if (executionRecord.isTerminal()) {
+                        idempotencyStore.markTerminal(functionName, idempotencyKey, executionRecord.executionId());
+                    }
                 }
             }
-        }
 
-        public void abandonAdmission() {
-            if (!isNew) {
-                return;
-            }
-            executionStore.remove(executionRecord.executionId());
-            executionRecord.rollbackAdmissionResources();
-            if (idempotencyStore != null) {
+            @Override
+            public void abandonAdmission() {
+                executionStore.remove(executionRecord.executionId());
+                executionRecord.rollbackAdmissionResources();
+                if (idempotencyStore == null) {
+                    return;
+                }
                 if (!claimPublished) {
                     idempotencyStore.abandonClaim(functionName, idempotencyKey, claimToken);
                 } else {

@@ -22,7 +22,8 @@ package it.unimib.datai.nanofaas.controlplane.capacity;
  * (ADR 0001 §7).
  *
  * @param functionName the function this incarnation belongs to
- * @param id           monotonic incarnation id, unique per registry, starting at 1
+ * @param id           monotonic incarnation id, positive and unique in the process: no two
+ *                     registries mint the same generation
  */
 public record FunctionGeneration(String functionName, long id) {
 

@@ -40,7 +40,7 @@ class FunctionServiceConcurrencyTest {
     void setUp() {
         registry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
-        functionService = new FunctionService(
+        functionService = RegistryFixtures.functionService(
                 registry,
                 defaults,
                 ImageValidator.noOp(),
@@ -157,7 +157,7 @@ class FunctionServiceConcurrencyTest {
         FunctionRegistry localRegistry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
         ManagedDeploymentProvider localProvider = provider();
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 localRegistry,
                 defaults,
                 ImageValidator.noOp(),
@@ -210,7 +210,7 @@ class FunctionServiceConcurrencyTest {
         FunctionRegistry localRegistry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
         ManagedDeploymentProvider localProvider = provider();
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 localRegistry,
                 defaults,
                 ImageValidator.noOp(),
@@ -264,7 +264,7 @@ class FunctionServiceConcurrencyTest {
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
         ManagedDeploymentProvider localProvider = provider();
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 localRegistry,
                 defaults,
                 ImageValidator.noOp(),
@@ -323,7 +323,7 @@ class FunctionServiceConcurrencyTest {
         FunctionRegistry localRegistry = new FunctionRegistry(catalog);
         ManagedDeploymentProvider localProvider = provider();
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 localRegistry,
                 defaults,
                 ImageValidator.noOp(),
@@ -382,7 +382,7 @@ class FunctionServiceConcurrencyTest {
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
         ManagedDeploymentProvider localProvider = provider();
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
-        FunctionService localService = new FunctionService(
+        FunctionService localService = RegistryFixtures.functionService(
                 localRegistry,
                 defaults,
                 ImageValidator.noOp(),
@@ -453,7 +453,7 @@ class FunctionServiceConcurrencyTest {
                 throw new IllegalStateException("teardown failed");
             }
         };
-        FunctionService localService = new FunctionService(localRegistry,
+        FunctionService localService = RegistryFixtures.functionService(localRegistry,
                 new FunctionDefaults(30000, 4, 100, 3), ImageValidator.noOp(), List.of(listener),
                 new DeploymentProviderResolver(List.of(), new DeploymentProperties(null)));
         assertThat(localService.register(a)).isPresent();

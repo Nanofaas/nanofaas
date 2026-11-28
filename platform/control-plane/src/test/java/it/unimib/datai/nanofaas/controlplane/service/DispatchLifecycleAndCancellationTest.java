@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -62,18 +63,18 @@ class DispatchLifecycleAndCancellationTest {
     }
 
     private static ExecutionStore shortLivedStore() {
-        return new ExecutionStore(
-                ExecutionStoreProperties.of(Duration.ofMinutes(5), Duration.ofMillis(100),
+        return ExecutionFixtures.store(
+                ExecutionFixtures.properties(Duration.ofMinutes(5), Duration.ofMillis(100),
                         Duration.ofSeconds(30), 100_000),
                 new SimpleMeterRegistry());
     }
 
     @Test
     void directAdmissionAtConcurrencyOneAdmitsExactlyOneOfOneHundred() {
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, null,
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
                     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
@@ -81,7 +82,7 @@ class DispatchLifecycleAndCancellationTest {
                     }
                 }, null), metrics);
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(
-                store, new IdempotencyStore(), metrics, "fn");
+                store, ExecutionFixtures.keysOf(store), metrics, "fn");
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(null, metrics, null, null, handler,
                         new InvocationResponseMapper(), runtime.waiters());
@@ -103,19 +104,19 @@ class DispatchLifecycleAndCancellationTest {
         }
         assertThat(accepted).isEqualTo(1);
         assertThat(rejected).isEqualTo(99);
-        assertThat(store.inFlightCount()).isEqualTo(1);
+        assertThat(ExecutionFixtures.inFlight(store)).isEqualTo(1);
         backend.complete(DispatchResult.warm(InvocationResult.success("done")));
     }
 
     @Test
     void directDispatchAcquiresAndReleasesItsLeaseExactlyOnce() {
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         DispatcherRouter router = new DispatcherRouter(new LocalDispatcher(), null);
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null, router, metrics);
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, null, router, metrics);
 
         InvocationTask task = task("e1", spec("fn", 1));
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
         handler.dispatchDirect(task);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
@@ -124,7 +125,7 @@ class DispatchLifecycleAndCancellationTest {
 
     @Test
     void nonInterruptibleLocalHandlerKeepsItsSlotUntilTheWorkEnds() {
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         ExecutorService retryExecutor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
@@ -146,7 +147,7 @@ class DispatchLifecycleAndCancellationTest {
         var retryTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
         ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(
                 task -> holder[0].dispatch(task), capacity, retryExecutor, retryTimer, 264, java.time.Clock.systemUTC(), store); // NOSONAR (java:S1612): holder[0]::dispatch would capture null
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer,
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, enqueuer,
                 new DispatcherRouter(local, null), metrics, null, capacity);
         holder[0] = handler;
 
@@ -156,7 +157,7 @@ class DispatchLifecycleAndCancellationTest {
         InvocationTask task = new InvocationTask("e1", "fn", spec,
                 new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
                 InvocationKind.SYNC);
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
 
         try {
@@ -194,10 +195,10 @@ class DispatchLifecycleAndCancellationTest {
         DispatcherRouter router = mock(DispatcherRouter.class);
         when(router.dispatchExternal(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(neverCompletes);
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null, router, metrics);
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, null, router, metrics);
 
         InvocationTask task = task("exec-stuck", externalSpec("fn", "http://unused/invoke", 10_000));
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
         handler.dispatchDirect(task);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.RUNNING);
@@ -247,11 +248,11 @@ class DispatchLifecycleAndCancellationTest {
             ExecutionStore store = shortLivedStore();
             Metrics metrics = new Metrics(new SimpleMeterRegistry());
             ExternalDispatcher external = new ExternalDispatcher(WebClient.builder().build());
-            ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
+            ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, null,
                     new DispatcherRouter(new LocalDispatcher(), external), metrics);
 
             InvocationTask task = task("exec-http", externalSpec("fn", endpoint, 10_000));
-            ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+            ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
             store.put(executionRecord);
             handler.dispatchDirect(task);
 
@@ -266,7 +267,7 @@ class DispatchLifecycleAndCancellationTest {
 
     @Test
     void doubleCallbackReleasesCapacityOnce() {
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
         LocalDispatcher local = new LocalDispatcher() {
@@ -275,11 +276,11 @@ class DispatchLifecycleAndCancellationTest {
                 return backend;
             }
         };
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, null,
                 new DispatcherRouter(local, null), metrics);
 
         InvocationTask task = task("exec-double", spec("fn", 1));
-        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record(task.executionId(), task);
         store.put(executionRecord);
         handler.dispatchDirect(task);
         backend.complete(DispatchResult.warm(InvocationResult.success("ok")));

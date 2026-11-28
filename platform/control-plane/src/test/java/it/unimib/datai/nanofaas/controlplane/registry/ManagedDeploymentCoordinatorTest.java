@@ -45,7 +45,7 @@ class ManagedDeploymentCoordinatorTest {
     private final ManagedDeploymentProvider provider = mock(ManagedDeploymentProvider.class);
     private final FunctionRegistry registry = spy(new FunctionRegistry());
     private final FunctionOperationLocks locks = new FunctionOperationLocks();
-    private final ManagedDeploymentCoordinator coordinator = new ManagedDeploymentCoordinator(
+    private final ManagedDeploymentCoordinator coordinator = RegistryFixtures.coordinator(
             new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)),
             registry,
             locks
@@ -113,9 +113,9 @@ class ManagedDeploymentCoordinatorTest {
         DeploymentProviderResolver resolver =
                 new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null));
         ManagedDeploymentCoordinator sharedCoordinator =
-                new ManagedDeploymentCoordinator(resolver, sharedRegistry, sharedLocks);
+                RegistryFixtures.coordinator(resolver, sharedRegistry, sharedLocks);
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
-        FunctionService service = new FunctionService(
+        FunctionService service = RegistryFixtures.functionService(
                 sharedRegistry,
                 new FunctionDefaults(30000, 4, 100, 3),
                 ImageValidator.noOp(),
@@ -313,7 +313,7 @@ class ManagedDeploymentCoordinatorTest {
         return new ManagedDeploymentCoordinator(
                 new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)),
                 registry,
-                locks,
+                locks, new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry(),
                 snapshot
         );
     }

@@ -28,7 +28,7 @@ class ExecutionRecordStateTransitionTest {
 
         executionRecord.markSuccess("output");
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(executionRecord.output()).isEqualTo("output");
+        assertThat(executionRecord.snapshot().output()).isEqualTo("output");
     }
 
     @Test
@@ -65,7 +65,7 @@ class ExecutionRecordStateTransitionTest {
         ExecutionRecord executionRecord = createRecord("exec-1");
         executionRecord.markRunning();
 
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
     }
 
@@ -77,8 +77,8 @@ class ExecutionRecordStateTransitionTest {
         InvocationTask retryTask = createTask("exec-1");
         executionRecord.resetForRetry(retryTask);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
-        assertThat(executionRecord.startedAt()).isNull();
-        assertThat(executionRecord.finishedAt()).isNull();
+        assertThat(executionRecord.snapshot().startedAt()).isNull();
+        assertThat(executionRecord.snapshot().finishedAt()).isNull();
     }
 
     @Test
@@ -88,7 +88,7 @@ class ExecutionRecordStateTransitionTest {
 
         executionRecord.markSuccess("output");
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(executionRecord.output()).isEqualTo("output");
+        assertThat(executionRecord.snapshot().output()).isEqualTo("output");
     }
 
     @Test
@@ -99,7 +99,7 @@ class ExecutionRecordStateTransitionTest {
 
         executionRecord.markRunning();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(executionRecord.output()).isEqualTo("output");
+        assertThat(executionRecord.snapshot().output()).isEqualTo("output");
     }
 
     @Test
@@ -110,19 +110,19 @@ class ExecutionRecordStateTransitionTest {
 
         executionRecord.markSuccess("output");
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        assertThat(executionRecord.output()).isNull();
+        assertThat(executionRecord.snapshot().output()).isNull();
     }
 
     @Test
     void invalidTransition_timeout_to_success_isIgnored() {
         ExecutionRecord executionRecord = createRecord("exec-1");
         executionRecord.markRunning();
-        executionRecord.markTimeout();
+        ExecutionFixtures.timeOut(executionRecord);
 
         executionRecord.markSuccess("late-output");
 
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
-        assertThat(executionRecord.output()).isNull();
+        assertThat(executionRecord.snapshot().output()).isNull();
     }
 
     @Test
@@ -215,7 +215,7 @@ class ExecutionRecordStateTransitionTest {
     }
 
     private ExecutionRecord createRecord(String executionId) {
-        return new ExecutionRecord(executionId, createTask(executionId));
+        return ExecutionFixtures.record(executionId, createTask(executionId));
     }
 
     private InvocationTask createTask(String executionId) {

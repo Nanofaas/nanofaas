@@ -44,10 +44,10 @@ final class ExecutionInputResources {
      * The input is immutable text (or a scalar), so the attempt reads the retained value itself:
      * there is no per-attempt copy to make or to account for.
      */
-    ExecutionRecord.PhysicalInput open(InvocationTask source) {
+    PhysicalInput open(InvocationTask source) {
         RetainedInputLease.Reference shared = admission.canonicalInput().retain(
                 new ResourceOwner(ResourceOwner.Scope.PHYSICAL_ATTEMPT,
                         source.executionId() + "/attempt-" + source.attempt()));
-        return new ExecutionRecord.PhysicalInput(source, shared);
+        return new PhysicalInput(source, shared);
     }
 }

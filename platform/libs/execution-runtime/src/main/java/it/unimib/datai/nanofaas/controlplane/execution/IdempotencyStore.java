@@ -12,10 +12,9 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 
-import java.time.Duration;
 import java.time.Instant;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -82,34 +81,17 @@ public class IdempotencyStore {
      */
     private final AtomicLong rejections = new AtomicLong();
 
-    public IdempotencyStore() {
-        this(ExecutionStoreProperties.of(null, null, null));
-    }
-
-    public IdempotencyStore(ExecutionStoreProperties executions, MeterRegistry registry) {
-        this(executions);
-        // Occupancy and refusals are otherwise invisible until the heap says so. A
-        // supplier gauge, read at scrape time, nothing on the invocation path. Both
-        // read the reservation counter directly: no cleanUp() of the whole cache, and
-        // no labels that would leak an execution id or a user key.
-        Gauge.builder("idempotency_keys_held", occupied, AtomicLong::doubleValue)
-                .description("Number of idempotency-key slots currently reserved")
-                .register(registry);
-        FunctionCounter.builder("idempotency_key_budget_rejections", rejections, AtomicLong::doubleValue)
-                .description("Idempotency-key admissions refused because the key budget was exhausted")
-                .register(registry);
-    }
-
-    /** Test convenience: one lifetime for both the live and terminal phases. */
-    public IdempotencyStore(Duration ttl) {
-        this(ttl, Ticker.systemTicker());
-    }
-
-    IdempotencyStore(Duration ttl, Ticker ticker) {
-        this(ExecutionStoreProperties.of(ttl, ttl, ttl), ticker);
-    }
-
-    public IdempotencyStore(ExecutionStoreProperties executions, Ticker ticker) {
+    /**
+     * The one constructor: production passes the owned expiry scheduler, the system ticker and
+     * the common pool for maintenance (ExecutionExpiryConfiguration); a test passes its own clock,
+     * timers and executor.
+     *
+     * <p>Production timers have one owner, like ExecutionStore's: on the system scheduler a
+     * cancelled expiry timer stays queued until its original deadline, and every abandoned claim
+     * reschedules this cache's timer.
+     */
+    public IdempotencyStore(ExecutionStoreProperties executions, MeterRegistry registry,
+                            Scheduler scheduler, Ticker ticker, Executor executor) {
         this.maxKeys = executions.maxKeys();
         long liveNanos = executions.maxLifetime().toNanos();
         long terminalNanos = executions.ttl().toNanos();
@@ -138,7 +120,8 @@ public class IdempotencyStore {
                 // someone happens to touch them: a slot abandoned by a key nobody replays
                 // must return to the budget without waiting for traffic on that same key.
                 // The synchronous eviction listener returns each expired entry's reservation.
-                .scheduler(Scheduler.systemScheduler())
+                .scheduler(scheduler)
+                .executor(executor)
                 .ticker(ticker)
                 .evictionListener((String key, StoredKey value, RemovalCause cause) -> {
                     // Eviction listeners run synchronously with removal. A delayed expiry
@@ -149,45 +132,16 @@ public class IdempotencyStore {
                 })
                 .build();
         this.keys = cache.asMap();
-    }
-
-    private IdempotencyStore(ExecutionStoreProperties executions) {
-        this(executions, Ticker.systemTicker());
-    }
-
-    public Optional<String> getExecutionId(String functionName, String key) {
-        StoredKey stored = keys.get(compose(functionName, key));
-        if (stored == null || stored.pending()) {
-            return Optional.empty();
-        }
-        return Optional.of(stored.executionId());
-    }
-
-    /**
-     * Inserts a published binding directly. A <b>new</b> key reserves its slot first,
-     * like every other insertion path, so every entry owns exactly one slot and the
-     * eviction listener can release it exactly once. Replacing an existing key keeps
-     * the slot ({@code REPLACED} is not a release).
-     */
-    public void put(String functionName, String key, String executionId) {
-        String composed = compose(functionName, key);
-        while (true) {
-            StoredKey existing = keys.get(composed);
-            if (existing != null) {
-                StoredKey published = StoredKey.published(executionId);
-                if (keys.replace(composed, existing, published)) {
-                    return;
-                }
-                continue;
-            }
-            if (!reserve()) {
-                throw new IllegalStateException("Idempotency key budget of " + maxKeys + " is exhausted");
-            }
-            if (keys.putIfAbsent(composed, StoredKey.published(executionId)) == null) {
-                return;
-            }
-            releaseOne();
-        }
+        // Occupancy and refusals are otherwise invisible until the heap says so. A
+        // supplier gauge, read at scrape time, nothing on the invocation path. Both
+        // read the reservation counter directly: no cleanUp() of the whole cache, and
+        // no labels that would leak an execution id or a user key.
+        Gauge.builder("idempotency_keys_held", occupied, AtomicLong::doubleValue)
+                .description("Number of idempotency-key slots currently reserved")
+                .register(registry);
+        FunctionCounter.builder("idempotency_key_budget_rejections", rejections, AtomicLong::doubleValue)
+                .description("Idempotency-key admissions refused because the key budget was exhausted")
+                .register(registry);
     }
 
     public AcquireResult acquireOrGet(String functionName, String key) {
@@ -302,18 +256,7 @@ public class IdempotencyStore {
      * so no slot is consumed or released.
      */
     public void markReclaimable(String functionName, String key, String expectedExecutionId) {
-        String composed = compose(functionName, key);
-        while (true) {
-            StoredKey existing = keys.get(composed);
-            if (existing == null || existing.pending() || existing.terminal() || existing.reclaimable()
-                    || !existing.executionId().equals(expectedExecutionId)) {
-                return;
-            }
-            StoredKey abandoned = StoredKey.abandoned(existing.executionId());
-            if (keys.replace(composed, existing, abandoned)) {
-                return;
-            }
-        }
+        movePublishedBinding(compose(functionName, key), expectedExecutionId, StoredKey.abandoned(expectedExecutionId));
     }
 
     /**
@@ -340,33 +283,27 @@ public class IdempotencyStore {
         if (idempotencyKey == null || idempotencyKey.isBlank() || expectedExecutionId == null) {
             return;
         }
-        String composed = compose(functionName, idempotencyKey);
+        movePublishedBinding(compose(functionName, idempotencyKey), expectedExecutionId,
+                StoredKey.terminal(expectedExecutionId));
+    }
+
+    /**
+     * Replaces a binding that is still {@code PUBLISHED} and still names {@code expectedExecutionId};
+     * any other state (absent, pending, abandoned, terminal, or bound to a newer execution) is left
+     * alone. The CAS keeps the move atomic against a concurrent transition. Same association, so no
+     * slot is consumed or released.
+     */
+    private void movePublishedBinding(String composed, String expectedExecutionId, StoredKey target) {
         while (true) {
             StoredKey existing = keys.get(composed);
-            if (existing == null || existing.pending() || existing.terminal() || existing.reclaimable()
+            if (existing == null || existing.state() != KeyState.PUBLISHED
                     || !existing.executionId().equals(expectedExecutionId)) {
                 return;
             }
-            StoredKey terminal = StoredKey.terminal(existing.executionId());
-            if (keys.replace(composed, existing, terminal)) {
+            if (keys.replace(composed, existing, target)) {
                 return;
             }
         }
-    }
-
-    public int size() {
-        cache.cleanUp();
-        return keys.size();
-    }
-
-    /** How many slots are reserved right now. Package-private: for the tests in this package. */
-    long occupied() {
-        return occupied.get();
-    }
-
-    /** How many new keyed admissions have been refused. Package-private: for the tests in this package. */
-    long rejections() {
-        return rejections.get();
     }
 
     /**
@@ -441,21 +378,37 @@ public class IdempotencyStore {
         }
     }
 
-    private record StoredKey(String executionId, boolean pending, boolean terminal, boolean reclaimable) {
+    /** The four states of a binding, described in the class comment. */
+    private enum KeyState { PENDING, PUBLISHED, ABANDONED, TERMINAL }
+
+    /** While {@code PENDING}, {@code executionId} holds the claim token instead of an execution id. */
+    private record StoredKey(String executionId, KeyState state) {
         static StoredKey pending(String claimToken) {
-            return new StoredKey(claimToken, true, false, false);
+            return new StoredKey(claimToken, KeyState.PENDING);
         }
 
         static StoredKey published(String executionId) {
-            return new StoredKey(executionId, false, false, false);
+            return new StoredKey(executionId, KeyState.PUBLISHED);
         }
 
         static StoredKey abandoned(String executionId) {
-            return new StoredKey(executionId, false, false, true);
+            return new StoredKey(executionId, KeyState.ABANDONED);
         }
 
         static StoredKey terminal(String executionId) {
-            return new StoredKey(executionId, false, true, false);
+            return new StoredKey(executionId, KeyState.TERMINAL);
+        }
+
+        boolean pending() {
+            return state == KeyState.PENDING;
+        }
+
+        boolean terminal() {
+            return state == KeyState.TERMINAL;
+        }
+
+        boolean reclaimable() {
+            return state == KeyState.ABANDONED;
         }
     }
 }

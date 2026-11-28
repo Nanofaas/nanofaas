@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -20,8 +21,8 @@ import static org.mockito.Mockito.mock;
 
 class ReactiveInvocationCoordinatorTest {
 
-    private final ExecutionStore executionStore = new ExecutionStore();
-    private final IdempotencyStore idempotencyStore = new IdempotencyStore();
+    private final IdempotencyStore idempotencyStore = ExecutionFixtures.keys();
+    private final ExecutionStore executionStore = ExecutionFixtures.store(idempotencyStore);
     private final Metrics metrics = new Metrics(new SimpleMeterRegistry());
     private final TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(
             executionStore, idempotencyStore, metrics, "fn-cancel", "fn-boom", "fn-slot");

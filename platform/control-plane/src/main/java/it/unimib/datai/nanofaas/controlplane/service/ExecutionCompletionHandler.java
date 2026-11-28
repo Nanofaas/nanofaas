@@ -20,7 +20,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -48,61 +47,20 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
     private final Metrics metrics;
     private final AttemptCoordinator coordinator;
 
-    /**
-     * Production constructor: deployment invocations wait for a scaled-to-zero
-     * managed deployment before their external dispatch.
-     */
-    @org.springframework.beans.factory.annotation.Autowired
+    /** Every collaborator is a bean: the core always provides a retry scheduler, a readiness gate and a capacity registry. */
     public ExecutionCompletionHandler(ExecutionStore executionStore,
-                                      @Nullable RetryScheduler enqueuer,
+                                      RetryScheduler enqueuer,
                                       DispatcherRouter dispatcherRouter,
                                       Metrics metrics,
-                                      @Nullable DeploymentReadiness readiness,
+                                      DeploymentReadiness readiness,
                                       FunctionCapacityRegistry capacityRegistry,
                                       RetryProperties retryProperties) {
         this.metrics = metrics;
-        RetryScheduler retry = enqueuer == null ? RetryScheduler.unavailable() : enqueuer;
-        // A handler built without one (a bare unit test) has no managed deployment to wake.
-        DeploymentReadiness effectiveReadiness = readiness == null ? DeploymentReadiness.immediate() : readiness;
-        // A handler built without a shared registry (a bare unit test) still bounds direct
-        // admission: it owns a private registry rather than admitting unbounded work.
-        FunctionCapacityRegistry capacity = capacityRegistry == null ? new FunctionCapacityRegistry() : capacityRegistry;
-        AttemptTransport transport = new AttemptTransportAdapter(dispatcherRouter, effectiveReadiness);
-        this.coordinator = new AttemptCoordinator(executionStore, capacity,
-                new MeteredRetryScheduler(retry), transport, this,
+        AttemptTransport transport = new AttemptTransportAdapter(dispatcherRouter, readiness);
+        this.coordinator = new AttemptCoordinator(executionStore, capacityRegistry,
+                new MeteredRetryScheduler(enqueuer), transport, this,
                 new RetryBackoff(retryProperties.initialBackoff(), retryProperties.maxBackoff(),
                         () -> ThreadLocalRandom.current().nextDouble()));
-    }
-
-    public ExecutionCompletionHandler(ExecutionStore executionStore,
-                                      @Nullable RetryScheduler enqueuer,
-                                      DispatcherRouter dispatcherRouter,
-                                      Metrics metrics,
-                                      @Nullable DeploymentReadiness readiness,
-                                      FunctionCapacityRegistry capacityRegistry) {
-        this(executionStore, enqueuer, dispatcherRouter, metrics, readiness, capacityRegistry,
-                new RetryProperties(null, null));
-    }
-
-    /**
-     * Compatibility constructor for direct unit-test construction. Production
-     * uses the Spring constructor above.
-     */
-    public ExecutionCompletionHandler(ExecutionStore executionStore,
-                                      @Nullable RetryScheduler enqueuer,
-                                      DispatcherRouter dispatcherRouter,
-                                      Metrics metrics) {
-        this(executionStore, enqueuer, dispatcherRouter, metrics,
-                null, null);
-    }
-
-    /** Compatibility constructor that also passes a readiness port, without a shared registry. */
-    public ExecutionCompletionHandler(ExecutionStore executionStore,
-                                      @Nullable RetryScheduler enqueuer,
-                                      DispatcherRouter dispatcherRouter,
-                                      Metrics metrics,
-                                      @Nullable DeploymentReadiness readiness) {
-        this(executionStore, enqueuer, dispatcherRouter, metrics, readiness, null);
     }
 
     public void completeOffloadedExecution(String executionId, InvocationResult result) {
@@ -134,7 +92,8 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
     }
 
     /**
-     * Overload for backward compatibility (e.g., callback completions without cold start info).
+     * A completion that carries only the result, as the runtime callback does: no cold-start
+     * information, so it counts as a warm answer.
      */
     public void completeExecution(String executionId, InvocationResult result) {
         completeExecution(executionId, DispatchResult.warm(result));

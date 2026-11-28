@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ReviewAccountingRegressionTest {
     private static Outcome outcome(Object value) {
         return new Outcome(ExecutionState.SUCCESS, 0, 1, value, null, null, null,
-                200, 0, false, true);
+                200, 0, false, true, null);
     }
 
     @Test
@@ -64,7 +64,7 @@ class ReviewAccountingRegressionTest {
         AtomicLong clock = new AtomicLong();
         var props = new ExecutionStoreProperties(Duration.ofMinutes(5), Duration.ofMinutes(30),
                 Duration.ofSeconds(30), 100, 1, 11600);
-        IdempotencyStore keys = new IdempotencyStore(props, clock::get);
+        IdempotencyStore keys = ExecutionFixtures.keys(props, clock::get);
         keys.acquireOrGet("fn", "old");
 
         int workers = ForkJoinPool.getCommonPoolParallelism();
@@ -80,15 +80,15 @@ class ReviewAccountingRegressionTest {
         try {
             assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
             clock.set(Duration.ofMinutes(31).toNanos());
-            keys.size(); // removes old, but its real asynchronous EXPIRED listener is queued
+            ExecutionFixtures.keyCount(keys); // removes old, but its real asynchronous EXPIRED listener is queued
             keys.clear();
             assertThat(keys.acquireOrGet("fn", "new").state())
                     .isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
         } finally { release.countDown(); }
         assertThat(ForkJoinPool.commonPool().awaitQuiescence(3, TimeUnit.SECONDS)).isTrue();
         var second = keys.acquireOrGet("fn", "second-new");
-        System.out.println("KEY_CLEAR configured=1 actualKeys=" + keys.size()
-                + " occupied=" + keys.occupied() + " second=" + second.state());
-        assertThat(keys.size()).isLessThanOrEqualTo(1);
+        System.out.println("KEY_CLEAR configured=1 actualKeys=" + ExecutionFixtures.keyCount(keys)
+                + " occupied=" + ExecutionFixtures.keysHeld(keys) + " second=" + second.state());
+        assertThat(ExecutionFixtures.keyCount(keys)).isLessThanOrEqualTo(1);
     }
 }

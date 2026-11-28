@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionFixtures;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -50,9 +51,9 @@ class CompletionMetricsGenerationFenceRegressionTest {
         FunctionCapacityRegistry capacityRegistry = new FunctionCapacityRegistry();
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         Metrics metrics = new Metrics(meterRegistry, capacityRegistry);
-        ExecutionStore store = new ExecutionStore();
+        ExecutionStore store = ExecutionFixtures.store();
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
+        ExecutionCompletionHandler handler = ServiceFixtures.completionHandler(store, null,
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
                     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
@@ -65,7 +66,7 @@ class CompletionMetricsGenerationFenceRegressionTest {
         metrics.registerFunction("fn");
 
         InvocationTask task = task("exec-old", spec);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-old", task);
+        ExecutionRecord executionRecord = ExecutionFixtures.record("exec-old", task);
         store.put(executionRecord);
         handler.dispatchDirect(task);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.RUNNING);
