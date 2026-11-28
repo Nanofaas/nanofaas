@@ -284,6 +284,32 @@ public final class ManagedDeploymentCoordinator implements ManagedReplicaControl
         return locks.withLock(target.functionName(), () -> setReplicasLocked(target, replicas));
     }
 
+    /**
+     * Raises the function to at least {@code minimum} replicas and never lowers it: the decision is
+     * taken under the function's operation lock on the durable target, so a target another caller
+     * (the autoscaler, an operator) raised after this caller's own reading is left as it is. Returns
+     * false when {@code expectedGeneration} is no longer the active one.
+     */
+    public boolean scaleUpTo(FunctionGeneration expectedGeneration,
+                             ManagedDeploymentTarget target,
+                             int minimum) {
+        if (minimum < 1) {
+            throw new IllegalArgumentException("minimum must be >= 1");
+        }
+        if (!expectedGeneration.functionName().equals(target.functionName())) {
+            throw new IllegalArgumentException("generation and target must name the same function");
+        }
+        return locks.withLock(target.functionName(), () -> {
+            if (!expectedGeneration.equals(generations.activeGeneration(target.functionName()))) {
+                return false;
+            }
+            Integer desired = registry.getRegistered(target.functionName())
+                    .map(RegisteredFunction::desiredReplicas).orElse(null);
+            // Already high enough: keep that target, still re-applying it if an application is pending.
+            return setReplicasLocked(target, desired != null && desired >= minimum ? desired : minimum);
+        });
+    }
+
     /** Applies a replica mutation only to the exact still-active P07 generation. */
     @Override
     public boolean setReplicas(FunctionGeneration expectedGeneration,

@@ -90,7 +90,7 @@ class DeploymentWakeUpResilienceTest {
         CompletableFuture<Void> ready = gate(Duration.ofSeconds(5)).ensureReady(task());
 
         assertThat(ready).succeedsWithin(Duration.ofSeconds(2));
-        verify(coordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
+        verify(coordinator, never()).scaleUpTo(any(FunctionGeneration.class), any(), anyInt());
     }
 
     /**
@@ -109,7 +109,7 @@ class DeploymentWakeUpResilienceTest {
         CompletableFuture<Void> ready = gate(Duration.ofSeconds(5)).ensureReady(task());
 
         assertThat(ready).succeedsWithin(Duration.ofSeconds(2));
-        verify(coordinator, times(1)).setReplicas(any(FunctionGeneration.class), eq(TARGET), eq(1));
+        verify(coordinator, times(1)).scaleUpTo(any(FunctionGeneration.class), eq(TARGET), eq(1));
     }
 
     /**

@@ -166,9 +166,11 @@ final class DeploymentWakeUp {
                 result.complete(null);
                 return;
             }
+            // The reading only spares the function's lock when replicas are already asked for; whether
+            // to ask for one is decided under that lock, so a target raised since is never lowered.
             installLease(context.protection().protectAndScaleUp(generation, target, deadline(), () -> {
                 if (status.desiredReplicas() == 0 && canContinue()) {
-                    context.replicas().setReplicas(generation, target, 1);
+                    context.replicas().scaleUpTo(generation, target, 1);
                 }
             }));
             schedulePoll();
