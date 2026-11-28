@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.deployment;
 
+import it.unimib.datai.nanofaas.controlplane.service.WakeUpMeters;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import org.junit.jupiter.api.Test;
@@ -64,7 +65,7 @@ class DeploymentWakeUpCoordinatorTest {
                 return true;
             })).isFalse();
             assertThat(oldCallbacks).hasValue(0);
-            assertThat(coordinator.ownedStateCount()).isZero();
+            assertThat(WakeUpMeters.trackedGenerations(coordinator)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
 
             generations.remove("echo");
@@ -76,14 +77,14 @@ class DeploymentWakeUpCoordinatorTest {
                     replacement, target, Long.MAX_VALUE, replacementCallbacks::incrementAndGet);
 
             assertThat(replacementCallbacks).hasValue(1);
-            assertThat(coordinator.ownedStateCount()).isEqualTo(1);
-            assertThat(coordinator.ownedLeaseCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.trackedGenerations(coordinator)).isEqualTo(1);
+            assertThat(WakeUpMeters.protectedFunctions(coordinator)).isEqualTo(1);
             assertThat(scheduler.getQueue()).hasSize(1);
 
             lease.close();
             generations.remove("echo");
             coordinator.removeFunctionState("echo");
-            assertThat(coordinator.ownedStateCount()).isZero();
+            assertThat(WakeUpMeters.trackedGenerations(coordinator)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             allowOldPublication.countDown();
@@ -123,7 +124,7 @@ class DeploymentWakeUpCoordinatorTest {
                         close ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
             }
 
-            assertThat(coordinator.ownedStateCount()).isZero();
+            assertThat(WakeUpMeters.trackedGenerations(coordinator)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             states.allowPublication.countDown();
@@ -147,17 +148,17 @@ class DeploymentWakeUpCoordinatorTest {
             DeploymentWakeUpCoordinator.WakeUpLease first = coordinator.protectAndScaleUp(
                     generation, target, firstDeadline, () -> { });
 
-            assertThat(coordinator.ownedLeaseCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.protectedFunctions(coordinator)).isEqualTo(1);
             assertThat(scheduler.getQueue()).hasSize(1);
             first.close();
             first.close();
-            assertThat(coordinator.ownedLeaseCount()).isZero();
+            assertThat(WakeUpMeters.protectedFunctions(coordinator)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
 
             coordinator.protectAndScaleUp(generation, target, secondDeadline, () -> { });
             nanoTime.set(secondDeadline);
             ((Runnable) scheduler.getQueue().peek()).run();
-            assertThat(coordinator.ownedLeaseCount()).isZero();
+            assertThat(WakeUpMeters.protectedFunctions(coordinator)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
             assertThat(coordinator.scaleDownIfUnprotected(generation, target, () -> true)).isTrue();
         } finally {
@@ -187,7 +188,7 @@ class DeploymentWakeUpCoordinatorTest {
                     replacementGeneration, target, secondDeadline, () -> { });
 
             old.close();
-            assertThat(coordinator.ownedLeaseCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.protectedFunctions(coordinator)).isEqualTo(1);
             assertThat(scheduler.getQueue()).hasSize(1);
             assertThat(coordinator.scaleDownIfUnprotected(replacementGeneration, target, () -> true)).isFalse();
 
@@ -199,7 +200,7 @@ class DeploymentWakeUpCoordinatorTest {
                 return true;
             })).isFalse();
             assertThat(postCloseScaleDowns).hasValue(0);
-            assertThat(coordinator.ownedLeaseCount()).isZero();
+            assertThat(WakeUpMeters.protectedFunctions(coordinator)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             scheduler.shutdownNow();
@@ -261,13 +262,13 @@ class DeploymentWakeUpCoordinatorTest {
             Future<?> removal = executor.submit(() -> coordinator.removeFunctionState("echo"));
             try {
                 removal.get(1, TimeUnit.SECONDS);
-                assertThat(coordinator.ownedStateCount()).isEqualTo(1);
-                assertThat(coordinator.ownedLeaseCount()).isZero();
+                assertThat(WakeUpMeters.trackedGenerations(coordinator)).isEqualTo(1);
+                assertThat(WakeUpMeters.protectedFunctions(coordinator)).isZero();
             } finally {
                 releaseCallback.countDown();
             }
             wakeUp.get(1, TimeUnit.SECONDS);
-            assertThat(coordinator.ownedStateCount()).isZero();
+            assertThat(WakeUpMeters.trackedGenerations(coordinator)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             scheduler.shutdownNow();
@@ -325,13 +326,13 @@ class DeploymentWakeUpCoordinatorTest {
 
         nanoTime.set(oldDeadline);
         callbacks.get(0).run();
-        assertThat(coordinator.ownedLeaseCount()).isEqualTo(1);
+        assertThat(WakeUpMeters.protectedFunctions(coordinator)).isEqualTo(1);
         assertThat(queueSize).hasValue(1);
 
         nanoTime.set(replacementDeadline);
         if (queuedTasks.get(1).compareAndSet(true, false)) queueSize.decrementAndGet();
         callbacks.get(1).run();
-        assertThat(coordinator.ownedLeaseCount()).isZero();
+        assertThat(WakeUpMeters.protectedFunctions(coordinator)).isZero();
         assertThat(queueSize).hasValue(0);
     }
 

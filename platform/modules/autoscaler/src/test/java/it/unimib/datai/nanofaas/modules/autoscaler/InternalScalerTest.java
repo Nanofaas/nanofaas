@@ -310,7 +310,7 @@ class InternalScalerTest {
 
         var order = inOrder(deploymentCoordinator);
         order.verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
-        order.verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
+        order.verify(deploymentCoordinator).scaleUpTo(any(FunctionGeneration.class), eq(target), eq(1));
     }
 
     @Test

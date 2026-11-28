@@ -69,7 +69,10 @@ class ReplicaStatusSnapshotConfigurationTest {
                 }
             });
             assertThat(destructions).hasValue(1);
-            assertThat(snapshot.entryCount()).isZero();
+            io.micrometer.core.instrument.simple.SimpleMeterRegistry meters =
+                    new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+            snapshot.bindTo(meters);
+            assertThat(meters.get("replica_snapshot_entries").gauge().value()).isZero();
         } finally {
             release.countDown();
             context.close();

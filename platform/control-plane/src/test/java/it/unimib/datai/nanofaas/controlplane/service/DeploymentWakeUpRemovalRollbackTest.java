@@ -112,11 +112,11 @@ class DeploymentWakeUpRemovalRollbackTest {
                     .hasMessage("listener failure");
             assertThat(generations.activeGeneration("echo")).isEqualTo(originalGeneration);
             assertThat(service.get("echo")).contains(spec);
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
 
             var readiness = gate.ensureReady(task(spec));
-            assertThat(gate.ownedWakeUpCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.inFlight(gate)).isEqualTo(1);
             assertThat(scheduler.getQueue()).hasSize(3);
 
             Runnable poll = (Runnable) scheduler.getQueue().peek();
@@ -124,7 +124,7 @@ class DeploymentWakeUpRemovalRollbackTest {
             poll.run();
 
             assertThat(readiness).isCompletedWithValue(null);
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
             assertThat(wakeUpCoordinator.scaleDownIfUnprotected(
                     originalGeneration, target, () -> true)).isTrue();

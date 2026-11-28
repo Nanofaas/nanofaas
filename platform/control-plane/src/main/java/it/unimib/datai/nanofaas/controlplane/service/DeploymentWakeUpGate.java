@@ -11,13 +11,15 @@ import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordina
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
-import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.MeterBinder;
 import org.springframework.beans.factory.annotation.Qualifier;
 
 import java.time.Duration;
@@ -31,12 +33,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 
-public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegistrationListener, AutoCloseable {
+/**
+ * Holds a dispatch to a managed deployment until it has a ready replica: a function scaled to zero, or
+ * a deployment registered and not yet seen ready. The wake-up itself, shared by every caller of a
+ * generation, is a {@link DeploymentWakeUp}; this class decides who waits and owns the wake-ups.
+ */
+public class DeploymentWakeUpGate
+        implements DeploymentReadiness, FunctionRegistrationListener, AutoCloseable, MeterBinder {
     private static final String WAKE_UP_CLOSED = "DEPLOYMENT_WAKE_UP_CLOSED";
     private static final String WAKE_UP_REMOVED = "DEPLOYMENT_WAKE_UP_REMOVED";
 
@@ -44,14 +50,12 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
     private final ManagedDeploymentCoordinator coordinator;
     private final FunctionCapacityRegistry generations;
     private final Duration timeout;
-    private final Duration pollInterval;
     private final Duration readyObservationMaxAge;
-    private final Executor executor;
-    private final ScheduledExecutorService timeoutScheduler;
     private final DeploymentWakeUpCoordinator wakeUpCoordinator;
     private final InstantSource clock;
     private final LongSupplier nanoTime;
-    private final ConcurrentMap<FunctionGeneration, WakeUp> inFlight = new ConcurrentHashMap<>();
+    private final DeploymentWakeUp.Context wakeUpContext;
+    private final ConcurrentMap<FunctionGeneration, DeploymentWakeUp> inFlight = new ConcurrentHashMap<>();
     /**
      * Registered DEPLOYMENT generations not yet observed ready, by function name. A fresh
      * Deployment is not Ready for the seconds its first pod takes to start, and a dispatch sent
@@ -87,16 +91,27 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         this.coordinator = Objects.requireNonNull(coordinator, "coordinator");
         this.generations = Objects.requireNonNull(generations, "generations");
         this.timeout = properties.timeout();
-        this.pollInterval = properties.pollInterval();
         this.readyObservationMaxAge = properties.readyObservationMaxAge();
-        this.executor = Objects.requireNonNull(executor, "executor");
-        this.timeoutScheduler = Objects.requireNonNull(timeoutScheduler, "timeoutScheduler");
         this.wakeUpCoordinator = Objects.requireNonNull(wakeUpCoordinator, "wakeUpCoordinator");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
+        this.wakeUpContext = new DeploymentWakeUp.Context(coordinator, wakeUpCoordinator,
+                Objects.requireNonNull(executor, "executor"),
+                Objects.requireNonNull(timeoutScheduler, "timeoutScheduler"),
+                nanoTime, properties.pollInterval(), this::stopReason,
+                (generation, wakeUp) -> inFlight.remove(generation, wakeUp));
+    }
+
+    /** {@code deployment_wakeups_in_flight}: the wake-ups under way, one per waking function generation. */
+    @Override
+    public void bindTo(MeterRegistry registry) {
+        Gauge.builder("deployment_wakeups_in_flight", inFlight, ConcurrentMap::size)
+                .description("Deployment wake-ups under way, one per waking function generation")
+                .register(registry);
     }
 
     @Override
+    @SuppressWarnings("FutureReturnValueIgnored") // The caller owns the outcome; the callback only lifts the first-readiness hold.
     public CompletableFuture<Void> ensureReady(InvocationTask task) {
         if (closed.get()) {
             return failed(WAKE_UP_CLOSED);
@@ -126,7 +141,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         ReplicaObservation observation = coordinator.observeReplicaStatus(target);
         CompletableFuture<Void> outcome = isReadyWithinPolicy(observation, clock.instant())
                 ? readyOutcome(generation)
-                : joinOrStartWakeUp(generation, target);
+                : joinOrStartWakeUp(generation, target, saysReady(observation));
         if (awaitingReady != null) {
             // Once ready, this generation takes the ordinary path: no wait unless it scales to zero.
             outcome.thenRun(() -> awaitingFirstReadiness.remove(function.name(), generation));
@@ -144,17 +159,23 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         return CompletableFuture.completedFuture(null);
     }
 
-    private CompletableFuture<Void> joinOrStartWakeUp(FunctionGeneration generation, ManagedDeploymentTarget target) {
+    /**
+     * Every caller waits its own budget: one that joins a wake-up under way extends it, and the
+     * scale-down protection with it, to its own deadline instead of inheriting what is left.
+     */
+    private CompletableFuture<Void> joinOrStartWakeUp(FunctionGeneration generation, ManagedDeploymentTarget target,
+                                                      boolean lastReadingWasReady) {
         if (closed.get() || !isActive(generation)) {
             return closedOrRemoved();
         }
-        WakeUp owner;
+        long callerDeadline = nanoTime.getAsLong() + timeout.toNanos();
+        DeploymentWakeUp owner;
         boolean startOwner = false;
         synchronized (ownerLifecycle) {
             if (closed.get() || !isActive(generation)) {
                 return closedOrRemoved();
             }
-            WakeUp candidate = new WakeUp(generation, target);
+            DeploymentWakeUp candidate = new DeploymentWakeUp(generation, target, lastReadingWasReady, wakeUpContext);
             owner = inFlight.putIfAbsent(generation, candidate);
             if (owner == null) {
                 owner = candidate;
@@ -162,9 +183,11 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             }
         }
         if (startOwner) {
-            owner.start();
+            owner.start(callerDeadline);
+        } else {
+            owner.extendTo(callerDeadline);
         }
-        return owner.callerView();
+        return owner.callerView(callerDeadline);
     }
 
     private CompletableFuture<Void> closedOrRemoved() {
@@ -185,8 +208,8 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
     @Override
     public void onRemove(String functionName) {
         synchronized (ownerLifecycle) {
-            for (WakeUp wakeUp : new ArrayList<>(inFlight.values())) {
-                if (wakeUp.generation.functionName().equals(functionName)) {
+            for (DeploymentWakeUp wakeUp : new ArrayList<>(inFlight.values())) {
+                if (wakeUp.generation().functionName().equals(functionName)) {
                     wakeUp.fail(WAKE_UP_REMOVED);
                 }
             }
@@ -201,14 +224,16 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             if (!closed.compareAndSet(false, true)) {
                 return;
             }
-            for (WakeUp wakeUp : new ArrayList<>(inFlight.values())) {
+            for (DeploymentWakeUp wakeUp : new ArrayList<>(inFlight.values())) {
                 wakeUp.fail(WAKE_UP_CLOSED);
             }
         }
     }
 
-    int ownedWakeUpCount() {
-        return inFlight.size();
+    /** Why a wake-up of {@code generation} must stop, or null while it may go on. */
+    private String stopReason(FunctionGeneration generation) {
+        if (closed.get()) return WAKE_UP_CLOSED;
+        return isActive(generation) ? null : WAKE_UP_REMOVED;
     }
 
     private FunctionGeneration activeGeneration(RegisteredFunction function) {
@@ -223,11 +248,18 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                 && !observedAt.isBefore(now.minus(readyObservationMaxAge));
     }
 
+    /** Whether the reading, however old, saw the function ready: what to fall back on if no fresh one comes. */
+    private static boolean saysReady(ReplicaObservation observation) {
+        return observation instanceof ReplicaObservation.Available available
+                && available.status().desiredReplicas() > 0
+                && available.status().readyReplicas() > 0;
+    }
+
     private boolean isCurrent(FunctionGeneration generation) {
         return generation.equals(generations.activeGeneration(generation.functionName()));
     }
 
-    private boolean isActive(FunctionGeneration generation) { // NOSONAR (java:S3398): also used by the enclosing class
+    private boolean isActive(FunctionGeneration generation) {
         return isCurrent(generation) && registry.getRegistered(generation.functionName()).isPresent();
     }
 
@@ -254,203 +286,5 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
 
     private static CompletableFuture<Void> failed(String message) {
         return CompletableFuture.failedFuture(new IllegalStateException(message));
-    }
-
-    @SuppressWarnings("FutureReturnValueIgnored") // result owns both lifecycle callbacks.
-    private final class WakeUp {
-        private final FunctionGeneration generation;
-        private final ManagedDeploymentTarget target;
-        private final CompletableFuture<Void> result = new CompletableFuture<>();
-        private ScheduledFuture<?> timeoutTask;
-        private ScheduledFuture<?> pollTask;
-        private DeploymentWakeUpCoordinator.WakeUpLease wakeUpLease;
-        private int runningCallbacks;
-        private long pollVersion;
-        private boolean schedulingPoll;
-        private boolean pollRanWhileScheduling;
-        private boolean retired;
-        private boolean drained;
-
-        private WakeUp(FunctionGeneration generation, ManagedDeploymentTarget target) {
-            this.generation = generation;
-            this.target = target;
-            result.whenComplete((ignored, failure) -> retire());
-        }
-
-        private void start() {
-            long deadline = nanoTime.getAsLong() + timeout.toNanos();
-            try {
-                synchronized (this) {
-                    timeoutTask = timeoutScheduler.schedule(
-                            () -> fail("DEPLOYMENT_WAKE_UP_TIMEOUT"), timeout.toNanos(), TimeUnit.NANOSECONDS);
-                    if (result.isDone()) timeoutTask.cancel(false);
-                }
-                submit(() -> readAndWake(deadline));
-            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
-                completeExceptionally(failure);
-            }
-        }
-
-        private CompletableFuture<Void> callerView() {
-            CompletableFuture<Void> view = new CompletableFuture<>();
-            result.whenComplete((ignored, failure) -> {
-                if (failure != null) view.completeExceptionally(failure);
-                else view.complete(null);
-            });
-            return view;
-        }
-
-        private void readAndWake(long deadline) {
-            if (!canContinue()) return;
-            try {
-                ReplicaStatus status = coordinator.getFreshReplicaStatus(target);
-                if (!canContinue()) return;
-                if (status.desiredReplicas() > 0 && status.readyReplicas() > 0) {
-                    result.complete(null);
-                    return;
-                }
-                DeploymentWakeUpCoordinator.WakeUpLease lease = wakeUpCoordinator.protectAndScaleUp(
-                        generation, target, deadline, () -> {
-                    if (status.desiredReplicas() == 0 && canContinue()) {
-                        coordinator.setReplicas(generation, target, 1);
-                    }
-                });
-                installLease(lease);
-                schedulePoll(deadline);
-            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
-                completeExceptionally(failure);
-            }
-        }
-
-        private void poll(long deadline) {
-            if (!canContinue()) return;
-            try {
-                ReplicaStatus status = coordinator.getFreshReplicaStatus(target);
-                if (!canContinue()) return;
-                if (status.desiredReplicas() > 0 && status.readyReplicas() > 0) result.complete(null);
-                else schedulePoll(deadline);
-            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
-                completeExceptionally(failure);
-            }
-        }
-
-        private void schedulePoll(long deadline) {
-            long remaining = deadline - nanoTime.getAsLong();
-            if (remaining <= 0) {
-                fail("DEPLOYMENT_WAKE_UP_TIMEOUT");
-                return;
-            }
-            try {
-                boolean runDeferred;
-                long version;
-                synchronized (this) {
-                    if (retired) return;
-                    schedulingPoll = true;
-                    pollRanWhileScheduling = false;
-                    version = ++pollVersion;
-                    ScheduledFuture<?> scheduled;
-                    try {
-                        scheduled = timeoutScheduler.schedule(
-                                () -> pollScheduled(version, deadline),
-                                Math.min(pollInterval.toNanos(), remaining), TimeUnit.NANOSECONDS);
-                    } finally {
-                        schedulingPoll = false;
-                    }
-                    ScheduledFuture<?> previous = pollTask;
-                    pollTask = scheduled;
-                    if (previous != null) previous.cancel(false);
-                    runDeferred = pollRanWhileScheduling;
-                    if (runDeferred) pollTask = null; // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
-                    if (retired) scheduled.cancel(false); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
-                }
-                if (runDeferred) submit(() -> poll(deadline)); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
-            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
-                completeExceptionally(failure);
-            }
-        }
-
-        private void pollScheduled(long version, long deadline) {
-            synchronized (this) {
-                if (retired || version != pollVersion) return;
-                if (schedulingPoll) {
-                    pollRanWhileScheduling = true;
-                    return;
-                }
-                pollTask = null;
-            }
-            submit(() -> poll(deadline));
-        }
-
-        private boolean canContinue() {
-            if (result.isDone()) return false;
-            if (closed.get()) {
-                fail(WAKE_UP_CLOSED);
-                return false;
-            }
-            if (!isActive(generation)) {
-                fail(WAKE_UP_REMOVED);
-                return false;
-            }
-            return true;
-        }
-
-        private synchronized void installLease(DeploymentWakeUpCoordinator.WakeUpLease lease) {
-            if (retired) lease.close();
-            else wakeUpLease = lease;
-        }
-
-        private void fail(String message) {
-            result.completeExceptionally(new IllegalStateException(message));
-        }
-
-        private void completeExceptionally(Throwable failure) {
-            result.completeExceptionally(failure);
-        }
-
-        private synchronized boolean callbackStarted() {
-            if (retired) return false;
-            runningCallbacks++;
-            return true;
-        }
-
-        private synchronized void callbackFinished() {
-            runningCallbacks--;
-            drainIfPossible();
-        }
-
-        private synchronized void retire() {
-            if (retired) return;
-            retired = true;
-            if (timeoutTask != null) timeoutTask.cancel(false);
-            if (pollTask != null) pollTask.cancel(false);
-            drainIfPossible();
-        }
-
-        private void drainIfPossible() {
-            if (!retired || drained || runningCallbacks != 0) return;
-            drained = true;
-            inFlight.remove(generation, this);
-            DeploymentWakeUpCoordinator.WakeUpLease lease = wakeUpLease;
-            wakeUpLease = null;
-            if (lease != null) lease.close();
-        }
-
-        private void submit(Runnable action) {
-            if (!callbackStarted()) {
-                return;
-            }
-            try {
-                executor.execute(() -> {
-                    try {
-                        action.run();
-                    } finally {
-                        callbackFinished();
-                    }
-                });
-            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
-                callbackFinished();
-                completeExceptionally(failure);
-            }
-        }
     }
 }

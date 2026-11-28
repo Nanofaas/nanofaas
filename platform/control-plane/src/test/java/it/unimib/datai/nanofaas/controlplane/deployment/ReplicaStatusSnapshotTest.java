@@ -4,7 +4,6 @@ import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
-import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot.RefreshLimits;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot.RefreshPath;
 import org.junit.jupiter.api.Test;
 
@@ -75,8 +74,8 @@ class ReplicaStatusSnapshotTest {
         assertThat(unavailable).isInstanceOf(ReplicaObservation.Unavailable.class);
         assertThat(((ReplicaObservation.Unavailable) unavailable).reason()).contains("provider down");
         // Both post-TTL observations scheduled a refresh, and both of those failed.
-        assertThat(snapshot.failedRefreshes(RefreshPath.PERIODIC)).isEqualTo(2);
-        assertThat(snapshot.completedRefreshes(RefreshPath.PERIODIC)).isEqualTo(3);
+        assertThat(failedRefreshesOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(2);
+        assertThat(completedRefreshesOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(3);
     }
 
     @Test
@@ -192,7 +191,7 @@ class ReplicaStatusSnapshotTest {
         ConcurrentHashMap<String, Thread> fetchThreads = new ConcurrentHashMap<>();
         // One worker, one queue slot: the third distinct function has nowhere to go.
         ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(clock.instantSource(), TTL,
-                new RefreshLimits(1, 1, 1, 1, Duration.ofMillis(200)));
+                new ReplicaRefreshLimits(1, 1, 1, 1, Duration.ofMillis(200)));
         try { // NOSONAR (java:S2093): release must run before close()
             ReplicaStatusSnapshot.Fetcher fetcher = t -> {
                 fetchThreads.put(t.functionName(), Thread.currentThread());
@@ -204,16 +203,16 @@ class ReplicaStatusSnapshotTest {
             snapshot.observe(new ManagedDeploymentTarget("a", "k8s"), fetcher);   // runs, blocks
             await(firstEntered);
             snapshot.observe(new ManagedDeploymentTarget("b", "k8s"), fetcher);   // queued
-            assertThat(snapshot.activeRefreshes(RefreshPath.PERIODIC)).isEqualTo(1);
-            assertThat(snapshot.queueDepth(RefreshPath.PERIODIC)).isEqualTo(1);
+            assertThat(activeRefreshesOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(1);
+            assertThat(queueDepthOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(1);
 
             Thread caller = Thread.currentThread();
             ReplicaObservation rejected = assertTimeoutPreemptively(Duration.ofSeconds(2),
                     () -> snapshot.observe(new ManagedDeploymentTarget("c", "k8s"), fetcher));
 
             assertThat(rejected.isUsable()).isFalse();
-            assertThat(snapshot.rejectedRefreshes(RefreshPath.PERIODIC)).isEqualTo(1);
-            assertThat(snapshot.queueDepth(RefreshPath.PERIODIC)).isEqualTo(1);
+            assertThat(rejectedRefreshesOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(1);
+            assertThat(queueDepthOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(1);
             // No CallerRunsPolicy: the rejected refresh was not executed on the loop's thread.
             assertThat(fetchThreads).doesNotContainKey("c");
             assertThat(fetchThreads.values()).doesNotContain(caller);
@@ -221,7 +220,7 @@ class ReplicaStatusSnapshotTest {
             // A rejected submission must not strand the entry's single-flight slot: the next cycle
             // is free to try again (and is rejected again while the executor is still saturated).
             snapshot.observe(new ManagedDeploymentTarget("c", "k8s"), fetcher);
-            assertThat(snapshot.rejectedRefreshes(RefreshPath.PERIODIC)).isEqualTo(2);
+            assertThat(rejectedRefreshesOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(2);
         } finally {
             release.countDown();
             snapshot.close();
@@ -234,19 +233,19 @@ class ReplicaStatusSnapshotTest {
         var instants = clock.instantSource();
         Duration oneSecond = Duration.ofSeconds(1);
         Duration negative = Duration.ofMillis(-1);
-        assertThatThrownBy(() -> new RefreshLimits(0, 1, 1, 1, oneSecond))
+        assertThatThrownBy(() -> new ReplicaRefreshLimits(0, 1, 1, 1, oneSecond))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new RefreshLimits(1, 0, 1, 1, oneSecond))
+        assertThatThrownBy(() -> new ReplicaRefreshLimits(1, 0, 1, 1, oneSecond))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new RefreshLimits(1, 1, -1, 1, oneSecond))
+        assertThatThrownBy(() -> new ReplicaRefreshLimits(1, 1, -1, 1, oneSecond))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new RefreshLimits(1, 1, 1, 0, oneSecond))
+        assertThatThrownBy(() -> new ReplicaRefreshLimits(1, 1, 1, 0, oneSecond))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new RefreshLimits(1, 1, 1, 1, Duration.ZERO))
+        assertThatThrownBy(() -> new ReplicaRefreshLimits(1, 1, 1, 1, Duration.ZERO))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ReplicaStatusSnapshot(instants, Duration.ZERO, Runnable::run))
+        assertThatThrownBy(() -> new ReplicaStatusSnapshot(instants, Duration.ZERO, Runnable::run, Runnable::run, ReplicaRefreshLimits.DEFAULTS.freshnessDeadline()))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ReplicaStatusSnapshot(instants, negative, Runnable::run))
+        assertThatThrownBy(() -> new ReplicaStatusSnapshot(instants, negative, Runnable::run, Runnable::run, ReplicaRefreshLimits.DEFAULTS.freshnessDeadline()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -290,7 +289,7 @@ class ReplicaStatusSnapshotTest {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(clock.instantSource(), TTL,
-                new RefreshLimits(1, 2, 1, 1, Duration.ofMillis(200)));
+                new ReplicaRefreshLimits(1, 2, 1, 1, Duration.ofMillis(200)));
         try { // NOSONAR (java:S2093): release must run before close()
             // Uninterruptible on purpose: a provider adapter that ignores interrupts is exactly the
             // case where invalidation must not be allowed to pile up new work behind it.
@@ -307,10 +306,10 @@ class ReplicaStatusSnapshotTest {
                 snapshot.observe(TARGET, fetcher);
             }
 
-            assertThat(snapshot.queueDepth(RefreshPath.PERIODIC)).isEqualTo(2);
-            assertThat(snapshot.activeRefreshes(RefreshPath.PERIODIC)).isEqualTo(1);
+            assertThat(queueDepthOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(2);
+            assertThat(activeRefreshesOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(1);
             // 201 submissions in all: one running, two queued, the rest refused.
-            assertThat(snapshot.rejectedRefreshes(RefreshPath.PERIODIC)).isEqualTo(198);
+            assertThat(rejectedRefreshesOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(198);
             assertThat(snapshot.entryCount()).isEqualTo(1);
         } finally {
             release.countDown();
@@ -329,7 +328,7 @@ class ReplicaStatusSnapshotTest {
             snapshot.invalidate(name);   // repeated invalidate is a no-op, not a resurrection
         }
         assertThat(snapshot.entryCount()).isZero();
-        assertThat(snapshot.queueDepth(RefreshPath.PERIODIC)).isZero();
+        assertThat(queueDepthOf(snapshot, RefreshPath.PERIODIC)).isZero();
     }
 
     @Test
@@ -490,6 +489,38 @@ class ReplicaStatusSnapshotTest {
         }
     }
 
+    /**
+     * The wake-up gate observes before it asks for a fresh reading, and on an expired or missing
+     * entry that observation starts a periodic refresh. The fresh read must still not wait in the
+     * periodic queue: a refresh nobody has started yet is no reason to queue behind it.
+     */
+    @Test
+    void refresh_afterAnObservationStartedAPeriodicRefreshDoesNotQueueBehindIt() {
+        MutableInstantSource clock = new MutableInstantSource(0);
+        CountDownLatch periodicOccupied = new CountDownLatch(1);
+        CountDownLatch releasePeriodic = new CountDownLatch(1);
+        try (ExecutorService periodic = Executors.newFixedThreadPool(1);
+             ExecutorService freshness = Executors.newFixedThreadPool(1)) {
+            ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(clock.instantSource(), TTL,
+                    periodic, freshness, Duration.ofSeconds(1));
+            periodic.execute(() -> {
+                periodicOccupied.countDown();
+                await(releasePeriodic, 10);
+            });
+            await(periodicOccupied);
+
+            // What the gate does: observe (no reading yet, a periodic refresh is queued), then read fresh.
+            assertThat(snapshot.observe(TARGET, t -> new ReplicaStatus(4, 4)))
+                    .isInstanceOf(ReplicaObservation.Unavailable.class);
+            ReplicaStatus fresh = assertTimeoutPreemptively(Duration.ofSeconds(2),
+                    () -> snapshot.refresh(TARGET, t -> new ReplicaStatus(4, 4)));
+
+            assertThat(fresh).isEqualTo(new ReplicaStatus(4, 4));
+        } finally {
+            releasePeriodic.countDown();
+        }
+    }
+
     @Test
     void refresh_failsWhenTheFreshnessExecutorIsSaturatedRatherThanRunningOnTheCaller() throws Exception {
         MutableInstantSource clock = new MutableInstantSource(0);
@@ -497,7 +528,7 @@ class ReplicaStatusSnapshotTest {
         CountDownLatch release = new CountDownLatch(1);
         ConcurrentHashMap<String, Thread> fetchThreads = new ConcurrentHashMap<>();
         ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(clock.instantSource(), TTL,
-                new RefreshLimits(1, 1, 1, 1, Duration.ofSeconds(5)));
+                new ReplicaRefreshLimits(1, 1, 1, 1, Duration.ofSeconds(5)));
         try { // NOSONAR (java:S2093): release must run before close()
             ReplicaStatusSnapshot.Fetcher blocking = t -> {
                 fetchThreads.put(t.functionName(), Thread.currentThread());
@@ -518,7 +549,7 @@ class ReplicaStatusSnapshotTest {
                 assertThatThrownBy(() -> snapshot.refresh(new ManagedDeploymentTarget("c", "k8s"), blocking))
                         .isInstanceOf(ReplicaStatusSnapshot.ReplicaStatusUnavailableException.class)
                         .hasMessageContaining("rejected");
-                assertThat(snapshot.rejectedRefreshes(RefreshPath.FRESHNESS)).isEqualTo(1);
+                assertThat(rejectedRefreshesOf(snapshot, RefreshPath.FRESHNESS)).isEqualTo(1);
                 assertThat(fetchThreads.values()).doesNotContain(caller);
                 release.countDown();
                 first.get(1, TimeUnit.SECONDS);
@@ -564,7 +595,7 @@ class ReplicaStatusSnapshotTest {
     void close_stopsTheOwnedPoolsAndRetiresEveryEntry() {
         MutableInstantSource clock = new MutableInstantSource(0);
         ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(clock.instantSource(), TTL,
-                RefreshLimits.DEFAULTS);
+                ReplicaRefreshLimits.DEFAULTS);
         snapshot.observe(TARGET, t -> new ReplicaStatus(1, 1));
 
         snapshot.close();
@@ -579,7 +610,7 @@ class ReplicaStatusSnapshotTest {
         // rejected and the observation is UNAVAILABLE.
         ReplicaObservation afterClose = snapshot.observe(TARGET, t -> new ReplicaStatus(1, 1));
         assertThat(afterClose.isUsable()).isFalse();
-        assertThat(snapshot.rejectedRefreshes(RefreshPath.PERIODIC)).isEqualTo(1);
+        assertThat(rejectedRefreshesOf(snapshot, RefreshPath.PERIODIC)).isEqualTo(1);
     }
 
     @Test
@@ -644,7 +675,7 @@ class ReplicaStatusSnapshotTest {
     }
 
     private static ReplicaStatusSnapshot snapshot(MutableInstantSource clock, Executor executor) {
-        return new ReplicaStatusSnapshot(clock.instantSource(), TTL, executor);
+        return new ReplicaStatusSnapshot(clock.instantSource(), TTL, executor, executor, ReplicaRefreshLimits.DEFAULTS.freshnessDeadline());
     }
 
     private static ReplicaStatusSnapshot.Fetcher failingFetcher() {
@@ -692,13 +723,13 @@ class ReplicaStatusSnapshotTest {
     private static void awaitQueueDepth(ReplicaStatusSnapshot snapshot, RefreshPath path, int expected) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
-            if (snapshot.queueDepth(path) == expected) {
+            if (queueDepthOf(snapshot, path) == expected) {
                 return;
             }
             Thread.onSpinWait();
         }
         throw new AssertionError("queue depth never reached " + expected
-                + " (last: " + snapshot.queueDepth(path) + ")");
+                + " (last: " + queueDepthOf(snapshot, path) + ")");
     }
 
     private static void await(CountDownLatch latch) {
@@ -728,5 +759,36 @@ class ReplicaStatusSnapshotTest {
             Thread.currentThread().interrupt();
             throw new AssertionError(interrupted);
         }
+    }
+
+    // ---- The snapshot's counters, read through the meters it publishes
+
+    private static SimpleMeterRegistry bound(ReplicaStatusSnapshot snapshot) {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        snapshot.bindTo(registry);
+        return registry;
+    }
+
+    private static long queueDepthOf(ReplicaStatusSnapshot snapshot, RefreshPath path) {
+        return (long) bound(snapshot).get("replica_snapshot_refresh_queue_depth").tag("path", path.tag()).gauge().value();
+    }
+
+    private static long activeRefreshesOf(ReplicaStatusSnapshot snapshot, RefreshPath path) {
+        return (long) bound(snapshot).get("replica_snapshot_refresh_active").tag("path", path.tag()).gauge().value();
+    }
+
+    private static long rejectedRefreshesOf(ReplicaStatusSnapshot snapshot, RefreshPath path) {
+        return (long) bound(snapshot).get("replica_snapshot_refresh_rejected_total").tag("path", path.tag())
+                .functionCounter().count();
+    }
+
+    private static long failedRefreshesOf(ReplicaStatusSnapshot snapshot, RefreshPath path) {
+        return (long) bound(snapshot).get("replica_snapshot_refresh_failed_total").tag("path", path.tag())
+                .functionCounter().count();
+    }
+
+    private static long completedRefreshesOf(ReplicaStatusSnapshot snapshot, RefreshPath path) {
+        return (long) bound(snapshot).get("replica_snapshot_refresh_seconds").tag("path", path.tag())
+                .functionTimer().count();
     }
 }
