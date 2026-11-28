@@ -1,8 +1,5 @@
 package it.unimib.datai.nanofaas.controlplane.deployment;
 
-import io.micrometer.core.instrument.FunctionCounter;
-import io.micrometer.core.instrument.FunctionTimer;
-import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.MeterBinder;
 import org.slf4j.Logger;
@@ -19,13 +16,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.FutureTask;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -42,7 +37,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *       read error can never reach a consumer as {@code readyReplicas = 0} (invariant I9).</li>
  *   <li>{@link #refresh} is the <em>freshness-required</em> path for wake-up and lifecycle: it
  *       always reaches the provider and waits, but only up to
- *       {@link RefreshLimits#freshnessDeadline()}. Past that the caller's thread is released with a
+ *       {@link ReplicaRefreshLimits#freshnessDeadline()}. Past that the caller's thread is released with a
  *       {@link ReplicaStatusUnavailableException}, so a hung provider cannot occupy wake-up workers
  *       indefinitely (invariant I8).</li>
  * </ul>
@@ -99,55 +94,6 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     }
 
     /**
-     * Bounds for the two refresh executors, validated on construction.
-     *
-     * <p>Queue capacities are sized against what can legitimately be outstanding: single-flight
-     * means at most one pending refresh per function, so a capacity of {@code 64} covers far more
-     * managed functions than a single control-plane pod is expected to host while still bounding
-     * the work (and the retained {@link ManagedDeploymentTarget}s) if the provider stops answering.
-     * Past the bound submissions are rejected rather than queued, which degrades a reader to STALE
-     * or UNAVAILABLE — never to a blocked loop thread.
-     *
-     * <p>The freshness pool is separate from the periodic one on purpose: wake-up reads are
-     * latency-critical and must not queue behind slow periodic refreshes.
-     *
-     * @param periodicConcurrency    slow provider refreshes allowed to run at once for {@link #observe}
-     * @param periodicQueueCapacity  pending periodic refreshes before submissions are rejected
-     * @param freshnessConcurrency   provider reads allowed to run at once for {@link #refresh}
-     * @param freshnessQueueCapacity pending forced-fresh reads before submissions are rejected
-     * @param freshnessDeadline      how long {@link #refresh} waits before releasing its caller
-     */
-    public record RefreshLimits(int periodicConcurrency,
-                                int periodicQueueCapacity,
-                                int freshnessConcurrency,
-                                int freshnessQueueCapacity,
-                                Duration freshnessDeadline) {
-
-        /**
-         * Production defaults. The 5s freshness deadline sits well inside the wake-up gate's own
-         * 30s budget, so a hung provider frees the wake-up worker long before the gate gives up.
-         */
-        public static final RefreshLimits DEFAULTS =
-                new RefreshLimits(2, 64, 4, 32, Duration.ofSeconds(5));
-
-        public RefreshLimits {
-            requirePositive(periodicConcurrency, "periodicConcurrency");
-            requirePositive(periodicQueueCapacity, "periodicQueueCapacity");
-            requirePositive(freshnessConcurrency, "freshnessConcurrency");
-            requirePositive(freshnessQueueCapacity, "freshnessQueueCapacity");
-            if (freshnessDeadline == null || freshnessDeadline.isZero() || freshnessDeadline.isNegative()) {
-                throw new IllegalArgumentException("freshnessDeadline must be positive");
-            }
-        }
-
-        private static void requirePositive(int value, String name) {
-            if (value <= 0) {
-                throw new IllegalArgumentException(name + " must be positive");
-            }
-        }
-    }
-
-    /**
      * Raised when there is no replica reading to hand back: the freshness deadline elapsed, the
      * refresh was rejected by a saturated executor, or a newer generation superseded the fetch.
      * Extends {@link IllegalStateException} so existing callers that already treat a failed
@@ -168,20 +114,12 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     private final Executor periodicExecutor;
     private final Executor freshnessExecutor;
     private final List<ExecutorService> ownedExecutors;
-    private final PathStats periodicStats = new PathStats();
-    private final PathStats freshnessStats = new PathStats();
+    private final ReplicaSnapshotMeters meters = new ReplicaSnapshotMeters();
 
     /**
-     * Test/embedding constructor: one caller-owned executor serves both paths. Useful with
-     * {@code Runnable::run} for deterministic tests; production wiring should prefer
-     * {@link #withDefaults} or {@link #ReplicaStatusSnapshot(InstantSource, Duration, RefreshLimits)},
-     * which own bounded pools and shut them down.
+     * The refreshes run on the given executors, which stay their caller's: {@link #close()} leaves
+     * them alone. The periodic and freshness paths may share one.
      */
-    public ReplicaStatusSnapshot(InstantSource clock, Duration ttl, Executor refreshExecutor) {
-        this(clock, ttl, refreshExecutor, refreshExecutor, RefreshLimits.DEFAULTS.freshnessDeadline(), List.of());
-    }
-
-    /** Test/embedding constructor with a distinct executor per path and an explicit deadline. */
     public ReplicaStatusSnapshot(InstantSource clock, Duration ttl, Executor periodicExecutor,
                                  Executor freshnessExecutor, Duration freshnessDeadline) {
         this(clock, ttl, periodicExecutor, freshnessExecutor, freshnessDeadline, List.of());
@@ -190,11 +128,8 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     /**
      * Owns and bounds both refresh pools itself, and shuts them down in {@link #close()}.
      */
-    public ReplicaStatusSnapshot(InstantSource clock, Duration ttl, RefreshLimits limits) {
-        this(clock, ttl,
-                pool(limits.periodicConcurrency(), limits.periodicQueueCapacity(), "replica-snapshot-refresh"),
-                pool(limits.freshnessConcurrency(), limits.freshnessQueueCapacity(), "replica-snapshot-fresh"),
-                limits.freshnessDeadline());
+    public ReplicaStatusSnapshot(InstantSource clock, Duration ttl, ReplicaRefreshLimits limits) {
+        this(clock, ttl, limits.periodicPool(), limits.freshnessPool(), limits.freshnessDeadline());
     }
 
     private ReplicaStatusSnapshot(InstantSource clock, Duration ttl, ThreadPoolExecutor periodicExecutor,
@@ -225,11 +160,11 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     }
 
     /**
-     * Production defaults: system clock, {@link #DEFAULT_TTL} and {@link RefreshLimits#DEFAULTS}
+     * Production defaults: system clock, {@link #DEFAULT_TTL} and {@link ReplicaRefreshLimits#DEFAULTS}
      * bounded daemon pools this snapshot owns and closes.
      */
     public static ReplicaStatusSnapshot withDefaults(InstantSource clock) {
-        return new ReplicaStatusSnapshot(clock, DEFAULT_TTL, RefreshLimits.DEFAULTS);
+        return new ReplicaStatusSnapshot(clock, DEFAULT_TTL, ReplicaRefreshLimits.DEFAULTS);
     }
 
     /**
@@ -240,25 +175,11 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
      * snapshot has nothing to shut down, and {@link #close()} is a no-op beyond invalidation.
      */
     public static ReplicaStatusSnapshot withoutRefreshCapacity(InstantSource clock) {
-        return new ReplicaStatusSnapshot(clock, DEFAULT_TTL, task -> {
+        Executor noProvider = task -> {
             throw new RejectedExecutionException("no managed deployment provider is configured");
-        });
-    }
-
-    private static ThreadPoolExecutor pool(int concurrency, int queueCapacity, String threadName) {
-        // AbortPolicy (the default): a rejected refresh fails fast and is counted. CallerRunsPolicy
-        // would hand the provider call to the loop thread the bound exists to protect.
-        return new ThreadPoolExecutor(
-                concurrency,
-                concurrency,
-                0L,
-                TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<>(queueCapacity),
-                runnable -> {
-                    Thread thread = new Thread(runnable, "nanofaas-" + threadName);
-                    thread.setDaemon(true);
-                    return thread;
-                });
+        };
+        return new ReplicaStatusSnapshot(clock, DEFAULT_TTL, noProvider, noProvider,
+                ReplicaRefreshLimits.DEFAULTS.freshnessDeadline());
     }
 
     /** Fetches a function's replica status from the deployment provider. */
@@ -404,40 +325,15 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
         return ownedExecutors.stream().allMatch(ExecutorService::isTerminated);
     }
 
-    // ---------------------------------------------------------------- observability (item 5)
-
-    /** Refreshes submitted but not yet started, per path. */
-    public int queueDepth(RefreshPath path) {
-        return stats(path).queued.get();
-    }
-
-    /** Refresh tasks currently executing, per path. */
-    public int activeRefreshes(RefreshPath path) {
-        return stats(path).active.get();
-    }
-
-    /** Refreshes a saturated executor refused, per path. */
-    public long rejectedRefreshes(RefreshPath path) {
-        return stats(path).rejected.get();
-    }
-
-    /** Refreshes whose provider call threw, per path. */
-    public long failedRefreshes(RefreshPath path) {
-        return stats(path).failed.get();
-    }
-
-    /** Refreshes that ran to completion (successfully or not), per path. */
-    public long completedRefreshes(RefreshPath path) {
-        return stats(path).completed.get();
-    }
+    // ---------------------------------------------------------------- observability
 
     /** Functions currently held in the snapshot. */
-    public int entryCount() {
+    int entryCount() {
         return entries.size();
     }
 
     /** Age of the oldest cached reading, or {@link Duration#ZERO} when nothing is cached. */
-    public Duration maxObservationAge() {
+    Duration maxObservationAge() {
         Instant now = clock.instant();
         Duration oldest = Duration.ZERO;
         for (Entry entry : entries.values()) {
@@ -452,48 +348,10 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
         return oldest.isNegative() ? Duration.ZERO : oldest;
     }
 
-    /**
-     * Publishes the queue depth, active tasks, rejections, observation age and refresh durations.
-     * Tagged only by {@link RefreshPath} — two constant values — so no per-function or
-     * per-generation label can grow the cardinality of the registry.
-     */
+    /** See {@link ReplicaSnapshotMeters}. */
     @Override
     public void bindTo(MeterRegistry registry) {
-        Gauge.builder("replica_snapshot_entries", this, ReplicaStatusSnapshot::entryCount)
-                .description("Functions currently tracked by the replica status snapshot")
-                .register(registry);
-        // No baseUnit: Prometheus appends one to every name that does not already
-        // end with it, and a name ending in `_max` never does, so declaring the
-        // unit here exports this as `..._age_seconds_max_seconds`. The release
-        // queries `replica_snapshot_observation_age_seconds_max` and finds nothing.
-        Gauge.builder("replica_snapshot_observation_age_seconds_max", this,
-                        snapshot -> snapshot.maxObservationAge().toNanos() / 1_000_000_000.0)
-                .description("Age of the oldest cached replica observation")
-                .register(registry);
-        for (RefreshPath path : RefreshPath.values()) {
-            PathStats stats = stats(path);
-            Gauge.builder("replica_snapshot_refresh_queue_depth", stats, s -> s.queued.get())
-                    .description("Replica refreshes submitted but not yet started")
-                    .tag("path", path.tag())
-                    .register(registry);
-            Gauge.builder("replica_snapshot_refresh_active", stats, s -> s.active.get())
-                    .description("Replica refreshes currently executing")
-                    .tag("path", path.tag())
-                    .register(registry);
-            FunctionCounter.builder("replica_snapshot_refresh_rejected_total", stats, s -> s.rejected.get())
-                    .description("Replica refreshes refused by a saturated refresh executor")
-                    .tag("path", path.tag())
-                    .register(registry);
-            FunctionCounter.builder("replica_snapshot_refresh_failed_total", stats, s -> s.failed.get())
-                    .description("Replica refreshes whose provider call failed")
-                    .tag("path", path.tag())
-                    .register(registry);
-            FunctionTimer.builder("replica_snapshot_refresh_seconds", stats,
-                            s -> s.completed.get(), s -> s.durationNanos.get(), TimeUnit.NANOSECONDS)
-                    .description("Time spent inside replica refresh tasks")
-                    .tag("path", path.tag())
-                    .register(registry);
-        }
+        meters.bindTo(registry, this);
     }
 
     // ---------------------------------------------------------------- internals
@@ -506,8 +364,8 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
         return generationSequence.incrementAndGet();
     }
 
-    private PathStats stats(RefreshPath path) {
-        return path == RefreshPath.PERIODIC ? periodicStats : freshnessStats;
+    private ReplicaSnapshotMeters.PathStats stats(RefreshPath path) {
+        return meters.of(path);
     }
 
     private Executor executor(RefreshPath path) {
@@ -527,15 +385,26 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     /**
      * Single-flight: returns the refresh already in flight for this function/generation, or a new
      * one whose task the caller must submit outside the entry lock.
+     *
+     * <p>A freshness read does not join a periodic refresh still waiting in the periodic queue: that
+     * is the queue its own pool exists to keep it out of. It takes the refresh over instead, on its
+     * own pool; nobody waits on a periodic refresh's future, so the swap is invisible to observers. A
+     * periodic refresh already reading the provider is joined, since it is the fresher answer.</p>
      */
     private Refresh startOrJoinLocked(Entry entry, ManagedDeploymentTarget target,
                                       Fetcher fetcher, RefreshPath path) {
         if (entry.inFlight != null && !entry.inFlight.isDone()) {
-            return new Refresh(entry.inFlight, null);
+            boolean takeOver = path == RefreshPath.FRESHNESS && entry.task != null && entry.task.queuedPeriodic();
+            if (!takeOver) {
+                return new Refresh(entry.inFlight, null);
+            }
+            entry.task.cancel(false);
+            entry.inFlight.completeExceptionally(new ReplicaStatusUnavailableException(
+                    REPLICA_STATUS_FOR + target.functionName() + " was taken over by a freshness read"));
         }
         long capturedGeneration = entry.generation;
         CompletableFuture<ReplicaStatus> result = new CompletableFuture<>();
-        RefreshTask task = new RefreshTask(stats(path),
+        RefreshTask task = new RefreshTask(path, stats(path),
                 () -> fetchAndApply(entry, target, capturedGeneration, result, fetcher, path));
         entry.inFlight = result;
         entry.task = task;
@@ -546,7 +415,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
         if (refresh.task() == null) {
             return;
         }
-        PathStats stats = stats(path);
+        ReplicaSnapshotMeters.PathStats stats = stats(path);
         stats.queued.incrementAndGet();
         try {
             executor(path).execute(refresh.task());
@@ -620,7 +489,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
 
     private void fetchAndApply(Entry entry, ManagedDeploymentTarget target, long capturedGeneration,
                                CompletableFuture<ReplicaStatus> result, Fetcher fetcher, RefreshPath path) {
-        PathStats stats = stats(path);
+        ReplicaSnapshotMeters.PathStats stats = stats(path);
         stats.active.incrementAndGet();
         long startedAt = System.nanoTime();
         try {
@@ -700,12 +569,19 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
      * accurate whether the task ran, was cancelled while queued, or was interrupted mid-flight.
      */
     private static final class RefreshTask extends FutureTask<Void> {
-        private final PathStats stats;
+        private final RefreshPath path;
+        private final ReplicaSnapshotMeters.PathStats stats;
         private final AtomicBoolean dequeued = new AtomicBoolean();
 
-        private RefreshTask(PathStats stats, Runnable body) {
+        private RefreshTask(RefreshPath path, ReplicaSnapshotMeters.PathStats stats, Runnable body) {
             super(body, null);
+            this.path = path;
             this.stats = stats;
+        }
+
+        /** A periodic refresh its executor has not dequeued yet. */
+        private boolean queuedPeriodic() {
+            return path == RefreshPath.PERIODIC && !dequeued.get();
         }
 
         @Override
@@ -734,15 +610,5 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
         Entry(long generation) {
             this.generation = generation;
         }
-    }
-
-    /** Per-path counters; every field is monotonic except the two depth gauges. */
-    private static final class PathStats {
-        final AtomicInteger queued = new AtomicInteger();
-        final AtomicInteger active = new AtomicInteger();
-        final AtomicLong rejected = new AtomicLong();
-        final AtomicLong failed = new AtomicLong();
-        final AtomicLong completed = new AtomicLong();
-        final AtomicLong durationNanos = new AtomicLong();
     }
 }

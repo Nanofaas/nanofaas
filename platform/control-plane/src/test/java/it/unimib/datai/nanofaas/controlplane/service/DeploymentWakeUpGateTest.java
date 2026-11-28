@@ -142,7 +142,7 @@ class DeploymentWakeUpGateTest {
             assertThatThrownBy(ready::join)
                     .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_TARGET_UNAVAILABLE");
             verify(exactCoordinator, never()).setReplicas(replacementGeneration, target, 1);
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             replacementInstalled.countDown();
@@ -187,7 +187,7 @@ class DeploymentWakeUpGateTest {
 
             assertThat(ready).isCompletedExceptionally();
             if (submitted.get() != null) submitted.get().run();
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             owners.allowPublication.countDown();
@@ -250,7 +250,7 @@ class DeploymentWakeUpGateTest {
                     scheduler);
             CompletableFuture<Void> shortCaller = gate.ensureReady(task);
             assertThat(readEntered.await(1, TimeUnit.SECONDS)).isTrue();
-            assertThat(gate.ownedWakeUpCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.inFlight(gate)).isEqualTo(1);
             List<CompletableFuture<Void>> longCallers = java.util.stream.IntStream.range(0, 99)
                     .mapToObj(ignored -> gate.ensureReady(task))
                     .toList();
@@ -265,7 +265,7 @@ class DeploymentWakeUpGateTest {
             // Caller futures can complete before the owner callback releases its resources.
             executor.submit(() -> {}).get(1, TimeUnit.SECONDS);
             verify(coordinator, times(1)).getFreshReplicaStatus(target);
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             releaseRead.countDown();
@@ -317,7 +317,7 @@ class DeploymentWakeUpGateTest {
             assertThatThrownBy(() -> ready.get(1, TimeUnit.SECONDS))
                     .hasRootCauseMessage("provider unavailable");
             executor.submit(() -> { }).get(1, TimeUnit.SECONDS);
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             executor.shutdownNow();
@@ -352,11 +352,11 @@ class DeploymentWakeUpGateTest {
             ((FunctionRegistrationListener) gate).onRemove("echo");
 
             assertThatThrownBy(removed::join).hasRootCauseMessage("DEPLOYMENT_WAKE_UP_REMOVED");
-            assertThat(gate.ownedWakeUpCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.inFlight(gate)).isEqualTo(1);
             assertThat(scheduler.getQueue()).isEmpty();
             releaseRead.countDown();
             executor.submit(() -> { }).get(1, TimeUnit.SECONDS);
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             ((AutoCloseable) gate).close();
             assertThatThrownBy(() -> gate.ensureReady(task).join())
                     .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_CLOSED");
@@ -389,7 +389,7 @@ class DeploymentWakeUpGateTest {
 
             assertThatThrownBy(() -> rejectedGate.ensureReady(task).join())
                     .hasRootCauseMessage("executor rejected");
-            assertThat(rejectedGate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(rejectedGate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
 
             AtomicReference<Runnable> submitted = new AtomicReference<>();
@@ -397,15 +397,15 @@ class DeploymentWakeUpGateTest {
                     registry, coordinator, generations, new DeploymentWakeUpProperties(), submitted::set,
                     scheduler, wakeUpCoordinator, InstantSource.system(), System::nanoTime);
             CompletableFuture<Void> pending = closingGate.ensureReady(task);
-            assertThat(closingGate.ownedWakeUpCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.inFlight(closingGate)).isEqualTo(1);
 
             closingGate.close();
 
             assertThatThrownBy(pending::join).hasRootCauseMessage("DEPLOYMENT_WAKE_UP_CLOSED");
-            assertThat(closingGate.ownedWakeUpCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.inFlight(closingGate)).isEqualTo(1);
             assertThat(scheduler.getQueue()).isEmpty();
             submitted.get().run();
-            assertThat(closingGate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(closingGate)).isZero();
             verify(coordinator, never()).getFreshReplicaStatus(target);
         } finally {
             scheduler.shutdownNow();
@@ -476,7 +476,7 @@ class DeploymentWakeUpGateTest {
             }
 
             verify(coordinator, times(5)).getFreshReplicaStatus(target);
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             scheduler.shutdownNow();
@@ -501,7 +501,7 @@ class DeploymentWakeUpGateTest {
 
             assertThatThrownBy(() -> gate.ensureReady(task).join())
                     .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_REMOVED");
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
             verify(coordinator, never()).getFreshReplicaStatus(target);
         } finally {
@@ -558,7 +558,7 @@ class DeploymentWakeUpGateTest {
             releaseOldRead.countDown();
             assertThat(callbacksDrained.await(1, TimeUnit.SECONDS)).isTrue();
             assertThatThrownBy(old::join).hasRootCauseMessage("DEPLOYMENT_WAKE_UP_REMOVED");
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
             verify(coordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
         } finally {
@@ -585,16 +585,16 @@ class DeploymentWakeUpGateTest {
                     scheduler, new DeploymentWakeUpCoordinator(generations, scheduler),
                     InstantSource.system(), System::nanoTime);
             CompletableFuture<Void> ready = gate.ensureReady(task);
-            assertThat(gate.ownedWakeUpCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.inFlight(gate)).isEqualTo(1);
             assertThat(scheduler.getQueue()).hasSize(1);
 
             ((Runnable) scheduler.getQueue().peek()).run();
 
             assertThatThrownBy(ready::join).hasRootCauseMessage("DEPLOYMENT_WAKE_UP_TIMEOUT");
-            assertThat(gate.ownedWakeUpCount()).isEqualTo(1);
+            assertThat(WakeUpMeters.inFlight(gate)).isEqualTo(1);
             assertThat(scheduler.getQueue()).isEmpty();
             submitted.get().run();
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             verify(coordinator, never()).getFreshReplicaStatus(target);
         } finally {
             scheduler.shutdownNow();
@@ -641,7 +641,7 @@ class DeploymentWakeUpGateTest {
         successor.get().run();
 
         assertThat(ready).isCompletedWithValue(null);
-        assertThat(gate.ownedWakeUpCount()).isZero();
+        assertThat(WakeUpMeters.inFlight(gate)).isZero();
         verify(coordinator, times(3)).getFreshReplicaStatus(target);
     }
 
@@ -928,7 +928,7 @@ class DeploymentWakeUpGateTest {
             assertThatThrownBy(ready::join)
                     .isInstanceOf(CompletionException.class)
                     .hasRootCauseMessage("provider unavailable");
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             scheduler.shutdownNow();
@@ -953,7 +953,7 @@ class DeploymentWakeUpGateTest {
             assertThatThrownBy(ready::join)
                     .isInstanceOf(CompletionException.class)
                     .hasRootCauseMessage("provider unavailable");
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(WakeUpMeters.inFlight(gate)).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
             scheduler.shutdownNow();

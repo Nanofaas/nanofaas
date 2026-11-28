@@ -401,6 +401,17 @@ expiry precedes handle publication. A shared deployment wake-up future remains
 available to other invocations. Cancelling a local HTTP request cannot guarantee
 that a remote function stops executing.
 
+Every invocation held by a deployment wake-up waits its own
+`nanofaas.deployment.wakeup.timeout`: one that joins a wake-up already under way
+extends it, and its protection from scale-down, instead of inheriting what is left.
+A replica read that fails is not taken as an answer. If the last reading saw the
+function ready, the invocation is served on it. Once the scale-up has been asked
+for, the read is retried until the deadline. Only a function seen at zero replicas
+fails fast, because no scale-up has been requested yet. A wake-up's fresh read does
+not queue behind a periodic refresh that has not started. The gauges
+`deployment_wakeups_in_flight`, `deployment_wakeup_protected_functions` and
+`deployment_wakeup_tracked_generations` show the wake-ups under way.
+
 An offloaded invocation acquires no backend dispatch slot on this plane. Its
 transport uses the function's timeout budget; an individual caller's shorter
 `X-Timeout-Ms` affects only that waiter's subscription. Administrative expiry also

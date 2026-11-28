@@ -64,13 +64,6 @@ class MinimalProfileBeanOwnershipTest {
     }
 
     /**
-     * The coordinator stays: the function service needs it to answer managed operations on a
-     * catalog restored from disk, whose entries can name a backend this build no longer has. What
-     * must not stay is a snapshot owning refresh pools — the coordinator here is built on one that
-     * owns none, so shutdown has nothing to drain and every replica reading is honestly
-     * UNAVAILABLE rather than a fabricated zero.
-     */
-    /**
      * Generations have one authority, the application's capacity registry. A coordinator on a
      * registry of its own sees no function ever registered there, so every reader of
      * {@code generationOf} (forecasting, the scaler, offload) would find none.
@@ -92,6 +85,13 @@ class MinimalProfileBeanOwnershipTest {
         });
     }
 
+    /**
+     * The coordinator stays: the function service needs it to answer managed operations on a
+     * catalog restored from disk, whose entries can name a backend this build no longer has. What
+     * must not stay is a snapshot owning refresh pools — the coordinator here is built on one that
+     * owns none, so shutdown has nothing to drain and every replica reading is honestly
+     * UNAVAILABLE rather than a fabricated zero.
+     */
     @Test
     void withoutAProviderTheCoordinatorIsStillPresentAndOwnsNoRefreshPool() {
         runner.run(context -> {

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.registry;
 
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaRefreshLimits;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
@@ -309,7 +310,7 @@ class ManagedDeploymentCoordinatorTest {
 
     private ManagedDeploymentCoordinator coordinatorWithSnapshot() {
         ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(
-                new MutableInstantSource(0).instantSource(), Duration.ofSeconds(5), Runnable::run);
+                new MutableInstantSource(0).instantSource(), Duration.ofSeconds(5), Runnable::run, Runnable::run, ReplicaRefreshLimits.DEFAULTS.freshnessDeadline());
         return new ManagedDeploymentCoordinator(
                 new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)),
                 registry,

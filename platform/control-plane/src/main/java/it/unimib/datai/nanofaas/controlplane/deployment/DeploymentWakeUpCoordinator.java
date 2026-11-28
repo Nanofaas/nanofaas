@@ -2,6 +2,9 @@ package it.unimib.datai.nanofaas.controlplane.deployment;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.MeterBinder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 
@@ -21,7 +24,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
 /** Serializes generation-scoped deployment wake-ups with scale-downs for each function. */
-public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, AutoCloseable {
+public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, AutoCloseable, MeterBinder {
     private static final String GENERATION = "generation";
     private final FunctionCapacityRegistry generations;
     private final ScheduledExecutorService scheduler;
@@ -177,11 +180,22 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
         }
     }
 
-    int ownedStateCount() {
-        return functions.size();
+    /**
+     * {@code deployment_wakeup_protected_functions}: generations a wake-up currently protects from
+     * scale-down. {@code deployment_wakeup_tracked_generations}: generations this coordinator holds
+     * state for, a protection or a scale running; it returns to zero once nothing is in progress.
+     */
+    @Override
+    public void bindTo(MeterRegistry registry) {
+        Gauge.builder("deployment_wakeup_protected_functions", this, DeploymentWakeUpCoordinator::protectedCount)
+                .description("Function generations a wake-up protects from scale-down")
+                .register(registry);
+        Gauge.builder("deployment_wakeup_tracked_generations", functions, ConcurrentMap::size)
+                .description("Function generations with wake-up or scale-down state in progress")
+                .register(registry);
     }
 
-    int ownedLeaseCount() {
+    private int protectedCount() {
         int leases = 0;
         for (FunctionState state : functions.values()) {
             synchronized (state) {
@@ -247,6 +261,18 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
             ScheduledFuture<?> expiry = state.expiryTask;
             state.expiryTask = null;
             cancel(expiry);
+        }
+    }
+
+    private void extend(FunctionGeneration generation, FunctionState state, long leaseId, long deadlineNanos) {
+        synchronized (state) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
+            if (state.retired || state.leaseId != leaseId || deadlineNanos <= state.deadlineNanos) {
+                return;
+            }
+            state.deadlineNanos = deadlineNanos;
+            ScheduledFuture<?> previous = state.expiryTask;
+            state.expiryTask = scheduleExpiry(generation, state, leaseId, deadlineNanos);
+            cancel(previous);
         }
     }
 
@@ -317,6 +343,13 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
             this.generation = generation;
             this.state = state;
             this.leaseId = leaseId;
+        }
+
+        /** Moves the protection's deadline later, while this is still the function's lease. */
+        public void extendTo(long deadlineNanos) {
+            if (!released.get()) {
+                extend(generation, state, leaseId, deadlineNanos);
+            }
         }
 
         @Override

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaRefreshLimits;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
@@ -54,7 +55,7 @@ class R8HistoryCleanupRegressionTest {
     @Test
     void invalidatedReplicaTargetsAreRemovedNotJustCleared() throws Exception {
         ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(
-                InstantSource.system(), Duration.ofSeconds(5), Runnable::run);
+                InstantSource.system(), Duration.ofSeconds(5), Runnable::run, Runnable::run, ReplicaRefreshLimits.DEFAULTS.freshnessDeadline());
         for (int i = 0; i < 1000; i++) {
             String name = "deleted-" + i;
             snapshot.observe(new ManagedDeploymentTarget(name, "container-local"),
